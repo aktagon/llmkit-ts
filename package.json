@@ -1,5 +1,5 @@
 {
-  "name": "@aktagon/llmkit",
+  "name": "@aktagon/llmkit-ts",
   "version": "0.0.1",
   "description": "Unified LLM client library",
   "type": "module",
