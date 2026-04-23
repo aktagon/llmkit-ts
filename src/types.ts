@@ -24,7 +24,7 @@ export interface Request {
 export interface Usage {
   input: number;
   output: number;
-  cacheCreation: number;
+  cacheWrite: number;
   cacheRead: number;
 }
 

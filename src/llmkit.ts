@@ -60,7 +60,7 @@ export async function prompt(
     tokens: {
       input: extractIntPath(raw, cfg.usageInputPath),
       output: extractIntPath(raw, cfg.usageOutputPath),
-      cacheCreation: 0,
+      cacheWrite: 0,
       cacheRead: 0,
     },
   };
