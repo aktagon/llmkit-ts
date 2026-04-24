@@ -6,6 +6,7 @@ export interface Usage {
   output: number;
   cacheWrite: number;
   cacheRead: number;
+  reasoning: number;
 }
 
 export type MiddlewarePhase = "pre" | "post";

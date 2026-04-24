@@ -62,6 +62,9 @@ export async function prompt(
       output: extractIntPath(raw, cfg.usageOutputPath),
       cacheWrite: 0,
       cacheRead: 0,
+      reasoning: cfg.reasoningTokensPath
+        ? extractIntPath(raw, cfg.reasoningTokensPath)
+        : 0,
     },
   };
 }
