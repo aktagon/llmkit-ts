@@ -143,3 +143,55 @@ describe("prompt — OpenAI", () => {
     }
   });
 });
+
+describe("prompt — reasoning tokens", () => {
+  test("Usage.reasoning populated for OpenAI o1/o3/o4 responses", async () => {
+    const server = startMockServer(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "reasoned" } }],
+            usage: {
+              prompt_tokens: 40,
+              completion_tokens: 25,
+              completion_tokens_details: { reasoning_tokens: 17 },
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    try {
+      const response = await prompt(
+        { name: Providers.openai, apiKey: "sk-test", baseUrl: server.url },
+        { user: "think" },
+      );
+      expect(response.tokens.reasoning).toBe(17);
+      expect(response.tokens.input).toBe(40);
+      expect(response.tokens.output).toBe(25);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("Usage.reasoning stays zero for providers that do not report it", async () => {
+    const server = startMockServer(
+      async () =>
+        new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: "hi" }],
+            usage: { input_tokens: 5, output_tokens: 3 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    try {
+      const response = await prompt(
+        { name: Providers.anthropic, apiKey: "sk-test", baseUrl: server.url },
+        { user: "hi" },
+      );
+      expect(response.tokens.reasoning).toBe(0);
+    } finally {
+      server.stop();
+    }
+  });
+});
