@@ -1,6 +1,17 @@
-import { PROVIDERS, type ProviderConfig } from "./providers/providers.ts";
+import { PROVIDERS } from "./providers/providers.ts";
+import { type StreamDef, streamConfig } from "./providers/stream.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractPath, extractIntPath } from "./paths.ts";
+import { applyCaching, parseCacheUsage } from "./caching.ts";
+import {
+  buildRequest,
+  buildAuthHeaders,
+  buildUrl,
+  executeRequest,
+  validateOptions,
+} from "./request.ts";
+import { firePost, firePre } from "./middleware.ts";
+import type { Event } from "./providers/middleware.ts";
 import type {
   Provider,
   Request as PromptRequest,
@@ -15,9 +26,17 @@ export type {
   PromptOptions,
   Message,
   Usage,
+  File,
+  BatchHandle,
 } from "./types.ts";
 export { Providers } from "./providers/providers.ts";
 export { APIError, ValidationError } from "./errors.ts";
+export { uploadFile } from "./upload.ts";
+export { promptBatch, submitBatch, waitBatch } from "./batch.ts";
+export { Agent } from "./agent.ts";
+export { MiddlewareVetoError } from "./middleware.ts";
+export type { Event, MiddlewareFn } from "./providers/middleware.ts";
+export type { Tool, AgentOptions } from "./types.ts";
 
 export async function prompt(
   provider: Provider,
@@ -32,125 +51,240 @@ export async function prompt(
     throw new ValidationError("apiKey", "required");
   }
 
-  const body = buildRequest(provider, request, cfg, options);
-  const headers = buildAuthHeaders(provider, cfg);
+  validateOptions(provider.name, options);
 
-  const baseUrl = provider.baseUrl || cfg.baseUrl;
-  const url = buildUrl(baseUrl + cfg.endpoint, provider, cfg);
+  const baseEvent: Event = {
+    op: "llm_request",
+    phase: "pre",
+    provider: provider.name,
+    model: provider.model || cfg.defaultModel,
+  };
+  const veto = firePre(options.middleware, baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
 
-  const httpResp = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
+  try {
+    const body = buildRequest(provider, request, cfg, options);
+    if (options.caching) {
+      await applyCaching(body, provider, cfg, options);
+    }
 
-  const respText = await httpResp.text();
-  if (!httpResp.ok) {
-    throw new APIError(
-      httpResp.status,
-      respText,
-      httpResp.status === 429 || httpResp.status >= 500,
+    const resp = await executeRequest(provider, cfg, body, options);
+    if (!resp.ok) {
+      throw new APIError(
+        resp.status,
+        resp.text,
+        resp.status === 429 || resp.status >= 500,
+      );
+    }
+
+    const raw = JSON.parse(resp.text) as unknown;
+    const cache = parseCacheUsage(raw, provider.name);
+    const result: PromptResponse = {
+      text: extractPath(raw, cfg.responseTextPath),
+      tokens: {
+        input: extractIntPath(raw, cfg.usageInputPath),
+        output: extractIntPath(raw, cfg.usageOutputPath),
+        cacheWrite: cache.write,
+        cacheRead: cache.read,
+        reasoning: cfg.reasoningTokensPath
+          ? extractIntPath(raw, cfg.reasoningTokensPath)
+          : 0,
+      },
+    };
+    firePost(options.middleware, {
+      ...baseEvent,
+      usage: result.tokens,
+      duration: performance.now() - start,
+    });
+    return result;
+  } catch (err) {
+    firePost(options.middleware, {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
+  }
+}
+
+export async function promptStream(
+  provider: Provider,
+  request: PromptRequest,
+  onChunk: (text: string) => void,
+  options: PromptOptions = {},
+): Promise<PromptResponse> {
+  const cfg = PROVIDERS[provider.name];
+  if (!cfg) {
+    throw new ValidationError("provider", `unknown: ${provider.name}`);
+  }
+  if (!provider.apiKey) {
+    throw new ValidationError("apiKey", "required");
+  }
+  const streamCfg = streamConfig(provider.name);
+  if (!streamCfg) {
+    throw new ValidationError(
+      "provider",
+      `streaming not supported: ${provider.name}`,
     );
   }
 
-  const raw = JSON.parse(respText) as unknown;
-  return {
-    text: extractPath(raw, cfg.responseTextPath),
-    tokens: {
-      input: extractIntPath(raw, cfg.usageInputPath),
-      output: extractIntPath(raw, cfg.usageOutputPath),
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: cfg.reasoningTokensPath
-        ? extractIntPath(raw, cfg.reasoningTokensPath)
-        : 0,
-    },
+  validateOptions(provider.name, options);
+
+  const baseEvent: Event = {
+    op: "llm_request",
+    phase: "pre",
+    provider: provider.name,
+    model: provider.model || cfg.defaultModel,
   };
-}
+  const veto = firePre(options.middleware, baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
 
-function buildRequest(
-  provider: Provider,
-  request: PromptRequest,
-  cfg: ProviderConfig,
-  options: PromptOptions,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  const model = provider.model || cfg.defaultModel;
-
-  if (cfg.modelInBody) {
-    body.model = model;
-  }
-  body.max_tokens = options.maxTokens ?? cfg.defaultMaxTokens;
-
-  const messages = buildMessages(request, cfg);
-  body.messages = messages;
-
-  // System placement
-  if (cfg.systemPlacement === "TopLevelField" && request.system) {
-    body.system = request.system;
-  }
-
-  if (options.temperature !== undefined) body.temperature = options.temperature;
-  if (options.topP !== undefined) body.top_p = options.topP;
-
-  return body;
-}
-
-function buildMessages(
-  request: PromptRequest,
-  cfg: ProviderConfig,
-): Array<Record<string, string>> {
-  const msgs: Array<Record<string, string>> = [];
-
-  if (cfg.systemPlacement === "MessageInArray" && request.system) {
-    msgs.push({
-      role: cfg.roleMappings.system ?? "system",
-      content: request.system,
-    });
-  }
-
-  if (request.messages && request.messages.length > 0) {
-    for (const m of request.messages) {
-      msgs.push({
-        role: cfg.roleMappings[m.role] ?? m.role,
-        content: m.content,
-      });
+  try {
+    const body = buildRequest(provider, request, cfg, options);
+    if (streamCfg.param) {
+      body[streamCfg.param] =
+        streamCfg.paramValue === "true" ? true : streamCfg.paramValue;
     }
-  } else if (request.user) {
-    msgs.push({ role: cfg.roleMappings.user ?? "user", content: request.user });
-  }
+    const headers = buildAuthHeaders(provider, cfg);
+    const baseUrl = provider.baseUrl || cfg.baseUrl;
+    const endpoint = streamCfg.endpoint || cfg.endpoint;
+    const url = buildUrl(baseUrl + endpoint, provider, cfg);
 
-  return msgs;
+    const httpResp = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+
+    if (!httpResp.ok) {
+      const errText = await httpResp.text();
+      throw new APIError(
+        httpResp.status,
+        errText,
+        httpResp.status === 429 || httpResp.status >= 500,
+      );
+    }
+    if (!httpResp.body) {
+      throw new APIError(0, "stream response had no body", false);
+    }
+
+    const chunks: string[] = [];
+    const usage = await consumeSSE(httpResp.body, streamCfg, (text) => {
+      chunks.push(text);
+      onChunk(text);
+    });
+
+    const result: PromptResponse = {
+      text: chunks.join(""),
+      tokens: {
+        input: usage.input,
+        output: usage.output,
+        cacheWrite: 0,
+        cacheRead: 0,
+        reasoning: 0,
+      },
+    };
+    firePost(options.middleware, {
+      ...baseEvent,
+      usage: result.tokens,
+      duration: performance.now() - start,
+    });
+    return result;
+  } catch (err) {
+    firePost(options.middleware, {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
+  }
 }
 
-function buildAuthHeaders(
-  provider: Provider,
-  cfg: ProviderConfig,
-): Record<string, string> {
-  const headers: Record<string, string> = {};
-  switch (cfg.authScheme) {
-    case "BearerToken":
-      headers[cfg.authHeader] = `${cfg.authPrefix} ${provider.apiKey}`;
-      break;
-    case "HeaderAPIKey":
-      headers[cfg.authHeader] = provider.apiKey;
-      break;
-  }
-  if (cfg.requiredHeader) {
-    headers[cfg.requiredHeader] = cfg.requiredHeaderValue;
-  }
-  return headers;
+interface StreamUsage {
+  input: number;
+  output: number;
 }
 
-function buildUrl(
-  base: string,
-  provider: Provider,
-  cfg: ProviderConfig,
-): string {
-  if (cfg.authScheme === "QueryParamKey" && cfg.authQueryParam) {
-    const sep = base.includes("?") ? "&" : "?";
-    return `${base}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
+async function consumeSSE(
+  body: ReadableStream<Uint8Array>,
+  cfg: StreamDef,
+  emit: (text: string) => void,
+): Promise<StreamUsage> {
+  const usage: StreamUsage = { input: 0, output: 0 };
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  let currentEvent = "";
+  let stopped = false;
+
+  while (!stopped) {
+    const { value, done } = await reader.read();
+    if (done) {
+      buffer += decoder.decode();
+      stopped = processBuffer() || true;
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    if (processBuffer()) stopped = true;
   }
-  return base;
+
+  return usage;
+
+  function processBuffer(): boolean {
+    let newlineIdx = buffer.indexOf("\n");
+    while (newlineIdx !== -1) {
+      const line = buffer.slice(0, newlineIdx).replace(/\r$/, "");
+      buffer = buffer.slice(newlineIdx + 1);
+      if (handleLine(line)) return true;
+      newlineIdx = buffer.indexOf("\n");
+    }
+    return false;
+  }
+
+  function handleLine(line: string): boolean {
+    if (line.startsWith("event: ")) {
+      currentEvent = line.slice("event: ".length);
+      return false;
+    }
+    if (!line.startsWith("data: ")) return false;
+    const data = line.slice("data: ".length);
+
+    if (cfg.doneSignal && data === cfg.doneSignal) return true;
+    if (cfg.usesEventTypes && cfg.doneEvent && currentEvent === cfg.doneEvent)
+      return true;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return false;
+    }
+    if (typeof parsed !== "object" || parsed === null) return false;
+
+    if (cfg.usesEventTypes) {
+      if (currentEvent === cfg.contentEvent) {
+        const text = extractPath(parsed, cfg.deltaTextPath);
+        if (text) emit(text);
+      }
+      if (currentEvent === cfg.usageEvent && cfg.usageOutputPath) {
+        usage.output = extractIntPath(parsed, cfg.usageOutputPath);
+      }
+    } else {
+      const text = extractPath(parsed, cfg.deltaTextPath);
+      if (text) emit(text);
+      if (cfg.usageInputPath) {
+        const v = extractIntPath(parsed, cfg.usageInputPath);
+        if (v > 0) usage.input = v;
+      }
+      if (cfg.usageOutputPath) {
+        const v = extractIntPath(parsed, cfg.usageOutputPath);
+        if (v > 0) usage.output = v;
+      }
+    }
+    currentEvent = "";
+    return false;
+  }
 }

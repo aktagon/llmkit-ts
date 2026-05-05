@@ -1,0 +1,62 @@
+// Code generated — DO NOT EDIT.
+
+
+import type { ProviderName } from "./providers";
+
+export interface FileUploadDef {
+  endpoint: string;
+  fieldName: string;
+  extraFieldsJson: string;
+  betaHeader: string;
+  responseIdPath: string;
+  responseUriPath: string;
+  responseNamePath: string;
+  responseMimePath: string;
+}
+
+const FILE_UPLOADS: Partial<Record<ProviderName, FileUploadDef>> = {
+  anthropic: {
+    endpoint: "/v1/files",
+    fieldName: "file",
+    extraFieldsJson: "",
+    betaHeader: "files-api-2025-04-14",
+    responseIdPath: "id",
+    responseUriPath: "",
+    responseNamePath: "filename",
+    responseMimePath: "mime_type",
+  },
+  google: {
+    endpoint: "/upload/v1beta/files",
+    fieldName: "file",
+    extraFieldsJson: "",
+    betaHeader: "",
+    responseIdPath: "file.name",
+    responseUriPath: "file.uri",
+    responseNamePath: "file.displayName",
+    responseMimePath: "file.mimeType",
+  },
+  grok: {
+    endpoint: "/v1/files",
+    fieldName: "file",
+    extraFieldsJson: "{\"purpose\":\"assistants\"}",
+    betaHeader: "",
+    responseIdPath: "id",
+    responseUriPath: "",
+    responseNamePath: "filename",
+    responseMimePath: "",
+  },
+  openai: {
+    endpoint: "/v1/files",
+    fieldName: "file",
+    extraFieldsJson: "{\"purpose\":\"assistants\"}",
+    betaHeader: "",
+    responseIdPath: "id",
+    responseUriPath: "",
+    responseNamePath: "filename",
+    responseMimePath: "",
+  },
+};
+
+export function fileUploadConfig(provider: ProviderName): FileUploadDef | undefined {
+  return FILE_UPLOADS[provider];
+}
