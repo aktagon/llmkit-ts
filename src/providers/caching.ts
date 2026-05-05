@@ -1,0 +1,56 @@
+// Code generated — DO NOT EDIT.
+
+
+import type { ProviderName } from "./providers";
+
+export type CachingMode = "AutomaticCaching" | "ExplicitCaching" | "ResourceCaching";
+
+export interface CachingLifecycle {
+  createEndpoint: string;
+  responseIdPath: string;
+  referenceField: string;
+}
+
+export interface CachingDef {
+  mode: CachingMode;
+  controlType: string;
+  writeTokensPath: string;
+  readTokensPath: string;
+  defaultTtl: string;
+  lifecycle: CachingLifecycle | null;
+}
+
+const CACHING: Partial<Record<ProviderName, CachingDef>> = {
+  anthropic: {
+    mode: "ExplicitCaching",
+    controlType: "ephemeral",
+    writeTokensPath: "usage.cache_creation_input_tokens",
+    readTokensPath: "usage.cache_read_input_tokens",
+    defaultTtl: "300",
+    lifecycle: null,
+  },
+  google: {
+    mode: "ResourceCaching",
+    controlType: "",
+    writeTokensPath: "",
+    readTokensPath: "usageMetadata.cachedContentTokenCount",
+    defaultTtl: "3600",
+    lifecycle: {
+      createEndpoint: "/v1beta/cachedContents",
+      responseIdPath: "name",
+      referenceField: "cachedContent",
+    },
+  },
+  openai: {
+    mode: "AutomaticCaching",
+    controlType: "",
+    writeTokensPath: "",
+    readTokensPath: "usage.prompt_tokens_details.cached_tokens",
+    defaultTtl: "",
+    lifecycle: null,
+  },
+};
+
+export function cachingConfig(provider: ProviderName): CachingDef | undefined {
+  return CACHING[provider];
+}
