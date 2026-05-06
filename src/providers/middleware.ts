@@ -16,7 +16,8 @@ export type MiddlewareOp =
   | "tool_call"
   | "cache_create"
   | "upload"
-  | "batch_submit";
+  | "batch_submit"
+  | "image_generation";
 
 export interface Event {
   // Always set.
