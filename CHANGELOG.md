@@ -5,6 +5,20 @@ All notable changes to the TypeScript SDK are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-06
+
+### Added
+
+- `generateImage(provider, request, options?)` — text-to-image and edit/composition with reference images. Supports Google Nano Banana 2 (`gemini-3.1-flash-image-preview`) and Pro (`gemini-3-pro-image-preview`).
+- `ImageRequest`, `ImageResponse`, `ImageData`, `ImageInput`, `ImageOptions` types.
+- Pre-flight whitelist validation: rejects unsupported aspect ratios, image sizes, and reference-image counts before any HTTP call.
+- Middleware fires around image generation (`op: "image_generation"`); pre-phase can veto.
+- README: `GenerateImage` section with per-model whitelist table.
+
+### Tooling
+
+- 9 new unit tests in `tests/image.test.ts`. Total: 46 tests, all green under Bun.
+
 ## [0.1.0] — 2026-05-06
 
 First public release. Feature parity with the Go SDK.
