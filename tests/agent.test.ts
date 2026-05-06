@@ -221,3 +221,27 @@ describe("Agent — invariants", () => {
     }
   });
 });
+
+describe("Agent.reset", () => {
+  test("clears history and tools so the next chat starts fresh", () => {
+    const agent = new Agent({
+      name: Providers.openai,
+      apiKey: "key",
+      baseUrl: "http://unused",
+    });
+    agent.setSystem("you are helpful");
+    agent.addTool({
+      name: "noop",
+      description: "no-op",
+      schema: { type: "object" },
+      run: () => "",
+    });
+
+    agent.reset();
+
+    // After reset, both arrays are empty. Verify via private fields
+    // exposed at the class for testing.
+    expect((agent as unknown as { tools: unknown[] }).tools).toEqual([]);
+    expect((agent as unknown as { history: unknown[] }).history).toEqual([]);
+  });
+});

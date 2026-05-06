@@ -48,3 +48,52 @@ describe("signSigV4 — AWS test vector", () => {
     }
   });
 });
+
+describe("signSigV4 — query-string canonicalization", () => {
+  test("query parameters are sorted in the canonical request", async () => {
+    _testNow.value = new Date("2025-01-15T12:00:00Z");
+    try {
+      // Two URLs that differ only in query parameter order should
+      // produce the same signature (since canonicalQueryString sorts them).
+      const ordered = await signSigV4(
+        "https://example.amazonaws.com/path?b=2&a=1",
+        new Uint8Array(),
+        "AKID",
+        "secret",
+        "",
+        "us-east-1",
+        "service",
+      );
+      const reversed = await signSigV4(
+        "https://example.amazonaws.com/path?a=1&b=2",
+        new Uint8Array(),
+        "AKID",
+        "secret",
+        "",
+        "us-east-1",
+        "service",
+      );
+      expect(ordered.Authorization).toBe(reversed.Authorization);
+    } finally {
+      _testNow.value = null;
+    }
+  });
+
+  test("empty-value parameters are accepted and canonicalised", async () => {
+    _testNow.value = new Date("2025-01-15T12:00:00Z");
+    try {
+      const headers = await signSigV4(
+        "https://example.amazonaws.com/path?empty",
+        new Uint8Array(),
+        "AKID",
+        "secret",
+        "",
+        "us-east-1",
+        "service",
+      );
+      expect(headers.Authorization).toMatch(/Signature=[0-9a-f]{64}$/);
+    } finally {
+      _testNow.value = null;
+    }
+  });
+});
