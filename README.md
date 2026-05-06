@@ -1,6 +1,6 @@
 # @aktagon/llmkit-ts
 
-TypeScript library for unified LLM API access. Write OpenAI-shaped requests, hit any provider. Per-provider config in `src/providers/` is generated; runtime behavior (HTTP, transforms, agent loop, SigV4) is hand-coded. Shares a code-generation pipeline with the [Go SDK](https://github.com/aktagon/llmkit-go).
+TypeScript library for unified LLM API access. Write OpenAI-shaped requests, hit any provider. Per-provider config in `src/providers/` is generated; runtime behavior (HTTP, transforms, agent loop, SigV4) is hand-coded with the help of AI. Shares a code-generation pipeline with the [Go SDK](https://github.com/aktagon/llmkit-go).
 
 Runtime: Bun, Node 19+, Deno, or any environment with `fetch` and Web Crypto.
 
