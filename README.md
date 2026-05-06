@@ -126,6 +126,47 @@ const file = await uploadFile(
 console.log(file.id, file.uri);
 ```
 
+### GenerateImage
+
+Generate images from text, optionally conditioned on reference images for
+editing or composition. Currently supports Google's Nano Banana 2
+(`gemini-3.1-flash-image-preview`) and Pro (`gemini-3-pro-image-preview`).
+
+```ts
+import { generateImage, Providers } from "@aktagon/llmkit-ts";
+
+const resp = await generateImage(
+  { name: Providers.google, apiKey: process.env.GOOGLE_API_KEY! },
+  {
+    prompt: "A nano banana dish in a fancy restaurant",
+    model: "gemini-3.1-flash-image-preview",
+  },
+  { aspectRatio: "16:9", imageSize: "2K" },
+);
+await Bun.write("out.png", resp.images[0].bytes);
+```
+
+Pass reference images to edit or compose:
+
+```ts
+const edited = await generateImage(provider, {
+  prompt: "Add snow and frost; overcast sky.",
+  model: "gemini-3.1-flash-image-preview",
+  referenceImages: [{ mimeType: "image/png", bytes: pngBytes }],
+});
+```
+
+Aspect ratios and sizes are validated against a per-model whitelist before
+the HTTP request — `imageSize: "512"` on Pro throws `ValidationError`
+without paying for a 4xx round-trip.
+
+| Model                 | Aspect ratios                                                               | Sizes           |
+| --------------------- | --------------------------------------------------------------------------- | --------------- |
+| Nano Banana 2 (Flash) | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9, **1:4, 4:1, 1:8, 8:1** | 512, 1K, 2K, 4K |
+| Nano Banana Pro       | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9                         | 1K, 2K, 4K      |
+
+Up to 14 reference images per request.
+
 ### Batches
 
 Submit many requests at once for the provider's batch tier:

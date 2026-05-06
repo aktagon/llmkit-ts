@@ -32,6 +32,14 @@ export type {
 export { Providers } from "./providers/providers.ts";
 export { APIError, ValidationError } from "./errors.ts";
 export { uploadFile } from "./upload.ts";
+export { generateImage } from "./image.ts";
+export type {
+  ImageRequest,
+  ImageResponse,
+  ImageData,
+  ImageInput,
+  ImageOptions,
+} from "./image.ts";
 export { promptBatch, submitBatch, waitBatch } from "./batch.ts";
 export { Agent } from "./agent.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
