@@ -18,9 +18,26 @@ import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import type { Provider, Usage } from "./types.ts";
 
-export interface ImageInput {
+export interface MediaRef {
   mimeType: string;
   bytes: Uint8Array;
+}
+
+
+
+
+
+
+export type Part = { text: string } | { image: MediaRef };
+
+
+export function text(s: string): Part {
+  return { text: s };
+}
+
+
+export function image(mime: string, bytes: Uint8Array): Part {
+  return { image: { mimeType: mime, bytes } };
 }
 
 export interface ImageData {
@@ -28,10 +45,20 @@ export interface ImageData {
   bytes: Uint8Array;
 }
 
+
+
+
+
+
+
+
+
+
+
 export interface ImageRequest {
-  prompt: string;
   model: string;
-  referenceImages?: ImageInput[];
+  prompt?: string;
+  parts?: Part[];
 }
 
 export interface ImageResponse {
@@ -60,12 +87,11 @@ export async function generateImage(
   if (!provider.apiKey) {
     throw new ValidationError("apiKey", "required");
   }
-  if (!request.prompt) {
-    throw new ValidationError("prompt", "required");
-  }
   if (!request.model) {
     throw new ValidationError("model", "required for image generation");
   }
+
+  const parts = normalizeImageParts(request);
 
   const imgCfg = imageGenConfig(provider.name);
   if (!imgCfg) {
@@ -96,11 +122,11 @@ export async function generateImage(
       `${options.imageSize} not supported by ${request.model}`,
     );
   }
-  const refs = request.referenceImages ?? [];
-  if (refs.length > imgCfg.maxInputCount) {
+  const imageCount = parts.filter((p) => "image" in p).length;
+  if (imageCount > imgCfg.maxInputCount) {
     throw new ValidationError(
-      "reference_images",
-      `${refs.length} exceeds maximum ${imgCfg.maxInputCount} for ${provider.name}`,
+      "parts",
+      `${imageCount} image parts exceeds maximum ${imgCfg.maxInputCount} for ${provider.name}`,
     );
   }
 
@@ -115,7 +141,7 @@ export async function generateImage(
   const start = performance.now();
 
   try {
-    const body = buildImageBody(request, options, refs);
+    const body = buildImageBody(parts, options);
     const baseUrl = provider.baseUrl || cfg.baseUrl;
     let endpoint = (cfg.endpoint || "").replaceAll("{model}", request.model);
     if (cfg.authScheme === "QueryParamKey" && cfg.authQueryParam) {
@@ -173,19 +199,40 @@ function findImageModel(
   return cfg.models.find((m) => m.modelId === modelId);
 }
 
+
+
+
+
+
+
+function normalizeImageParts(request: ImageRequest): Part[] {
+  const hasPrompt = !!request.prompt;
+  const hasParts = (request.parts?.length ?? 0) > 0;
+  if (hasPrompt && hasParts) {
+    throw new ValidationError("parts", "set prompt or parts, not both");
+  }
+  if (!hasPrompt && !hasParts) {
+    throw new ValidationError("prompt", "set either prompt or parts");
+  }
+  return hasPrompt ? [text(request.prompt!)] : (request.parts as Part[]);
+}
+
 function buildImageBody(
-  request: ImageRequest,
+  parts: Part[],
   options: ImageOptions,
-  refs: ImageInput[],
 ): Record<string, unknown> {
-  const parts: Array<Record<string, unknown>> = [{ text: request.prompt }];
-  for (const ref of refs) {
-    parts.push({
-      inlineData: {
-        mimeType: ref.mimeType,
-        data: bytesToBase64(ref.bytes),
-      },
-    });
+  const wire: Array<Record<string, unknown>> = [];
+  for (const p of parts) {
+    if ("image" in p) {
+      wire.push({
+        inlineData: {
+          mimeType: p.image.mimeType,
+          data: bytesToBase64(p.image.bytes),
+        },
+      });
+    } else {
+      wire.push({ text: p.text });
+    }
   }
 
   const modalities = options.includeText ? ["TEXT", "IMAGE"] : ["IMAGE"];
@@ -200,7 +247,7 @@ function buildImageBody(
   }
 
   return {
-    contents: [{ parts }],
+    contents: [{ parts: wire }],
     generationConfig,
   };
 }
