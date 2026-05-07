@@ -1,6 +1,6 @@
 {
   "name": "@aktagon/llmkit-ts",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Unified LLM client library. One API, 27 providers, zero runtime dependencies.",
   "type": "module",
   "main": "src/llmkit.ts",
