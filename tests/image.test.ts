@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { generateImage } from "../src/llmkit.ts";
+import { generateImage, text, image } from "../src/llmkit.ts";
 import { Providers } from "../src/providers/providers.ts";
 import { MiddlewareVetoError, ValidationError } from "../src/llmkit.ts";
 
@@ -134,9 +134,13 @@ describe("generateImage — includeText", () => {
   });
 });
 
-describe("generateImage — reference images", () => {
-  test("base64-encodes reference images into inlineData parts", async () => {
+describe("generateImage — Parts (canonical multimodal)", () => {
+  test("preserves caller-controlled positional ordering on the wire", async () => {
+    // ADR-008's motivating scenario: text and reference images interleaved
+    // so the model attends to the description-image pairing as intended.
     const encoded = bytesToBase64(fakePNG);
+    const refA = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x41]);
+    const refB = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x42]);
     let receivedBody: any;
     const server = Bun.serve({
       port: 0,
@@ -165,19 +169,27 @@ describe("generateImage — reference images", () => {
           baseUrl: `http://localhost:${server.port}`,
         },
         {
-          prompt: "Add snow",
           model: flashModel,
-          referenceImages: [
-            { mimeType: "image/png", bytes: fakePNG },
-            { mimeType: "image/png", bytes: fakePNG },
+          parts: [
+            text("Person:"),
+            image("image/png", refA),
+            text("Outfit:"),
+            image("image/png", refB),
+            text("Generate the person wearing the outfit."),
           ],
         },
       );
       const parts = receivedBody.contents[0].parts;
-      expect(parts.length).toBe(3);
-      expect(parts[1].inlineData.mimeType).toBe("image/png");
-      const decoded = base64ToBytes(parts[1].inlineData.data);
-      expect(Array.from(decoded)).toEqual(Array.from(fakePNG));
+      expect(parts.length).toBe(5);
+      expect(parts[0].text).toBe("Person:");
+      expect(Array.from(base64ToBytes(parts[1].inlineData.data))).toEqual(
+        Array.from(refA),
+      );
+      expect(parts[2].text).toBe("Outfit:");
+      expect(Array.from(base64ToBytes(parts[3].inlineData.data))).toEqual(
+        Array.from(refB),
+      );
+      expect(parts[4].text).toBe("Generate the person wearing the outfit.");
     } finally {
       server.stop(true);
     }
@@ -215,22 +227,50 @@ describe("generateImage — pre-flight validation", () => {
     expect((err as ValidationError).field).toBe("image_size");
   });
 
-  test("rejects too many reference images", async () => {
-    const tooMany = Array.from({ length: 15 }, () => ({
-      mimeType: "image/png",
-      bytes: fakePNG,
-    }));
+  test("rejects too many image parts", async () => {
+    const tooMany = [
+      text("describe and edit:"),
+      ...Array.from({ length: 15 }, () => image("image/png", fakePNG)),
+    ];
     let err: unknown;
     try {
       await generateImage(
         { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
-        { prompt: "x", model: flashModel, referenceImages: tooMany },
+        { model: flashModel, parts: tooMany },
       );
     } catch (e) {
       err = e;
     }
     expect(err).toBeInstanceOf(ValidationError);
-    expect((err as ValidationError).field).toBe("reference_images");
+    expect((err as ValidationError).field).toBe("parts");
+  });
+
+  test("rejects when both prompt and parts are set (XOR)", async () => {
+    let err: unknown;
+    try {
+      await generateImage(
+        { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
+        { model: flashModel, prompt: "x", parts: [text("y")] },
+      );
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).field).toBe("parts");
+  });
+
+  test("rejects when neither prompt nor parts is set", async () => {
+    let err: unknown;
+    try {
+      await generateImage(
+        { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
+        { model: flashModel },
+      );
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).field).toBe("prompt");
   });
 
   test("requires model", async () => {
