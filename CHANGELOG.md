@@ -5,6 +5,18 @@ All notable changes to the TypeScript SDK are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking
+
+- `ImageRequest.referenceImages` (and the `ImageInput` type) is removed. Use `parts: Part[]` instead, with the `text(...)` and `image(...)` exports. Migration: `{ prompt: "X", referenceImages: [{ mimeType: m, bytes: b }] }` becomes `{ parts: [text("X"), image(m, b)] }`. Pure text-to-image callers using only `prompt: "X"` are unaffected.
+- `ImageRequest` now requires exactly one of `prompt` or `parts` to be set (XOR). Both empty or both set throws `ValidationError`.
+- Multi-reference compositional generation now works by ordering the parts array (e.g., `[text("Person:"), image(mime, refA), text("Outfit:"), image(mime, refB), text("Generate ...")]`) — the wire shape preserves caller-controlled ordering. See ADR-008.
+
+### Added
+
+- `Part`, `MediaRef` exports and `text(s)` / `image(mime, bytes)` constructors. Discriminated union: `type Part = { text: string } | { image: MediaRef }`.
+
 ## [0.2.0] — 2026-05-06
 
 ### Added
