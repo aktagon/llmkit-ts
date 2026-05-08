@@ -25,11 +25,13 @@ function clone<T extends object>(b: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(b)), b) as T;
 }
 
+import { agentPrompt, agentReset } from "./agent.ts";
 import { textBatch, textSubmitBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
 import { textStream } from "./stream.ts";
 import { textPrompt } from "./text.ts";
 import { uploadRun } from "./upload.ts";
+import type { AgentState } from "./agent.ts";
 
 export class Client {
   provider: ProviderConfig;
@@ -160,21 +162,22 @@ export class Agent {
   _system: string = "";
   _temperature?: number;
   _tools: Tool[] = [];
+  _state?: AgentState;
 
   constructor(client: Client) { this.client = client; }
 
-  caching(): Agent { const out = clone(this); out._caching = true; return out; }
-  maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; return out; }
-  middleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
-  model(name: string): Agent { const out = clone(this); out._model = name; return out; }
-  system(s: string): Agent { const out = clone(this); out._system = s; return out; }
-  temperature(t: number): Agent { const out = clone(this); out._temperature = t; return out; }
-  tool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; return out; }
+  caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
+  maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
+  middleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
+  model(name: string): Agent { const out = clone(this); out._model = name; out._state = undefined; return out; }
+  system(s: string): Agent { const out = clone(this); out._system = s; out._state = undefined; return out; }
+  temperature(t: number): Agent { const out = clone(this); out._temperature = t; out._state = undefined; return out; }
+  tool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
   async prompt(msg: string): Promise<Response> {
-    throw new Error("plan 016 phase 3: Agent.prompt not yet implemented");
+    return agentPrompt(this, msg);
   }
   reset(): void {
-    throw new Error("plan 016 phase 3: Agent.reset not yet implemented");
+    return agentReset(this);
   }
 }
 
