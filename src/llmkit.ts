@@ -120,7 +120,7 @@ export async function prompt(
 export async function promptStream(
   provider: Provider,
   request: PromptRequest,
-  onChunk: (text: string) => void,
+  onChunk: (text: string) => void | Promise<void>,
   options: PromptOptions = {},
 ): Promise<PromptResponse> {
   const cfg = PROVIDERS[provider.name];
@@ -181,9 +181,9 @@ export async function promptStream(
     }
 
     const chunks: string[] = [];
-    const usage = await consumeSSE(httpResp.body, streamCfg, (text) => {
+    const usage = await consumeSSE(httpResp.body, streamCfg, async (text) => {
       chunks.push(text);
-      onChunk(text);
+      await onChunk(text);
     });
 
     const result: PromptResponse = {
@@ -220,7 +220,7 @@ interface StreamUsage {
 async function consumeSSE(
   body: ReadableStream<Uint8Array>,
   cfg: StreamDef,
-  emit: (text: string) => void,
+  emit: (text: string) => void | Promise<void>,
 ): Promise<StreamUsage> {
   const usage: StreamUsage = { input: 0, output: 0 };
   const reader = body.getReader();
@@ -233,27 +233,27 @@ async function consumeSSE(
     const { value, done } = await reader.read();
     if (done) {
       buffer += decoder.decode();
-      stopped = processBuffer() || true;
+      stopped = (await processBuffer()) || true;
       break;
     }
     buffer += decoder.decode(value, { stream: true });
-    if (processBuffer()) stopped = true;
+    if (await processBuffer()) stopped = true;
   }
 
   return usage;
 
-  function processBuffer(): boolean {
+  async function processBuffer(): Promise<boolean> {
     let newlineIdx = buffer.indexOf("\n");
     while (newlineIdx !== -1) {
       const line = buffer.slice(0, newlineIdx).replace(/\r$/, "");
       buffer = buffer.slice(newlineIdx + 1);
-      if (handleLine(line)) return true;
+      if (await handleLine(line)) return true;
       newlineIdx = buffer.indexOf("\n");
     }
     return false;
   }
 
-  function handleLine(line: string): boolean {
+  async function handleLine(line: string): Promise<boolean> {
     if (line.startsWith("event: ")) {
       currentEvent = line.slice("event: ".length);
       return false;
@@ -276,14 +276,14 @@ async function consumeSSE(
     if (cfg.usesEventTypes) {
       if (currentEvent === cfg.contentEvent) {
         const text = extractPath(parsed, cfg.deltaTextPath);
-        if (text) emit(text);
+        if (text) await emit(text);
       }
       if (currentEvent === cfg.usageEvent && cfg.usageOutputPath) {
         usage.output = extractIntPath(parsed, cfg.usageOutputPath);
       }
     } else {
       const text = extractPath(parsed, cfg.deltaTextPath);
-      if (text) emit(text);
+      if (text) await emit(text);
       if (cfg.usageInputPath) {
         const v = extractIntPath(parsed, cfg.usageInputPath);
         if (v > 0) usage.input = v;
