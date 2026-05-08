@@ -33,18 +33,18 @@ import {
   Image,
   Agent,
   Upload,
-} from "../src/builders/builders.ts";
+} from "../src/builders/index.ts";
 import type {
   File,
   Message,
-  Response,
+  Response as PromptResponse,
   BatchHandle,
   Tool,
   ImageData,
   ImageResponse,
   Part,
   MiddlewareFn,
-} from "../src/builders/builders.ts";
+} from "../src/builders/index.ts";
 
 const noopMiddleware: MiddlewareFn = () => null;
 
@@ -211,16 +211,12 @@ describe("Surface — constructors", () => {
   });
 });
 
-// TestTerminals_Throw confirms every phase-2b terminal throws the
-// "not yet implemented" sentinel — phase 3 will replace each with a
-// real wired implementation.
+// TestTerminals_Throw confirms every still-stubbed phase-2b terminal
+// throws the "not yet implemented" sentinel. Phase 3 slice 1 wired
+// Text.prompt + Image.generate; their stub-sentinel tests have been
+// replaced with mock-server verifications below. Remaining slices
+// will continue retiring entries from this list.
 describe("Terminals — throw stubs", () => {
-  test("Text.prompt rejects", async () => {
-    await expect(google("k").text.prompt("hi")).rejects.toThrow(
-      /Text.prompt not yet implemented/,
-    );
-  });
-
   test("Text.stream throws on first iteration", async () => {
     const iter = google("k").text.stream("hi");
     let caught: unknown;
@@ -244,12 +240,6 @@ describe("Terminals — throw stubs", () => {
   test("Text.submitBatch rejects", async () => {
     await expect(google("k").text.submitBatch("p1")).rejects.toThrow(
       /Text.submitBatch not yet implemented/,
-    );
-  });
-
-  test("Image.generate rejects", async () => {
-    await expect(google("k").image.generate("a banana")).rejects.toThrow(
-      /Image.generate not yet implemented/,
     );
   });
 
@@ -284,7 +274,7 @@ describe("Surface — type aliases", () => {
       run: () => "",
     };
     const _mw: MiddlewareFn = noopMiddleware;
-    const _resp: Response = {
+    const _resp: PromptResponse = {
       text: "ok",
       tokens: {
         input: 0,
@@ -324,5 +314,191 @@ describe("Surface — type aliases", () => {
     expect(_file.id).toBe("id");
     expect(_part).toEqual({ text: "hello" });
     expect(_bh.id).toBe("id");
+  });
+});
+
+// === Phase 3 slice 1 — wiring verification ===
+
+function startMockServer(
+  handler: (req: Request) => Response | Promise<Response>,
+): { url: string; stop: () => void } {
+  const server = Bun.serve({ port: 0, fetch: handler });
+  return {
+    url: `http://localhost:${server.port}`,
+    stop: () => server.stop(true),
+  };
+}
+
+const anthropicResp = JSON.stringify({
+  content: [{ type: "text", text: "ok" }],
+  usage: { input_tokens: 1, output_tokens: 1 },
+});
+
+const googleImageResp = JSON.stringify({
+  candidates: [
+    {
+      content: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: "AAAA",
+            },
+          },
+        ],
+      },
+    },
+  ],
+  usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 2 },
+});
+
+describe("Phase 3 slice 1 — Text.prompt wired", () => {
+  test("chain config produces a request body identical to legacy prompt", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const server = startMockServer(async (req) => {
+      captured = (await req.json()) as Record<string, unknown>;
+      return new Response(anthropicResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text
+        .system("be terse")
+        .maxTokens(50)
+        .temperature(0.7)
+        .prompt("hello");
+      expect(resp.text).toBe("ok");
+    } finally {
+      server.stop();
+    }
+    if (!captured) throw new Error("server never received a request body");
+    expect(captured.system).toBe("be terse");
+    expect(captured.max_tokens).toBe(50);
+    expect(captured.temperature).toBe(0.7);
+    // Anthropic body shape: messages: [{ role: "user", content: "hello" }]
+    const messages = captured.messages as Array<{
+      role: string;
+      content: string;
+    }>;
+    expect(messages[0]?.role).toBe("user");
+    expect(messages[0]?.content).toBe("hello");
+  });
+
+  test("history accumulator lands as messages on the wire", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const server = startMockServer(async (req) => {
+      captured = (await req.json()) as Record<string, unknown>;
+      return new Response(anthropicResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      await c.text
+        .history(
+          { role: "user", content: "earlier" },
+          { role: "assistant", content: "ack" },
+        )
+        .prompt("now");
+    } finally {
+      server.stop();
+    }
+    if (!captured) throw new Error("server never received a request body");
+    const messages = captured.messages as Array<{
+      role: string;
+      content: string;
+    }>;
+    expect(messages).toHaveLength(3);
+    expect(messages[0]?.content).toBe("earlier");
+    expect(messages[1]?.content).toBe("ack");
+    expect(messages[2]?.content).toBe("now");
+  });
+
+  test("text-Part accumulator concatenates with finalText", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const server = startMockServer(async (req) => {
+      captured = (await req.json()) as Record<string, unknown>;
+      return new Response(anthropicResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      await c.text.text("hello ").prompt("world");
+    } finally {
+      server.stop();
+    }
+    if (!captured) throw new Error("server never received a request body");
+    const messages = captured.messages as Array<{
+      role: string;
+      content: string;
+    }>;
+    expect(messages[0]?.content).toBe("hello world");
+  });
+});
+
+describe("Phase 3 slice 1 — Image.generate wired", () => {
+  test("prompt sugar path serialises as a single text Part", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const server = startMockServer(async (req) => {
+      captured = (await req.json()) as Record<string, unknown>;
+      return new Response(googleImageResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = google("k");
+      c.provider.baseUrl = server.url;
+      const resp = await c.image
+        .model("gemini-3.1-flash-image-preview")
+        .aspectRatio("1:1")
+        .imageSize("1K")
+        .generate("a banana");
+      expect(resp.images).toHaveLength(1);
+      expect(resp.images[0]?.mimeType).toBe("image/png");
+    } finally {
+      server.stop();
+    }
+    if (!captured) throw new Error("server never received a request body");
+    const contents = captured.contents as Array<{
+      parts: Array<Record<string, unknown>>;
+    }>;
+    expect(contents[0]?.parts).toEqual([{ text: "a banana" }]);
+  });
+
+  test("chain-accumulated parts are sent verbatim, finalText appended", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const server = startMockServer(async (req) => {
+      captured = (await req.json()) as Record<string, unknown>;
+      return new Response(googleImageResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = google("k");
+      c.provider.baseUrl = server.url;
+      await c.image
+        .model("gemini-3.1-flash-image-preview")
+        .image("image/png", new Uint8Array([0xff, 0xfe]))
+        .text("compose:")
+        .generate("trailing");
+    } finally {
+      server.stop();
+    }
+    if (!captured) throw new Error("server never received a request body");
+    const contents = captured.contents as Array<{
+      parts: Array<Record<string, unknown>>;
+    }>;
+    const parts = contents[0]?.parts ?? [];
+    expect(parts).toHaveLength(3);
+    expect(parts[0]).toMatchObject({
+      inlineData: { mimeType: "image/png" },
+    });
+    expect(parts[1]).toEqual({ text: "compose:" });
+    expect(parts[2]).toEqual({ text: "trailing" });
   });
 });
