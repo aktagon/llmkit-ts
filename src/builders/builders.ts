@@ -105,7 +105,6 @@ export class Text {
   }
   async *stream(msg: string): AsyncIterable<string> {
     throw new Error("plan 016 phase 3: Text.stream not yet implemented");
-    yield undefined as unknown as string;
   }
   async batch(...prompts: string[]): Promise<Response[]> {
     throw new Error("plan 016 phase 3: Text.batch not yet implemented");
