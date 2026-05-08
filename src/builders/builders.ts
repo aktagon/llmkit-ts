@@ -1,0 +1,195 @@
+// Code generated — DO NOT EDIT.
+
+//
+//
+//
+//
+//
+//
+
+import type { File, Message, Response, BatchHandle, Tool } from "../types.ts";
+import type { ImageData, ImageResponse, Part } from "../image.ts";
+import type { MiddlewareFn } from "../providers/middleware.ts";
+
+export type { File, Message, Response, BatchHandle, Tool, ImageData, ImageResponse, Part, MiddlewareFn };
+
+export interface ProviderConfig {
+  name: string;
+  apiKey: string;
+  baseUrl?: string;
+}
+
+function clone<T extends object>(b: T): T {
+  return Object.assign(Object.create(Object.getPrototypeOf(b)), b) as T;
+}
+
+export class Client {
+  provider: ProviderConfig;
+  text: Text;
+  image: Image;
+  agent: Agent;
+  upload: Upload;
+
+  constructor(name: string, apiKey: string) {
+    this.provider = { name, apiKey };
+    this.text = new Text(this);
+    this.image = new Image(this);
+    this.agent = new Agent(this);
+    this.upload = new Upload(this);
+  }
+}
+
+export function newClient(name: string, apiKey: string): Client {
+  return new Client(name, apiKey);
+}
+
+//
+export function ai21(apiKey: string): Client { return new Client("ai21", apiKey); }
+export function anthropic(apiKey: string): Client { return new Client("anthropic", apiKey); }
+export function azure(apiKey: string): Client { return new Client("azure", apiKey); }
+export function bedrock(apiKey: string): Client { return new Client("bedrock", apiKey); }
+export function cerebras(apiKey: string): Client { return new Client("cerebras", apiKey); }
+export function cohere(apiKey: string): Client { return new Client("cohere", apiKey); }
+export function deepseek(apiKey: string): Client { return new Client("deepseek", apiKey); }
+export function doubao(apiKey: string): Client { return new Client("doubao", apiKey); }
+export function ernie(apiKey: string): Client { return new Client("ernie", apiKey); }
+export function fireworks(apiKey: string): Client { return new Client("fireworks", apiKey); }
+export function google(apiKey: string): Client { return new Client("google", apiKey); }
+export function grok(apiKey: string): Client { return new Client("grok", apiKey); }
+export function groq(apiKey: string): Client { return new Client("groq", apiKey); }
+export function lmstudio(apiKey: string): Client { return new Client("lmstudio", apiKey); }
+export function minimax(apiKey: string): Client { return new Client("minimax", apiKey); }
+export function mistral(apiKey: string): Client { return new Client("mistral", apiKey); }
+export function moonshot(apiKey: string): Client { return new Client("moonshot", apiKey); }
+export function ollama(apiKey: string): Client { return new Client("ollama", apiKey); }
+export function openai(apiKey: string): Client { return new Client("openai", apiKey); }
+export function openrouter(apiKey: string): Client { return new Client("openrouter", apiKey); }
+export function perplexity(apiKey: string): Client { return new Client("perplexity", apiKey); }
+export function qwen(apiKey: string): Client { return new Client("qwen", apiKey); }
+export function sambanova(apiKey: string): Client { return new Client("sambanova", apiKey); }
+export function together(apiKey: string): Client { return new Client("together", apiKey); }
+export function vllm(apiKey: string): Client { return new Client("vllm", apiKey); }
+export function yi(apiKey: string): Client { return new Client("yi", apiKey); }
+export function zhipu(apiKey: string): Client { return new Client("zhipu", apiKey); }
+
+//
+
+export class Text {
+  client: Client;
+  _caching: boolean = false;
+  _files: File[] = [];
+  _history: Message[] = [];
+  _parts: Part[] = [];
+  _maxTokens?: number;
+  _middleware: MiddlewareFn[] = [];
+  _model: string = "";
+  _schema: string = "";
+  _system: string = "";
+  _temperature?: number;
+
+  constructor(client: Client) { this.client = client; }
+
+  caching(): Text { const out = clone(this); out._caching = true; return out; }
+  file(id: string): Text { const out = clone(this); out._files = [...out._files, { id, uri: "", name: "", mimeType: "" }]; return out; }  // ordered
+  history(...msgs: Message[]): Text { const out = clone(this); out._history = msgs; return out; }
+  image(mime: string, data: Uint8Array): Text { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
+  maxTokens(n: number): Text { const out = clone(this); out._maxTokens = n; return out; }
+  middleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  model(name: string): Text { const out = clone(this); out._model = name; return out; }
+  schema(s: string): Text { const out = clone(this); out._schema = s; return out; }
+  system(s: string): Text { const out = clone(this); out._system = s; return out; }
+  temperature(t: number): Text { const out = clone(this); out._temperature = t; return out; }
+  text(s: string): Text { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
+  async prompt(msg: string): Promise<Response> {
+    throw new Error("plan 016 phase 3: Text.prompt not yet implemented");
+  }
+  async *stream(msg: string): AsyncIterable<string> {
+    throw new Error("plan 016 phase 3: Text.stream not yet implemented");
+    yield undefined as unknown as string;
+  }
+  async batch(...prompts: string[]): Promise<Response[]> {
+    throw new Error("plan 016 phase 3: Text.batch not yet implemented");
+  }
+  async submitBatch(...prompts: string[]): Promise<BatchHandle> {
+    throw new Error("plan 016 phase 3: Text.submitBatch not yet implemented");
+  }
+}
+
+//
+
+export class Image {
+  client: Client;
+  _aspectRatio: string = "";
+  _caching: boolean = false;
+  _parts: Part[] = [];
+  _imageSize: string = "";
+  _includeText: boolean = false;
+  _middleware: MiddlewareFn[] = [];
+  _model: string = "";
+
+  constructor(client: Client) { this.client = client; }
+
+  aspectRatio(r: string): Image { const out = clone(this); out._aspectRatio = r; return out; }
+  caching(): Image { const out = clone(this); out._caching = true; return out; }
+  image(mime: string, data: Uint8Array): Image { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
+  imageSize(s: string): Image { const out = clone(this); out._imageSize = s; return out; }
+  includeText(): Image { const out = clone(this); out._includeText = true; return out; }
+  middleware(...fns: MiddlewareFn[]): Image { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  model(name: string): Image { const out = clone(this); out._model = name; return out; }
+  text(s: string): Image { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
+  async generate(msg: string): Promise<ImageResponse> {
+    throw new Error("plan 016 phase 3: Image.generate not yet implemented");
+  }
+}
+
+//
+
+export class Agent {
+  client: Client;
+  _caching: boolean = false;
+  _maxTokens?: number;
+  _middleware: MiddlewareFn[] = [];
+  _model: string = "";
+  _system: string = "";
+  _temperature?: number;
+  _tools: Tool[] = [];
+
+  constructor(client: Client) { this.client = client; }
+
+  caching(): Agent { const out = clone(this); out._caching = true; return out; }
+  maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; return out; }
+  middleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  model(name: string): Agent { const out = clone(this); out._model = name; return out; }
+  system(s: string): Agent { const out = clone(this); out._system = s; return out; }
+  temperature(t: number): Agent { const out = clone(this); out._temperature = t; return out; }
+  tool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; return out; }
+  async prompt(msg: string): Promise<Response> {
+    throw new Error("plan 016 phase 3: Agent.prompt not yet implemented");
+  }
+  reset(): void {
+    throw new Error("plan 016 phase 3: Agent.reset not yet implemented");
+  }
+}
+
+//
+
+export class Upload {
+  client: Client;
+  _bytes: Uint8Array = new Uint8Array(0);
+  _filename: string = "";
+  _middleware: MiddlewareFn[] = [];
+  _mimeType: string = "";
+  _path: string = "";
+
+  constructor(client: Client) { this.client = client; }
+
+  bytes(data: Uint8Array): Upload { const out = clone(this); out._bytes = data; return out; }
+  filename(name: string): Upload { const out = clone(this); out._filename = name; return out; }
+  middleware(...fns: MiddlewareFn[]): Upload { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  mimeType(mime: string): Upload { const out = clone(this); out._mimeType = mime; return out; }
+  path(p: string): Upload { const out = clone(this); out._path = p; return out; }
+  async run(): Promise<File> {
+    throw new Error("plan 016 phase 3: Upload.run not yet implemented");
+  }
+}
+
