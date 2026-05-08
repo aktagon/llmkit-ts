@@ -21,34 +21,57 @@ import { promptStream as legacyPromptStream } from "../llmkit.ts";
 import type { Text } from "./builders.ts";
 import { buildRequest } from "./text.ts";
 
+//
+//
+//
+//
+//
+const STREAM_QUEUE_MAX = 64;
+
 export async function* textStream(b: Text, msg: string): AsyncIterable<string> {
   const { provider, request, options } = buildRequest(b, msg);
   const ac = new AbortController();
   const opts = { ...options, signal: ac.signal };
 
   const queue: string[] = [];
-  let waiter: { resolve: () => void } | null = null;
+  let consumerWaiter: { resolve: () => void } | null = null;
+  let producerWaiter: { resolve: () => void } | null = null;
   let done = false;
   let error: Error | null = null;
 
-  const wake = () => {
-    const w = waiter;
-    waiter = null;
+  const wakeConsumer = () => {
+    const w = consumerWaiter;
+    consumerWaiter = null;
+    w?.resolve();
+  };
+
+  const wakeProducer = () => {
+    const w = producerWaiter;
+    producerWaiter = null;
     w?.resolve();
   };
 
   legacyPromptStream(
     provider,
     request,
-    (chunk) => {
+    async (chunk) => {
       queue.push(chunk);
-      wake();
+      wakeConsumer();
+      //
+      //
+      //
+      //
+      while (queue.length >= STREAM_QUEUE_MAX) {
+        await new Promise<void>((resolve) => {
+          producerWaiter = { resolve };
+        });
+      }
     },
     opts,
   ).then(
     () => {
       done = true;
-      wake();
+      wakeConsumer();
     },
     (err) => {
       //
@@ -56,14 +79,16 @@ export async function* textStream(b: Text, msg: string): AsyncIterable<string> {
         error = err instanceof Error ? err : new Error(String(err));
       }
       done = true;
-      wake();
+      wakeConsumer();
     },
   );
 
   try {
     while (true) {
       if (queue.length > 0) {
-        yield queue.shift() as string;
+        const chunk = queue.shift() as string;
+        wakeProducer();
+        yield chunk;
         continue;
       }
       if (done) {
@@ -71,10 +96,12 @@ export async function* textStream(b: Text, msg: string): AsyncIterable<string> {
         return;
       }
       await new Promise<void>((resolve) => {
-        waiter = { resolve };
+        consumerWaiter = { resolve };
       });
     }
   } finally {
     if (!done) ac.abort();
+    //
+    wakeProducer();
   }
 }
