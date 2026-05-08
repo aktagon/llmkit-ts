@@ -64,15 +64,23 @@ describe("Surface — chains", () => {
     const text = c.text
       .caching()
       .file("file-id")
+      .frequencyPenalty(0.1)
       .history({ role: "user", content: "earlier" })
       .image("image/png", new Uint8Array([0xff]))
       .maxTokens(42)
       .middleware(noopMiddleware)
       .model("text-model")
+      .presencePenalty(0.2)
+      .reasoningEffort("high")
       .schema(`{"type":"object"}`)
+      .seed(1234)
+      .stopSequences("END", "STOP")
       .system("you are a tutor")
       .temperature(0.7)
-      .text("hello");
+      .text("hello")
+      .thinkingBudget(1024)
+      .topK(40)
+      .topP(0.9);
 
     expect(text._caching).toBe(true);
     expect(text._files).toEqual([
@@ -123,12 +131,20 @@ describe("Surface — chains", () => {
     };
     const ag = c.agent
       .caching()
+      .frequencyPenalty(0.1)
       .maxTokens(1)
       .middleware(noopMiddleware)
       .model("a")
+      .presencePenalty(0.2)
+      .reasoningEffort("medium")
+      .seed(7)
+      .stopSequences("Q:")
       .system("sys")
       .temperature(0.5)
-      .tool(tool);
+      .thinkingBudget(512)
+      .tool(tool)
+      .topK(20)
+      .topP(0.85);
 
     expect(ag._caching).toBe(true);
     expect(ag._maxTokens).toBe(1);
