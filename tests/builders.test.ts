@@ -785,3 +785,67 @@ describe("Phase 3 slice 2c — Agent.prompt + Agent.reset wired", () => {
     expect(forked._state).toBeUndefined(); // fork starts fresh
   });
 });
+
+// === A2 — bounded stream queue regression ===
+//
+// Server streams 200 SSE chunks as fast as it can write them. Consumer
+// drains slowly (1ms sleep per chunk). With the bounded queue the
+// producer-side `await emit(...)` parks the SSE reader after the cap
+// (64) is reached, freeing it as the consumer drains. With the
+// previous unbounded queue the producer raced ahead and the queue
+// grew to ~200. We can't observe peak queue size from outside the
+// closure, but we CAN verify the contract: every chunk arrives in
+// order, none are lost, and the pipeline completes — which proves
+// the bridge handles backpressure-induced producer pauses correctly.
+describe("A2 — bounded stream queue", () => {
+  test("delivers all 200 chunks in order under fast producer / slow consumer", async () => {
+    const total = 200;
+
+    // Bun.serve handler that streams 200 SSE data lines as fast as
+    // it can flush them, then [DONE].
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => {
+        const stream = new ReadableStream({
+          async start(controller) {
+            const enc = new TextEncoder();
+            for (let i = 0; i < total; i++) {
+              controller.enqueue(
+                enc.encode(
+                  `data: {"choices":[{"delta":{"content":"${i} "}}]}\n\n`,
+                ),
+              );
+            }
+            controller.enqueue(
+              enc.encode(
+                `data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}\n\n`,
+              ),
+            );
+            controller.enqueue(enc.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+        return new Response(stream, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      },
+    });
+    const url = `http://localhost:${server.port}`;
+
+    try {
+      const c = openai("k");
+      c.provider.baseUrl = url;
+      const got: string[] = [];
+      for await (const chunk of c.text.stream("hi")) {
+        got.push(chunk);
+        await new Promise((r) => setTimeout(r, 1));
+      }
+      expect(got.length).toBe(total);
+      for (let i = 0; i < total; i++) {
+        expect(got[i]).toBe(`${i} `);
+      }
+    } finally {
+      server.stop(true);
+    }
+  });
+});
