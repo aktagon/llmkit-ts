@@ -216,19 +216,7 @@ describe("Surface — constructors", () => {
 // Text.prompt + Image.generate; their stub-sentinel tests have been
 // replaced with mock-server verifications below. Remaining slices
 // will continue retiring entries from this list.
-describe("Terminals — throw stubs", () => {
-  test("Agent.prompt rejects", async () => {
-    await expect(google("k").agent.prompt("hi")).rejects.toThrow(
-      /Agent.prompt not yet implemented/,
-    );
-  });
-
-  test("Agent.reset throws", () => {
-    expect(() => google("k").agent.reset()).toThrow(
-      /Agent.reset not yet implemented/,
-    );
-  });
-});
+describe("Terminals — throw stubs", () => {});
 
 // TestSurface_TypeAliases verifies the public-facing aliased types are
 // usable from outside the main llmkit package via builders.
@@ -723,5 +711,77 @@ describe("Phase 3 slice 2b — Text.stream wired", () => {
     } finally {
       server.stop();
     }
+  });
+});
+
+// === Phase 3 slice 2c — Agent.prompt + Agent.reset wired ===
+
+import { Agent as LegacyAgent } from "../src/agent.ts";
+import { AgentState } from "../src/builders/agent.ts";
+
+describe("Phase 3 slice 2c — Agent.prompt + Agent.reset wired", () => {
+  test("Agent.prompt initializes state on first call, reuses on second", async () => {
+    let calls = 0;
+    const server = startMockServer(async () => {
+      calls += 1;
+      return new Response(anthropicResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      const bot = c.agent.system("you are terse");
+      expect(bot._state).toBeUndefined();
+      const r1 = await bot.prompt("hi");
+      expect(r1.text).toBe("ok");
+      expect(bot._state).toBeDefined();
+      const stateAfterFirst = bot._state;
+      const r2 = await bot.prompt("again");
+      expect(r2.text).toBe("ok");
+      // Same state instance — history retained between Prompts on
+      // the same builder.
+      expect(bot._state).toBe(stateAfterFirst);
+      expect(calls).toBe(2);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("Agent.reset clears state; next prompt re-initializes", async () => {
+    const server = startMockServer(async () => {
+      return new Response(anthropicResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      const bot = c.agent.system("s");
+      await bot.prompt("hi");
+      expect(bot._state).toBeDefined();
+      bot.reset();
+      expect(bot._state).toBeUndefined();
+      await bot.prompt("again");
+      expect(bot._state).toBeDefined();
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("state forking — chain method on initialized Agent produces fresh-state clone", () => {
+    // Load-bearing contract test for the codegen post-mutation hook
+    // (TS_BUILDER_POST_MUTATION["Agent"] = "out._state = undefined").
+    // Without it, a forked clone would silently share its parent's
+    // accumulated history through the same AgentState reference.
+    const c = anthropic("k");
+    const bot = c.agent.system("orig");
+    bot._state = new AgentState(
+      new LegacyAgent({ name: "anthropic", apiKey: "k" }),
+    );
+
+    const forked = bot.system("new");
+    expect(bot._state).toBeDefined(); // parent state preserved
+    expect(forked._state).toBeUndefined(); // fork starts fresh
   });
 });
