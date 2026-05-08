@@ -88,28 +88,44 @@ export class Text {
   client: Client;
   _caching: boolean = false;
   _files: File[] = [];
+  _frequencyPenalty?: number;
   _history: Message[] = [];
   _parts: Part[] = [];
   _maxTokens?: number;
   _middleware: MiddlewareFn[] = [];
   _model: string = "";
+  _presencePenalty?: number;
+  _reasoningEffort: string = "";
   _schema: string = "";
+  _seed?: number;
+  _stopSequences: string[] = [];
   _system: string = "";
   _temperature?: number;
+  _thinkingBudget?: number;
+  _topK?: number;
+  _topP?: number;
 
   constructor(client: Client) { this.client = client; }
 
   caching(): Text { const out = clone(this); out._caching = true; return out; }
   file(id: string): Text { const out = clone(this); out._files = [...out._files, { id, uri: "", name: "", mimeType: "" }]; return out; }  // ordered
+  frequencyPenalty(v: number): Text { const out = clone(this); out._frequencyPenalty = v; return out; }
   history(...msgs: Message[]): Text { const out = clone(this); out._history = msgs; return out; }
   image(mime: string, data: Uint8Array): Text { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   maxTokens(n: number): Text { const out = clone(this); out._maxTokens = n; return out; }
   middleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Text { const out = clone(this); out._model = name; return out; }
+  presencePenalty(v: number): Text { const out = clone(this); out._presencePenalty = v; return out; }
+  reasoningEffort(level: string): Text { const out = clone(this); out._reasoningEffort = level; return out; }
   schema(s: string): Text { const out = clone(this); out._schema = s; return out; }
+  seed(n: number): Text { const out = clone(this); out._seed = n; return out; }
+  stopSequences(...seqs: string[]): Text { const out = clone(this); out._stopSequences = seqs; return out; }
   system(s: string): Text { const out = clone(this); out._system = s; return out; }
   temperature(t: number): Text { const out = clone(this); out._temperature = t; return out; }
   text(s: string): Text { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
+  thinkingBudget(n: number): Text { const out = clone(this); out._thinkingBudget = n; return out; }
+  topK(n: number): Text { const out = clone(this); out._topK = n; return out; }
+  topP(v: number): Text { const out = clone(this); out._topP = v; return out; }
   async prompt(msg: string): Promise<Response> {
     return textPrompt(this, msg);
   }
@@ -156,23 +172,39 @@ export class Image {
 export class Agent {
   client: Client;
   _caching: boolean = false;
+  _frequencyPenalty?: number;
   _maxTokens?: number;
   _middleware: MiddlewareFn[] = [];
   _model: string = "";
+  _presencePenalty?: number;
+  _reasoningEffort: string = "";
+  _seed?: number;
+  _stopSequences: string[] = [];
   _system: string = "";
   _temperature?: number;
+  _thinkingBudget?: number;
   _tools: Tool[] = [];
+  _topK?: number;
+  _topP?: number;
   _state?: AgentState;
 
   constructor(client: Client) { this.client = client; }
 
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
+  frequencyPenalty(v: number): Agent { const out = clone(this); out._frequencyPenalty = v; out._state = undefined; return out; }
   maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
   middleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
   model(name: string): Agent { const out = clone(this); out._model = name; out._state = undefined; return out; }
+  presencePenalty(v: number): Agent { const out = clone(this); out._presencePenalty = v; out._state = undefined; return out; }
+  reasoningEffort(level: string): Agent { const out = clone(this); out._reasoningEffort = level; out._state = undefined; return out; }
+  seed(n: number): Agent { const out = clone(this); out._seed = n; out._state = undefined; return out; }
+  stopSequences(...seqs: string[]): Agent { const out = clone(this); out._stopSequences = seqs; out._state = undefined; return out; }
   system(s: string): Agent { const out = clone(this); out._system = s; out._state = undefined; return out; }
   temperature(t: number): Agent { const out = clone(this); out._temperature = t; out._state = undefined; return out; }
+  thinkingBudget(n: number): Agent { const out = clone(this); out._thinkingBudget = n; out._state = undefined; return out; }
   tool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
+  topK(n: number): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
+  topP(v: number): Agent { const out = clone(this); out._topP = v; out._state = undefined; return out; }
   async prompt(msg: string): Promise<Response> {
     return agentPrompt(this, msg);
   }
