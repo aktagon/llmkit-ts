@@ -23,6 +23,9 @@ function clone<T extends object>(b: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(b)), b) as T;
 }
 
+import { imageGenerate } from "./image.ts";
+import { textPrompt } from "./text.ts";
+
 export class Client {
   provider: ProviderConfig;
   text: Text;
@@ -101,7 +104,7 @@ export class Text {
   temperature(t: number): Text { const out = clone(this); out._temperature = t; return out; }
   text(s: string): Text { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   async prompt(msg: string): Promise<Response> {
-    throw new Error("plan 016 phase 3: Text.prompt not yet implemented");
+    return textPrompt(this, msg);
   }
   async *stream(msg: string): AsyncIterable<string> {
     throw new Error("plan 016 phase 3: Text.stream not yet implemented");
@@ -137,7 +140,7 @@ export class Image {
   model(name: string): Image { const out = clone(this); out._model = name; return out; }
   text(s: string): Image { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   async generate(msg: string): Promise<ImageResponse> {
-    throw new Error("plan 016 phase 3: Image.generate not yet implemented");
+    return imageGenerate(this, msg);
   }
 }
 
