@@ -33,12 +33,12 @@ import {
   Image,
   Agent,
   Upload,
+  BatchHandle,
 } from "../src/builders/index.ts";
 import type {
   File,
   Message,
   Response as PromptResponse,
-  BatchHandle,
   Tool,
   ImageData,
   ImageResponse,
@@ -231,18 +231,6 @@ describe("Terminals — throw stubs", () => {
     expect(String(caught)).toMatch(/Text.stream not yet implemented/);
   });
 
-  test("Text.batch rejects", async () => {
-    await expect(google("k").text.batch("p1", "p2")).rejects.toThrow(
-      /Text.batch not yet implemented/,
-    );
-  });
-
-  test("Text.submitBatch rejects", async () => {
-    await expect(google("k").text.submitBatch("p1")).rejects.toThrow(
-      /Text.submitBatch not yet implemented/,
-    );
-  });
-
   test("Agent.prompt rejects", async () => {
     await expect(google("k").agent.prompt("hi")).rejects.toThrow(
       /Agent.prompt not yet implemented/,
@@ -252,12 +240,6 @@ describe("Terminals — throw stubs", () => {
   test("Agent.reset throws", () => {
     expect(() => google("k").agent.reset()).toThrow(
       /Agent.reset not yet implemented/,
-    );
-  });
-
-  test("Upload.run rejects", async () => {
-    await expect(google("k").upload.run()).rejects.toThrow(
-      /Upload.run not yet implemented/,
     );
   });
 });
@@ -301,10 +283,10 @@ describe("Surface — type aliases", () => {
     };
     const _file: File = { id: "id", uri: "", name: "", mimeType: "" };
     const _part: Part = { text: "hello" };
-    const _bh: BatchHandle = {
-      id: "id",
-      provider: { name: "openai", apiKey: "k" },
-    };
+    const _bh: BatchHandle = new BatchHandle("id", {
+      name: "openai",
+      apiKey: "k",
+    });
     expect(_msg.role).toBe("user");
     expect(_tool.name).toBe("t");
     expect(_mw).toBe(noopMiddleware);
@@ -500,5 +482,177 @@ describe("Phase 3 slice 1 — Image.generate wired", () => {
     });
     expect(parts[1]).toEqual({ text: "compose:" });
     expect(parts[2]).toEqual({ text: "trailing" });
+  });
+});
+
+// === Phase 3 slice 2a — wiring verification ===
+
+describe("Phase 3 slice 2a — Text.batch + Text.submitBatch wired", () => {
+  test("submitBatch posts inline batch payload, returns BatchHandle class", async () => {
+    let captured: Record<string, unknown> | undefined;
+    let capturedUrl = "";
+    const server = startMockServer(async (req) => {
+      capturedUrl = new URL(req.url).pathname;
+      captured = (await req.json()) as Record<string, unknown>;
+      return new Response(JSON.stringify({ id: "msgbatch_123" }), {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      const handle = await c.text.system("be terse").submitBatch("p1", "p2");
+      expect(handle).toBeInstanceOf(BatchHandle);
+      expect(handle.id).toBe("msgbatch_123");
+      expect(handle.provider.name).toBe("anthropic");
+    } finally {
+      server.stop();
+    }
+    expect(capturedUrl).toBe("/v1/messages/batches");
+    if (!captured) throw new Error("server never received a request body");
+    // Anthropic batch shape: {requests: [{custom_id, params: {...body...}}]}
+    const requests = captured.requests as Array<{
+      custom_id: string;
+      params: Record<string, unknown>;
+    }>;
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.custom_id).toBe("req-0");
+    expect(requests[1]?.custom_id).toBe("req-1");
+    expect(requests[0]?.params.system).toBe("be terse");
+    // Note: legacy TS batch doesn't propagate per-request options
+    // (`maxTokens`, `temperature`); see batch.ts:190 which passes
+    // an empty options object to buildRequest. Tracked as plan-016
+    // OQ-2 follow-up — fix in a later slice or phase 4.
+  });
+
+  test("BatchHandle.wait polls then fetches results", async () => {
+    let pollCalls = 0;
+    const resultLine = JSON.stringify({
+      custom_id: "req-0",
+      result: {
+        message: {
+          content: [{ type: "text", text: "ok" }],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      },
+    });
+    const server = startMockServer(async (req) => {
+      const path = new URL(req.url).pathname;
+      if (path.endsWith("/results")) {
+        return new Response(resultLine + "\n", {
+          headers: { "content-type": "application/x-jsonl" },
+        });
+      }
+      pollCalls += 1;
+      return new Response(
+        JSON.stringify({ id: "msgbatch_123", processing_status: "ended" }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+    try {
+      const handle = new BatchHandle("msgbatch_123", {
+        name: "anthropic",
+        apiKey: "k",
+        baseUrl: server.url,
+      });
+      const responses = await handle.wait({ pollIntervalMs: 1 });
+      expect(responses).toHaveLength(1);
+      expect(responses[0]?.text).toBe("ok");
+    } finally {
+      server.stop();
+    }
+    expect(pollCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  test("Text.batch sends payload and parses results in one call", async () => {
+    const resultLine = JSON.stringify({
+      custom_id: "req-0",
+      result: {
+        message: {
+          content: [{ type: "text", text: "answer" }],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      },
+    });
+    const server = startMockServer(async (req) => {
+      const path = new URL(req.url).pathname;
+      if (path.endsWith("/results")) {
+        return new Response(resultLine + "\n", {
+          headers: { "content-type": "application/x-jsonl" },
+        });
+      }
+      if (req.method === "POST") {
+        return new Response(JSON.stringify({ id: "msgbatch_xyz" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({ id: "msgbatch_xyz", processing_status: "ended" }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      const responses = await c.text.maxTokens(10).batch("only-one");
+      expect(responses).toHaveLength(1);
+      expect(responses[0]?.text).toBe("answer");
+    } finally {
+      server.stop();
+    }
+  });
+});
+
+describe("Phase 3 slice 2a — Upload.run wired", () => {
+  test("bytes path uploads multipart form", async () => {
+    let capturedPath = "";
+    let capturedMethod = "";
+    const server = startMockServer(async (req) => {
+      capturedPath = new URL(req.url).pathname;
+      capturedMethod = req.method;
+      return new Response(
+        JSON.stringify({
+          id: "file-abc",
+          filename: "data.bin",
+          mime_type: "application/octet-stream",
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+    try {
+      const c = openai("k");
+      c.provider.baseUrl = server.url;
+      const file = await c.upload
+        .bytes(new Uint8Array([1, 2, 3]))
+        .filename("data.bin")
+        .run();
+      expect(file.id).toBe("file-abc");
+      expect(file.name).toBe("data.bin");
+    } finally {
+      server.stop();
+    }
+    expect(capturedMethod).toBe("POST");
+    expect(capturedPath).toBe("/v1/files");
+  });
+
+  test("validation: empty bytes and empty path rejects", async () => {
+    await expect(openai("k").upload.run()).rejects.toThrow(
+      /exactly one of bytes\(\) or path\(\) must be set/,
+    );
+  });
+
+  test("validation: both bytes and path rejects", async () => {
+    await expect(
+      openai("k")
+        .upload.bytes(new Uint8Array([1]))
+        .path("/x")
+        .run(),
+    ).rejects.toThrow(/mutually exclusive/);
+  });
+
+  test("validation: path-only is deferred to TS slice follow-up", async () => {
+    await expect(openai("k").upload.path("/x").run()).rejects.toThrow(
+      /not yet wired/,
+    );
   });
 });
