@@ -21,34 +21,57 @@ import { promptStream as legacyPromptStream } from "../llmkit.ts";
 import type { Text } from "./builders.ts";
 import { buildRequest } from "./text.ts";
 
+// Maximum chunks held in the bridge queue before the producer
+// pauses. Matches Go chan(64) and Python asyncio.Queue(maxsize=64)
+// for cross-SDK consistency. A hostile or buggy provider streaming
+// faster than the consumer drains will block at this ceiling
+// instead of growing the queue unboundedly.
+const STREAM_QUEUE_MAX = 64;
+
 export async function* textStream(b: Text, msg: string): AsyncIterable<string> {
   const { provider, request, options } = buildRequest(b, msg);
   const ac = new AbortController();
   const opts = { ...options, signal: ac.signal };
 
   const queue: string[] = [];
-  let waiter: { resolve: () => void } | null = null;
+  let consumerWaiter: { resolve: () => void } | null = null;
+  let producerWaiter: { resolve: () => void } | null = null;
   let done = false;
   let error: Error | null = null;
 
-  const wake = () => {
-    const w = waiter;
-    waiter = null;
+  const wakeConsumer = () => {
+    const w = consumerWaiter;
+    consumerWaiter = null;
+    w?.resolve();
+  };
+
+  const wakeProducer = () => {
+    const w = producerWaiter;
+    producerWaiter = null;
     w?.resolve();
   };
 
   legacyPromptStream(
     provider,
     request,
-    (chunk) => {
+    async (chunk) => {
       queue.push(chunk);
-      wake();
+      wakeConsumer();
+      // Backpressure: wait for consumer to drain when at capacity.
+      // promptStream awaits this Promise (its onChunk type is now
+      // `(text: string) => void | Promise<void>`), so the underlying
+      // SSE reader pauses until space frees up.
+      while (queue.length >= STREAM_QUEUE_MAX) {
+        await new Promise<void>((resolve) => {
+          producerWaiter = { resolve };
+        });
+      }
     },
     opts,
   ).then(
     () => {
       done = true;
-      wake();
+      wakeConsumer();
     },
     (err) => {
       // Consumer-initiated abort is clean cancellation, not an error.
@@ -56,14 +79,16 @@ export async function* textStream(b: Text, msg: string): AsyncIterable<string> {
         error = err instanceof Error ? err : new Error(String(err));
       }
       done = true;
-      wake();
+      wakeConsumer();
     },
   );
 
   try {
     while (true) {
       if (queue.length > 0) {
-        yield queue.shift() as string;
+        const chunk = queue.shift() as string;
+        wakeProducer();
+        yield chunk;
         continue;
       }
       if (done) {
@@ -71,10 +96,12 @@ export async function* textStream(b: Text, msg: string): AsyncIterable<string> {
         return;
       }
       await new Promise<void>((resolve) => {
-        waiter = { resolve };
+        consumerWaiter = { resolve };
       });
     }
   } finally {
     if (!done) ac.abort();
+    // Unblock any parked producer so it can observe abort and exit.
+    wakeProducer();
   }
 }
