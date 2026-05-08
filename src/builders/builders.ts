@@ -7,11 +7,13 @@
 //
 //
 
-import type { File, Message, Response, BatchHandle, Tool } from "../types.ts";
+import type { File, Message, Response, Tool } from "../types.ts";
 import type { ImageData, ImageResponse, Part } from "../image.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
+import { BatchHandle } from "./batch.ts";
 
-export type { File, Message, Response, BatchHandle, Tool, ImageData, ImageResponse, Part, MiddlewareFn };
+export type { File, Message, Response, Tool, ImageData, ImageResponse, Part, MiddlewareFn };
+export { BatchHandle };
 
 export interface ProviderConfig {
   name: string;
@@ -23,8 +25,10 @@ function clone<T extends object>(b: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(b)), b) as T;
 }
 
+import { textBatch, textSubmitBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
 import { textPrompt } from "./text.ts";
+import { uploadRun } from "./upload.ts";
 
 export class Client {
   provider: ProviderConfig;
@@ -110,10 +114,10 @@ export class Text {
     throw new Error("plan 016 phase 3: Text.stream not yet implemented");
   }
   async batch(...prompts: string[]): Promise<Response[]> {
-    throw new Error("plan 016 phase 3: Text.batch not yet implemented");
+    return textBatch(this, ...prompts);
   }
   async submitBatch(...prompts: string[]): Promise<BatchHandle> {
-    throw new Error("plan 016 phase 3: Text.submitBatch not yet implemented");
+    return textSubmitBatch(this, ...prompts);
   }
 }
 
@@ -191,7 +195,7 @@ export class Upload {
   mimeType(mime: string): Upload { const out = clone(this); out._mimeType = mime; return out; }
   path(p: string): Upload { const out = clone(this); out._path = p; return out; }
   async run(): Promise<File> {
-    throw new Error("plan 016 phase 3: Upload.run not yet implemented");
+    return uploadRun(this);
   }
 }
 
