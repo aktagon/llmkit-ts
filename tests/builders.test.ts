@@ -217,20 +217,6 @@ describe("Surface — constructors", () => {
 // replaced with mock-server verifications below. Remaining slices
 // will continue retiring entries from this list.
 describe("Terminals — throw stubs", () => {
-  test("Text.stream throws on first iteration", async () => {
-    const iter = google("k").text.stream("hi");
-    let caught: unknown;
-    try {
-      for await (const _ of iter) {
-        // unreachable
-      }
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(Error);
-    expect(String(caught)).toMatch(/Text.stream not yet implemented/);
-  });
-
   test("Agent.prompt rejects", async () => {
     await expect(google("k").agent.prompt("hi")).rejects.toThrow(
       /Agent.prompt not yet implemented/,
@@ -654,5 +640,88 @@ describe("Phase 3 slice 2a — Upload.run wired", () => {
     await expect(openai("k").upload.path("/x").run()).rejects.toThrow(
       /not yet wired/,
     );
+  });
+});
+
+// === Phase 3 slice 2b — Text.stream wired ===
+
+describe("Phase 3 slice 2b — Text.stream wired", () => {
+  test("OpenAI SSE chunks arrive in order through the AsyncIterable", async () => {
+    const events = [
+      `data: {"choices":[{"delta":{"content":"Hel"}}]}`,
+      `data: {"choices":[{"delta":{"content":"lo "}}]}`,
+      `data: {"choices":[{"delta":{"content":"world"}}]}`,
+      `data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":1,"completion_tokens":3}}`,
+      `data: [DONE]`,
+    ];
+    const server = startMockServer(() => {
+      const stream = new ReadableStream({
+        start(controller) {
+          const enc = new TextEncoder();
+          for (const e of events) {
+            controller.enqueue(enc.encode(e + "\n\n"));
+          }
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    try {
+      const c = openai("k");
+      c.provider.baseUrl = server.url;
+      const got: string[] = [];
+      for await (const chunk of c.text.stream("hi")) {
+        got.push(chunk);
+      }
+      expect(got).toEqual(["Hel", "lo ", "world"]);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("consumer break aborts the producer cleanly", async () => {
+    // Mock server emits chunks slowly so we can break mid-stream.
+    const server = startMockServer(() => {
+      const stream = new ReadableStream({
+        async start(controller) {
+          const enc = new TextEncoder();
+          controller.enqueue(
+            enc.encode(`data: {"choices":[{"delta":{"content":"a"}}]}\n\n`),
+          );
+          await new Promise((r) => setTimeout(r, 10));
+          controller.enqueue(
+            enc.encode(`data: {"choices":[{"delta":{"content":"b"}}]}\n\n`),
+          );
+          await new Promise((r) => setTimeout(r, 50));
+          // Producer would continue, but consumer should abort first.
+          try {
+            controller.enqueue(
+              enc.encode(`data: {"choices":[{"delta":{"content":"c"}}]}\n\n`),
+            );
+            controller.close();
+          } catch {
+            // Stream cancelled by client — expected.
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    try {
+      const c = openai("k");
+      c.provider.baseUrl = server.url;
+      const got: string[] = [];
+      for await (const chunk of c.text.stream("hi")) {
+        got.push(chunk);
+        if (got.length >= 1) break; // bail after first chunk
+      }
+      expect(got.length).toBeGreaterThanOrEqual(1);
+      expect(got[0]).toBe("a");
+    } finally {
+      server.stop();
+    }
   });
 });
