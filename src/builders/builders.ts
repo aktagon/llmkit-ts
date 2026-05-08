@@ -27,6 +27,7 @@ function clone<T extends object>(b: T): T {
 
 import { textBatch, textSubmitBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
+import { textStream } from "./stream.ts";
 import { textPrompt } from "./text.ts";
 import { uploadRun } from "./upload.ts";
 
@@ -110,8 +111,8 @@ export class Text {
   async prompt(msg: string): Promise<Response> {
     return textPrompt(this, msg);
   }
-  async *stream(msg: string): AsyncIterable<string> {
-    throw new Error("plan 016 phase 3: Text.stream not yet implemented");
+  stream(msg: string): AsyncIterable<string> {
+    return textStream(this, msg);
   }
   async batch(...prompts: string[]): Promise<Response[]> {
     return textBatch(this, ...prompts);
