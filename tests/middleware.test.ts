@@ -128,13 +128,13 @@ describe("middleware — upload, batch_submit, cache_create", () => {
       { id: "file_abc", filename: "x.jsonl", bytes: 5 },
     ]);
     try {
-      const { uploadFile } = await import("../src/upload.ts");
-      await uploadFile(
-        { name: Providers.openai, apiKey: "sk", baseUrl: server.url },
-        new TextEncoder().encode("hello"),
-        "x.jsonl",
-        { middleware: [observer] },
-      );
+      const c = newClient(Providers.openai, "sk");
+      c.provider.baseUrl = server.url;
+      await c.upload
+        .bytes(new TextEncoder().encode("hello"))
+        .filename("x.jsonl")
+        .middleware(observer)
+        .run();
       const ops = events.map((e) => `${e.op}:${e.phase}`);
       expect(ops).toEqual(["upload:pre", "upload:post"]);
       expect(events[1]?.err).toBeUndefined();

@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import { uploadFile } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 
-describe("uploadFile — OpenAI", () => {
+describe("Upload.run — OpenAI", () => {
   test("multipart POST to /v1/files with purpose, returns File", async () => {
     let receivedPath = "";
     let receivedAuth = "";
@@ -29,15 +29,9 @@ describe("uploadFile — OpenAI", () => {
     });
     try {
       const data = new Uint8Array([1, 2, 3, 4]);
-      const file = await uploadFile(
-        {
-          name: Providers.openai,
-          apiKey: "sk-test",
-          baseUrl: `http://localhost:${server.port}`,
-        },
-        data,
-        "hello.bin",
-      );
+      const c = newClient(Providers.openai, "sk-test");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const file = await c.upload.bytes(data).filename("hello.bin").run();
       expect(file.id).toBe("file_abc");
       expect(file.name).toBe("hello.bin");
       expect(receivedPath).toBe("/v1/files");

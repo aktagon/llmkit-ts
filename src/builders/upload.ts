@@ -1,18 +1,17 @@
-// Phase 3 slice 2a — wires Upload.run against the legacy free-function
-// runtime. The codegen-emitted Upload.run method delegates to
-// `uploadRun(this)` (see TS_BUILDER_SKIP_TERMINALS in codegen/generate.py).
+// D2.4 (plan-018) — owns Upload.run translation. The legacy
+// `uploadFile(provider, data, name, options)` free function (formerly
+// exported from llmkit.ts) is now reachable only as an internal helper
+// imported from upload.ts; the typed-builder method is the only public
+// entry point for file upload.
 //
-// TS legacy `uploadFile(provider, data, name, options)` is bytes-based
-// (the inverse of Go, where UploadFile takes a path). So in TS the Bytes
-// branch is the wired path and Path is deferred — symmetric to how Go's
-// slice 2a wired Path and deferred Bytes. Reading a path here would
-// require a runtime-specific FS read (Bun.file / fs.readFile); deferred
-// to a follow-up slice that picks the right Bun-vs-Node split.
+// TS legacy uploadFile is bytes-based (the inverse of Go, where
+// UploadFile takes a path). So in TS the Bytes branch is the wired path
+// and Path is deferred — symmetric to how Go's slice 2a wired Path and
+// deferred Bytes. Reading a path here would require a runtime-specific
+// FS read (Bun.file / fs.readFile); deferred to a follow-up slice that
+// picks the right Bun-vs-Node split.
 
-import {
-  uploadFile as legacyUploadFile,
-  type UploadOptions,
-} from "../upload.ts";
+import { uploadFile as runUpload, type UploadOptions } from "../upload.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { File as LLMFile, Provider } from "../types.ts";
 import type { Upload } from "./builders.ts";
@@ -43,5 +42,5 @@ export async function uploadRun(b: Upload): Promise<LLMFile> {
   if (b._middleware.length > 0) options.middleware = b._middleware;
 
   const name = b._filename || "upload";
-  return await legacyUploadFile(provider, b._bytes, name, options);
+  return await runUpload(provider, b._bytes, name, options);
 }
