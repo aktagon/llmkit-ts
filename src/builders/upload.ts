@@ -8,11 +8,10 @@
 //
 //
 //
+//
+//
 
-import {
-  uploadFile as legacyUploadFile,
-  type UploadOptions,
-} from "../upload.ts";
+import { uploadFile as runUpload, type UploadOptions } from "../upload.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { File as LLMFile, Provider } from "../types.ts";
 import type { Upload } from "./builders.ts";
@@ -43,5 +42,5 @@ export async function uploadRun(b: Upload): Promise<LLMFile> {
   if (b._middleware.length > 0) options.middleware = b._middleware;
 
   const name = b._filename || "upload";
-  return await legacyUploadFile(provider, b._bytes, name, options);
+  return await runUpload(provider, b._bytes, name, options);
 }
