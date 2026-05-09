@@ -4,12 +4,11 @@
 // imported from upload.ts; the typed-builder method is the only public
 // entry point for file upload.
 //
-// TS legacy uploadFile is bytes-based (the inverse of Go, where
-// UploadFile takes a path). So in TS the Bytes branch is the wired path
-// and Path is deferred — symmetric to how Go's slice 2a wired Path and
-// deferred Bytes. Reading a path here would require a runtime-specific
-// FS read (Bun.file / fs.readFile); deferred to a follow-up slice that
-// picks the right Bun-vs-Node split.
+// Both Bytes and Path are wired. The legacy bytes-based uploadFile is
+// the underlying engine; the Path branch reads the file via Bun.file()
+// when running under Bun, otherwise falls back to node:fs/promises.
+// Edge runtimes (Cloudflare Workers, Deno without --allow-read,
+// browsers) have no filesystem — those callers should use bytes().
 
 import { uploadFile as runUpload, type UploadOptions } from "../upload.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -26,10 +25,19 @@ export async function uploadRun(b: Upload): Promise<LLMFile> {
   if (hasBytes && hasPath) {
     throw new Error("Upload: bytes() and path() are mutually exclusive");
   }
+
+  let data: Uint8Array;
+  let name: string;
+
   if (hasPath) {
-    throw new Error(
-      "Upload: path() not yet wired (TS phase 3 follow-up); use bytes() for now",
-    );
+    data = await readFileFromPath(b._path);
+    name = b._filename || basename(b._path);
+  } else {
+    if (!b._filename) {
+      throw new Error("Upload: filename() is required when bytes() is set");
+    }
+    data = b._bytes;
+    name = b._filename;
   }
 
   const provider: Provider = {
@@ -41,6 +49,32 @@ export async function uploadRun(b: Upload): Promise<LLMFile> {
   const options: UploadOptions = {};
   if (b._middleware.length > 0) options.middleware = b._middleware;
 
-  const name = b._filename || "upload";
-  return await runUpload(provider, b._bytes, name, options);
+  return await runUpload(provider, data, name, options);
+}
+
+async function readFileFromPath(path: string): Promise<Uint8Array> {
+  // Bun: Bun.file().bytes() yields Uint8Array directly.
+  const bunGlobal = (
+    globalThis as unknown as {
+      Bun?: { file: (p: string) => { bytes: () => Promise<Uint8Array> } };
+    }
+  ).Bun;
+  if (bunGlobal && typeof bunGlobal.file === "function") {
+    return await bunGlobal.file(path).bytes();
+  }
+  // Node: dynamic import keeps Bun bundlers from pulling node:fs in.
+  try {
+    const fs = await import("node:fs/promises");
+    const buf = await fs.readFile(path);
+    return new Uint8Array(buf);
+  } catch (err) {
+    throw new Error(
+      `Upload: cannot read path ${JSON.stringify(path)} — runtime has no filesystem (use bytes() instead). ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+function basename(path: string): string {
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return i >= 0 ? path.slice(i + 1) : path;
 }
