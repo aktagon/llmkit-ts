@@ -1,10 +1,11 @@
-// Phase 3 slice 1 — wires Image.generate against the legacy
-// free-function runtime. The codegen-emitted Image.generate method
-// delegates to `imageGenerate(this, msg)`; this file owns the
-// translation logic.
+// D2.3 (plan-018) — owns Image.generate translation. The legacy
+// free-function `generateImage` (formerly exported from llmkit.ts)
+// is now reachable only as an internal helper imported from image.ts;
+// the typed-builder method is the only public entry point for image
+// generation.
 
 import {
-  generateImage as legacyGenerateImage,
+  generateImage as runImageGeneration,
   type ImageOptions,
   type ImageRequest,
   type ImageResponse,
@@ -42,5 +43,5 @@ export async function imageGenerate(
   if (b._includeText) options.includeText = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
 
-  return await legacyGenerateImage(provider, request, options);
+  return await runImageGeneration(provider, request, options);
 }

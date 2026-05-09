@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { generateImage, text, image } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 import { MiddlewareVetoError, ValidationError } from "../src/llmkit.ts";
 
@@ -24,7 +24,7 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-describe("generateImage — Google Flash", () => {
+describe("Image.generate — Google Flash", () => {
   test("happy path: round-trips inline base64 image and reports usage", async () => {
     const encoded = bytesToBase64(fakePNG);
     let receivedPath = "";
@@ -56,15 +56,13 @@ describe("generateImage — Google Flash", () => {
       },
     });
     try {
-      const resp = await generateImage(
-        {
-          name: Providers.google,
-          apiKey: "test-key",
-          baseUrl: `http://localhost:${server.port}`,
-        },
-        { prompt: "A nano banana dish", model: flashModel },
-        { aspectRatio: "16:9", imageSize: "2K" },
-      );
+      const c = newClient(Providers.google, "test-key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image
+        .model(flashModel)
+        .aspectRatio("16:9")
+        .imageSize("2K")
+        .generate("A nano banana dish");
 
       expect(receivedPath).toContain(`${flashModel}:generateContent`);
       expect(receivedKey).toBe("test-key");
@@ -88,7 +86,7 @@ describe("generateImage — Google Flash", () => {
   });
 });
 
-describe("generateImage — includeText", () => {
+describe("Image.generate — includeText", () => {
   test("captures text parts when includeText is set", async () => {
     const encoded = bytesToBase64(fakePNG);
     let receivedBody: any;
@@ -114,15 +112,9 @@ describe("generateImage — includeText", () => {
       },
     });
     try {
-      const resp = await generateImage(
-        {
-          name: Providers.google,
-          apiKey: "k",
-          baseUrl: `http://localhost:${server.port}`,
-        },
-        { prompt: "x", model: flashModel },
-        { includeText: true },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image.model(flashModel).includeText().generate("x");
       expect(receivedBody.generationConfig.responseModalities).toEqual([
         "TEXT",
         "IMAGE",
@@ -134,7 +126,7 @@ describe("generateImage — includeText", () => {
   });
 });
 
-describe("generateImage — Parts (canonical multimodal)", () => {
+describe("Image.generate — Parts (canonical multimodal)", () => {
   test("preserves caller-controlled positional ordering on the wire", async () => {
     // ADR-008's motivating scenario: text and reference images interleaved
     // so the model attends to the description-image pairing as intended.
@@ -162,23 +154,15 @@ describe("generateImage — Parts (canonical multimodal)", () => {
       },
     });
     try {
-      await generateImage(
-        {
-          name: Providers.google,
-          apiKey: "k",
-          baseUrl: `http://localhost:${server.port}`,
-        },
-        {
-          model: flashModel,
-          parts: [
-            text("Person:"),
-            image("image/png", refA),
-            text("Outfit:"),
-            image("image/png", refB),
-            text("Generate the person wearing the outfit."),
-          ],
-        },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.image
+        .model(flashModel)
+        .text("Person:")
+        .image("image/png", refA)
+        .text("Outfit:")
+        .image("image/png", refB)
+        .generate("Generate the person wearing the outfit.");
       const parts = receivedBody.contents[0].parts;
       expect(parts.length).toBe(5);
       expect(parts[0].text).toBe("Person:");
@@ -196,15 +180,13 @@ describe("generateImage — Parts (canonical multimodal)", () => {
   });
 });
 
-describe("generateImage — pre-flight validation", () => {
+describe("Image.generate — pre-flight validation", () => {
   test("rejects unsupported aspect ratio on Pro", async () => {
     let err: unknown;
     try {
-      await generateImage(
-        { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
-        { prompt: "x", model: proModel },
-        { aspectRatio: "8:1" },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = "http://unused";
+      await c.image.model(proModel).aspectRatio("8:1").generate("x");
     } catch (e) {
       err = e;
     }
@@ -215,11 +197,9 @@ describe("generateImage — pre-flight validation", () => {
   test("rejects 512 size on Pro", async () => {
     let err: unknown;
     try {
-      await generateImage(
-        { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
-        { prompt: "x", model: proModel },
-        { imageSize: "512" },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = "http://unused";
+      await c.image.model(proModel).imageSize("512").generate("x");
     } catch (e) {
       err = e;
     }
@@ -228,16 +208,13 @@ describe("generateImage — pre-flight validation", () => {
   });
 
   test("rejects too many image parts", async () => {
-    const tooMany = [
-      text("describe and edit:"),
-      ...Array.from({ length: 15 }, () => image("image/png", fakePNG)),
-    ];
     let err: unknown;
     try {
-      await generateImage(
-        { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
-        { model: flashModel, parts: tooMany },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = "http://unused";
+      let img = c.image.model(flashModel).text("describe and edit:");
+      for (let i = 0; i < 15; i++) img = img.image("image/png", fakePNG);
+      await img.generate("");
     } catch (e) {
       err = e;
     }
@@ -245,27 +222,17 @@ describe("generateImage — pre-flight validation", () => {
     expect((err as ValidationError).field).toBe("parts");
   });
 
-  test("rejects when both prompt and parts are set (XOR)", async () => {
-    let err: unknown;
-    try {
-      await generateImage(
-        { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
-        { model: flashModel, prompt: "x", parts: [text("y")] },
-      );
-    } catch (e) {
-      err = e;
-    }
-    expect(err).toBeInstanceOf(ValidationError);
-    expect((err as ValidationError).field).toBe("parts");
-  });
+  // The "both prompt and parts set" XOR test from the legacy free-function
+  // surface is no longer reachable via typed-builder: chain methods either
+  // accumulate parts or pass a final-text msg, never both as a free-form
+  // pair. The only remaining "neither" condition is exercised below.
 
-  test("rejects when neither prompt nor parts is set", async () => {
+  test("rejects when neither parts accumulator nor generate msg is set", async () => {
     let err: unknown;
     try {
-      await generateImage(
-        { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
-        { model: flashModel },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = "http://unused";
+      await c.image.model(flashModel).generate("");
     } catch (e) {
       err = e;
     }
@@ -276,10 +243,8 @@ describe("generateImage — pre-flight validation", () => {
   test("requires model", async () => {
     let err: unknown;
     try {
-      await generateImage(
-        { name: Providers.google, apiKey: "k" },
-        { prompt: "x", model: "" },
-      );
+      const c = newClient(Providers.google, "k");
+      await c.image.generate("x");
     } catch (e) {
       err = e;
     }
@@ -288,7 +253,7 @@ describe("generateImage — pre-flight validation", () => {
   });
 });
 
-describe("generateImage — middleware", () => {
+describe("Image.generate — middleware", () => {
   test("fires pre+post in order", async () => {
     const encoded = bytesToBase64(fakePNG);
     const server = Bun.serve({
@@ -317,15 +282,9 @@ describe("generateImage — middleware", () => {
         phases.push(ev.phase);
         return null;
       };
-      await generateImage(
-        {
-          name: Providers.google,
-          apiKey: "k",
-          baseUrl: `http://localhost:${server.port}`,
-        },
-        { prompt: "x", model: flashModel },
-        { middleware: [mw] },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.image.model(flashModel).middleware(mw).generate("x");
       expect(ops).toEqual(["image_generation", "image_generation"]);
       expect(phases).toEqual(["pre", "post"]);
     } finally {
@@ -340,11 +299,9 @@ describe("generateImage — middleware", () => {
     };
     let err: unknown;
     try {
-      await generateImage(
-        { name: Providers.google, apiKey: "k", baseUrl: "http://unused" },
-        { prompt: "x", model: flashModel },
-        { middleware: [mw] },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = "http://unused";
+      await c.image.model(flashModel).middleware(mw).generate("x");
     } catch (e) {
       err = e;
     }
