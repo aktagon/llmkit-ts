@@ -5,6 +5,28 @@ All notable changes to the TypeScript SDK are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking
+
+- Legacy free-function layer removed from the public API (plan-018 D2, ADR-010). `prompt`, `promptStream`, `generateImage`, `uploadFile`, `promptBatch`, `submitBatch`, `waitBatch`, `Agent` (class), and the `text()` / `image()` Part constructors are no longer re-exported from `llmkit.ts`. Use the typed builder via `import { newClient } from "@aktagon/llmkit-ts/builders"`:
+  - `c.text.system(...).prompt(msg)` — replaces `prompt`.
+  - `c.text.<chain>.stream(msg)` — replaces `promptStream`; returns `AsyncIterable<string>` (iterate with `for await ... of`). Final usage stats are not yet surfaced through the iterator (carried forward).
+  - `c.image.model(id).<chain>.generate(msg)` — replaces `generateImage`.
+  - `c.upload.bytes(b).filename(n).run()` — replaces `uploadFile`.
+  - `c.text.<chain>.batch(...prompts)` / `.submitBatch(...prompts).wait()` — replaces the batch trio.
+  - `c.agent.<chain>.prompt(msg)` / `c.agent.reset()` — replaces the `Agent` class.
+- `Part`-construction Part literals (`{ text: "..." }`, `{ image: { mimeType, bytes } }`) are the canonical construction path now that `text()` / `image()` are gone. The typed-builder accumulators (`c.text.text(s)`, `c.image.image(m, b)`) are the user-facing API.
+
+### Added
+
+- ADR-011 chain-field propagation lint integrated into `make check`. Catches silent-drop bugs across all four SDKs.
+- All eight sampling/decoding chain methods (`topP`, `topK`, `frequencyPenalty`, `presencePenalty`, `seed`, `stopSequences`, `thinkingBudget`, `reasoningEffort`) now thread through to the wire body. They had been silently dropping since plan-016 phase 2b.
+
+### Removed
+
+- `caching()` chain method on the `Image` builder. The legacy `generateImage` runtime never accepted a caching option, so the chain method had been a silent no-op.
+
 ## [0.3.0] — 2026-05-08
 
 ### Breaking
