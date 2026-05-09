@@ -69,11 +69,6 @@ export class Agent {
     this.tools.push(tool);
   }
 
-  reset(): void {
-    this.history.length = 0;
-    this.tools = [];
-  }
-
   async chat(message: string): Promise<PromptResponse> {
     this.history.push({ role: "user", content: message });
     return this.runToolLoop();
