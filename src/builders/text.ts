@@ -4,9 +4,30 @@
 //
 //
 //
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
 
-import { prompt as legacyPrompt } from "../llmkit.ts";
+import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
+import { APIError, ValidationError } from "../errors.ts";
+import { extractPath, extractIntPath } from "../paths.ts";
+import { applyCaching, parseCacheUsage } from "../caching.ts";
+import {
+  buildRequest as buildLegacyRequest,
+  executeRequest,
+  validateOptions,
+} from "../request.ts";
+import { firePost, firePre } from "../middleware.ts";
+import type { Event } from "../providers/middleware.ts";
 import type { PromptOptions, Provider, Request, Response } from "../types.ts";
 import type { Text } from "./builders.ts";
 
@@ -17,15 +38,7 @@ import type { Text } from "./builders.ts";
 
 
 
-
-
-
-
-
-
-
-
-export function buildRequest(
+export function buildPromptArgs(
   b: Text,
   finalText: string,
 ): { provider: Provider; request: Request; options: PromptOptions } {
@@ -80,6 +93,69 @@ export function buildRequest(
 }
 
 export async function textPrompt(b: Text, msg: string): Promise<Response> {
-  const { provider, request, options } = buildRequest(b, msg);
-  return await legacyPrompt(provider, request, options);
+  const { provider, request, options } = buildPromptArgs(b, msg);
+
+  const cfg = PROVIDERS[provider.name];
+  if (!cfg) {
+    throw new ValidationError("provider", `unknown: ${provider.name}`);
+  }
+  if (!provider.apiKey) {
+    throw new ValidationError("apiKey", "required");
+  }
+
+  validateOptions(provider.name, options);
+
+  const baseEvent: Event = {
+    op: "llm_request",
+    phase: "pre",
+    provider: provider.name,
+    model: provider.model || cfg.defaultModel,
+  };
+  const veto = firePre(options.middleware, baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
+
+  try {
+    const body = buildLegacyRequest(provider, request, cfg, options);
+    if (options.caching) {
+      await applyCaching(body, provider, cfg, options);
+    }
+
+    const resp = await executeRequest(provider, cfg, body, options);
+    if (!resp.ok) {
+      throw new APIError(
+        resp.status,
+        resp.text,
+        resp.status === 429 || resp.status >= 500,
+      );
+    }
+
+    const raw = JSON.parse(resp.text) as unknown;
+    const cache = parseCacheUsage(raw, provider.name);
+    const result: Response = {
+      text: extractPath(raw, cfg.responseTextPath),
+      tokens: {
+        input: extractIntPath(raw, cfg.usageInputPath),
+        output: extractIntPath(raw, cfg.usageOutputPath),
+        cacheWrite: cache.write,
+        cacheRead: cache.read,
+        reasoning: cfg.reasoningTokensPath
+          ? extractIntPath(raw, cfg.reasoningTokensPath)
+          : 0,
+      },
+    };
+    firePost(options.middleware, {
+      ...baseEvent,
+      usage: result.tokens,
+      duration: performance.now() - start,
+    });
+    return result;
+  } catch (err) {
+    firePost(options.middleware, {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
+  }
 }
