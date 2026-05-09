@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All eight sampling/decoding chain methods (`topP`, `topK`, `frequencyPenalty`, `presencePenalty`, `seed`, `stopSequences`, `thinkingBudget`, `reasoningEffort`) now thread through to the wire body. They had been silently dropping since plan-016 phase 2b.
 - `Agent.maxToolIterations(n)` chain method exposes the tool-loop depth cap (default 10) on the typed builder.
 - `Upload.path()` is now wired in addition to `bytes()`. Reads via `Bun.file()` under Bun, otherwise dynamic-imports `node:fs/promises`. Edge runtimes without a filesystem (Cloudflare Workers, Deno without `--allow-read`, browsers) get a clear error directing them to `bytes()`.
+- `TextStream` trailing-handle class. Iterate via `for await ... of stream` to consume chunks; `stream.response()` returns the accumulated `Response` (text + token counts) once iteration ends, and `stream.error()` exposes any terminal error. Implements `AsyncIterable<string>` so existing `for await ... of` loops keep working.
+
+### Changed
+
+- **Breaking**: `c.text.stream(msg)` now returns `TextStream` instead of `AsyncIterable<string>`. The class still implements `AsyncIterable<string>` so existing iteration code is source-compatible; the type signature changed because the new accessors (`response()`, `error()`) are not part of `AsyncIterable`.
 
 ### Removed
 
