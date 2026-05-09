@@ -131,6 +131,7 @@ describe("Surface — chains", () => {
       .caching()
       .frequencyPenalty(0.1)
       .maxTokens(1)
+      .maxToolIterations(3)
       .middleware(noopMiddleware)
       .model("a")
       .presencePenalty(0.2)
@@ -146,6 +147,7 @@ describe("Surface — chains", () => {
 
     expect(ag._caching).toBe(true);
     expect(ag._maxTokens).toBe(1);
+    expect(ag._maxToolIterations).toBe(3);
     expect(ag._middleware).toHaveLength(1);
     expect(ag._model).toBe("a");
     expect(ag._system).toBe("sys");
