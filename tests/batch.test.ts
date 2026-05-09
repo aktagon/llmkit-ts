@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { promptBatch, submitBatch, waitBatch } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 
 describe("batch — Anthropic (InlineRequests)", () => {
@@ -57,15 +57,9 @@ describe("batch — Anthropic (InlineRequests)", () => {
       },
     });
     try {
-      const responses = await promptBatch(
-        {
-          name: Providers.anthropic,
-          apiKey: "k",
-          baseUrl: `http://localhost:${server.port}`,
-        },
-        [{ user: "ping1" }, { user: "ping2" }],
-        { pollIntervalMs: 5 },
-      );
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const responses = await c.text.batch("ping1", "ping2");
       expect(responses.map((r) => r.text)).toEqual(["alpha", "beta"]);
       expect(responses[0]!.tokens.input).toBe(1);
       expect(responses[0]!.tokens.output).toBe(2);
@@ -139,17 +133,12 @@ describe("batch — OpenAI (FileReferenceInput)", () => {
       },
     });
     try {
-      const handle = await submitBatch(
-        {
-          name: Providers.openai,
-          apiKey: "sk",
-          baseUrl: `http://localhost:${server.port}`,
-        },
-        [{ user: "hi" }],
-      );
+      const c = newClient(Providers.openai, "sk");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.text.submitBatch("hi");
       expect(handle.id).toBe("batch_abc");
 
-      const responses = await waitBatch(handle, { pollIntervalMs: 5 });
+      const responses = await handle.wait({ pollIntervalMs: 5 });
       expect(responses).toHaveLength(1);
       expect(responses[0]!.text).toBe("alpha");
       expect(responses[0]!.tokens.input).toBe(5);

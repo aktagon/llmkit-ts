@@ -152,12 +152,9 @@ describe("middleware — upload, batch_submit, cache_create", () => {
     };
     const server = startMockJSON([{ id: "msgbatch_1" }]);
     try {
-      const { submitBatch } = await import("../src/batch.ts");
-      await submitBatch(
-        { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
-        [{ user: "hi" }],
-        { middleware: [observer] },
-      );
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      await c.text.middleware(observer).submitBatch("hi");
       const ops = events.map((e) => `${e.op}:${e.phase}`);
       expect(ops).toEqual(["batch_submit:pre", "batch_submit:post"]);
     } finally {

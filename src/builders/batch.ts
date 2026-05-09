@@ -1,19 +1,20 @@
-// Phase 3 slice 2a — wires Text.batch + Text.submitBatch + BatchHandle.wait
-// against the legacy free-function runtime. The codegen-emitted methods
-// delegate to `textBatch(this, ...prompts)` and `textSubmitBatch(this, ...)`
-// (see TS_BUILDER_SKIP_TERMINALS in codegen/generate.py).
+// D2.5 (plan-018) — owns Text.batch + Text.submitBatch + BatchHandle.wait
+// translation. The legacy free functions (`promptBatch`, `submitBatch`,
+// `waitBatch`, formerly exported from llmkit.ts) are now reachable only
+// as internal helpers imported from batch.ts; the typed-builder methods
+// are the only public entry point for batched prompts.
 //
 // BatchHandle is promoted from a plain interface (legacy types.ts) to a
 // class here so the typed-builder API can offer `.wait()` as a method —
 // matching Go's `BatchHandle.Wait` value-receiver shape. The class fields
 // (`id`, `provider`) preserve the legacy data shape, so a plain object
-// returned by the legacy `submitBatch` can be wrapped via `new BatchHandle`
+// returned by the internal `submitBatch` can be wrapped via `new BatchHandle`
 // without conversion.
 
 import {
-  promptBatch as legacyPromptBatch,
-  submitBatch as legacySubmitBatch,
-  waitBatch as legacyWaitBatch,
+  promptBatch as runBatch,
+  submitBatch as runSubmitBatch,
+  waitBatch as runWaitBatch,
   type BatchOptions,
 } from "../batch.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -31,7 +32,7 @@ export class BatchHandle {
   }
 
   async wait(options: BatchOptions = {}): Promise<Response[]> {
-    return await legacyWaitBatch(
+    return await runWaitBatch(
       { id: this.id, provider: this.provider },
       options,
     );
@@ -73,7 +74,7 @@ export async function textBatch(
   ...prompts: string[]
 ): Promise<Response[]> {
   const { provider, requests, options } = batchInputs(b, prompts);
-  return await legacyPromptBatch(provider, requests, options);
+  return await runBatch(provider, requests, options);
 }
 
 export async function textSubmitBatch(
@@ -81,6 +82,6 @@ export async function textSubmitBatch(
   ...prompts: string[]
 ): Promise<BatchHandle> {
   const { provider, requests, options } = batchInputs(b, prompts);
-  const legacy = await legacySubmitBatch(provider, requests, options);
+  const legacy = await runSubmitBatch(provider, requests, options);
   return new BatchHandle(legacy.id, legacy.provider);
 }
