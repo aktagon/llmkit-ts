@@ -19,7 +19,7 @@ import {
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider, Request, Response } from "../types.ts";
 import type { Text } from "./builders.ts";
-import { buildRequest } from "./text.ts";
+import { buildPromptArgs } from "./text.ts";
 
 export class BatchHandle {
   id: string;
@@ -49,7 +49,7 @@ function batchInputs(
   const requests: Request[] = [];
   let providerOut: Provider | undefined;
   for (const p of prompts) {
-    const built = buildRequest(b, p);
+    const built = buildPromptArgs(b, p);
     requests.push(built.request);
     providerOut = built.provider;
   }
