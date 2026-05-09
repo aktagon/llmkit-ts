@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ADR-011 chain-field propagation lint integrated into `make check`. Catches silent-drop bugs across all four SDKs.
 - All eight sampling/decoding chain methods (`topP`, `topK`, `frequencyPenalty`, `presencePenalty`, `seed`, `stopSequences`, `thinkingBudget`, `reasoningEffort`) now thread through to the wire body. They had been silently dropping since plan-016 phase 2b.
 - `Agent.maxToolIterations(n)` chain method exposes the tool-loop depth cap (default 10) on the typed builder.
+- `Upload.path()` is now wired in addition to `bytes()`. Reads via `Bun.file()` under Bun, otherwise dynamic-imports `node:fs/promises`. Edge runtimes without a filesystem (Cloudflare Workers, Deno without `--allow-read`, browsers) get a clear error directing them to `bytes()`.
 
 ### Removed
 
