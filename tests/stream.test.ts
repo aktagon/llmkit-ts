@@ -30,7 +30,9 @@ describe("promptStream — OpenAI flavor (no event types)", () => {
       const resp = await promptStream(
         { name: Providers.openai, apiKey: "sk", baseUrl: server.url },
         { user: "hi" },
-        (c) => chunks.push(c),
+        (c) => {
+          chunks.push(c);
+        },
       );
       expect(chunks).toEqual(["hel", "lo", "!"]);
       expect(resp.text).toBe("hello!");
@@ -61,7 +63,9 @@ describe("promptStream — Anthropic flavor (event types)", () => {
       const resp = await promptStream(
         { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
         { user: "hi" },
-        (c) => chunks.push(c),
+        (c) => {
+          chunks.push(c);
+        },
       );
       expect(chunks).toEqual(["foo", "bar"]);
       expect(resp.text).toBe("foobar");

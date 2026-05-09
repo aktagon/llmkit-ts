@@ -411,6 +411,68 @@ describe("Phase 3 slice 1 — Text.prompt wired", () => {
     }>;
     expect(messages[0]?.content).toBe("hello world");
   });
+
+  test("sampling/penalty/seed/stop/thinking/reasoning chain options reach the wire", async () => {
+    let openaiBody: Record<string, unknown> | undefined;
+    const openaiResp = JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+    const server = startMockServer(async (req) => {
+      openaiBody = (await req.json()) as Record<string, unknown>;
+      return new Response(openaiResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = openai("sk");
+      c.provider.baseUrl = server.url;
+      await c.text
+        .topP(0.85)
+        .frequencyPenalty(0.5)
+        .presencePenalty(-0.25)
+        .seed(42)
+        .stopSequences("END", "STOP")
+        .reasoningEffort("low")
+        .prompt("hi");
+    } finally {
+      server.stop();
+    }
+    if (!openaiBody) throw new Error("server never received a request body");
+    expect(openaiBody.top_p).toBe(0.85);
+    expect(openaiBody.frequency_penalty).toBe(0.5);
+    expect(openaiBody.presence_penalty).toBe(-0.25);
+    expect(openaiBody.seed).toBe(42);
+    expect(openaiBody.stop).toEqual(["END", "STOP"]);
+    expect(openaiBody.reasoning_effort).toBe("low");
+
+    // Anthropic-only wirings: topK + thinkingBudget
+    let anthropicBody: Record<string, unknown> | undefined;
+    const aResp = JSON.stringify({
+      content: [{ type: "text", text: "ok" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    const server2 = startMockServer(async (req) => {
+      anthropicBody = (await req.json()) as Record<string, unknown>;
+      return new Response(aResp, {
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server2.url;
+      await c.text.topK(40).thinkingBudget(1024).prompt("hi");
+    } finally {
+      server2.stop();
+    }
+    if (!anthropicBody)
+      throw new Error("server2 never received a request body");
+    expect(anthropicBody.top_k).toBe(40);
+    expect(anthropicBody.thinking).toEqual({
+      budget_tokens: 1024,
+      type: "enabled",
+    });
+  });
 });
 
 describe("Phase 3 slice 1 — Image.generate wired", () => {
