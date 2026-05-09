@@ -702,10 +702,43 @@ describe("Phase 3 slice 2a — Upload.run wired", () => {
     ).rejects.toThrow(/mutually exclusive/);
   });
 
-  test("validation: path-only is deferred to TS slice follow-up", async () => {
-    await expect(openai("k").upload.path("/x").run()).rejects.toThrow(
-      /not yet wired/,
-    );
+  test("path() reads from disk via Bun.file() / node:fs", async () => {
+    // Nonexistent path surfaces the underlying ENOENT (or wrapper)
+    // rather than a "not yet wired" sentinel.
+    await expect(
+      openai("k").upload.path("/nonexistent/llmkit-x").run(),
+    ).rejects.toThrow(/no such file|ENOENT/i);
+  });
+
+  test("path() round-trips a real file through the multipart upload", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const pathMod = await import("node:path");
+    const dir = await fs.mkdtemp(pathMod.join(os.tmpdir(), "llmkit-up-"));
+    const fpath = pathMod.join(dir, "note.txt");
+    await fs.writeFile(fpath, "hello");
+
+    let capturedBody: string | undefined;
+    const server = startMockServer(async (req) => {
+      capturedBody = await req.text();
+      return new Response(
+        JSON.stringify({ id: "file-zzz", filename: "note.txt" }),
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+    try {
+      const c = openai("k");
+      c.provider.baseUrl = server.url;
+      const file = await c.upload.path(fpath).run();
+      expect(file.id).toBe("file-zzz");
+    } finally {
+      server.stop();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+    // The multipart body MUST carry the file content + the filename
+    // we derived from the path.
+    expect(capturedBody).toContain("hello");
+    expect(capturedBody).toContain('filename="note.txt"');
   });
 });
 
