@@ -51,6 +51,8 @@ function initAgent(b: Agent): AgentState {
   if (b._thinkingBudget !== undefined)
     options.thinkingBudget = b._thinkingBudget;
   if (b._reasoningEffort) options.reasoningEffort = b._reasoningEffort;
+  if (b._maxToolIterations !== undefined)
+    options.maxToolIterations = b._maxToolIterations;
   if (b._caching) options.caching = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
 
