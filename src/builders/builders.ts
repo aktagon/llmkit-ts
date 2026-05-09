@@ -32,6 +32,7 @@ import { textStream } from "./stream.ts";
 import { textPrompt } from "./text.ts";
 import { uploadRun } from "./upload.ts";
 import type { AgentState } from "./agent.ts";
+import type { TextStream } from "./stream.ts";
 
 export class Client {
   provider: ProviderConfig;
@@ -129,7 +130,7 @@ export class Text {
   async prompt(msg: string): Promise<Response> {
     return textPrompt(this, msg);
   }
-  stream(msg: string): AsyncIterable<string> {
+  stream(msg: string): TextStream {
     return textStream(this, msg);
   }
   async batch(...prompts: string[]): Promise<Response[]> {
