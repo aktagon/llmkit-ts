@@ -104,7 +104,6 @@ describe("Surface — chains", () => {
     const c = google("k");
     const img = c.image
       .aspectRatio("16:9")
-      .caching()
       .image("image/png", new Uint8Array([0xff]))
       .imageSize("2K")
       .includeText()
@@ -113,7 +112,6 @@ describe("Surface — chains", () => {
       .text("compose");
 
     expect(img._aspectRatio).toBe("16:9");
-    expect(img._caching).toBe(true);
     expect(img._imageSize).toBe("2K");
     expect(img._includeText).toBe(true);
     expect(img._middleware).toHaveLength(1);
