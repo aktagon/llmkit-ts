@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { prompt } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 
 function startMockJSON(
@@ -40,11 +40,12 @@ describe("caching — Anthropic ExplicitCaching", () => {
       },
     );
     try {
-      const resp = await prompt(
-        { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
-        { system: "long system prompt", user: "hi" },
-        { caching: true },
-      );
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text
+        .system("long system prompt")
+        .caching()
+        .prompt("hi");
       expect(capturedBody?.system).toEqual([
         {
           type: "text",
@@ -75,10 +76,9 @@ describe("caching — Anthropic ExplicitCaching", () => {
       },
     );
     try {
-      const resp = await prompt(
-        { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
-        { system: "sys", user: "hi" },
-      );
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.system("sys").prompt("hi");
       expect(capturedBody?.system).toBe("sys");
       expect(resp.tokens.cacheRead).toBe(7);
       expect(resp.tokens.cacheWrite).toBe(0);
@@ -105,11 +105,9 @@ describe("caching — OpenAI AutomaticCaching", () => {
       },
     );
     try {
-      const resp = await prompt(
-        { name: Providers.openai, apiKey: "sk", baseUrl: server.url },
-        { system: "sys", user: "hi" },
-        { caching: true },
-      );
+      const c = newClient(Providers.openai, "sk");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.system("sys").caching().prompt("hi");
       // OpenAI is automatic — no cache_control wrapping anywhere.
       const messages = capturedBody?.messages as Array<Record<string, unknown>>;
       expect(messages[0]?.content).toBe("sys");

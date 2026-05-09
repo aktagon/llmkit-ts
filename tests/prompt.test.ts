@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { prompt } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { APIError } from "../src/errors.ts";
 import { Providers } from "../src/providers/providers.ts";
 
@@ -38,14 +38,9 @@ describe("prompt — Anthropic", () => {
     });
 
     try {
-      const resp = await prompt(
-        {
-          name: Providers.anthropic,
-          apiKey: "test-key",
-          baseUrl: server.url,
-        },
-        { system: "Reply with pong", user: "ping" },
-      );
+      const c = newClient(Providers.anthropic, "test-key");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.system("Reply with pong").prompt("ping");
 
       expect(resp.text).toBe("pong");
       expect(resp.tokens.input).toBe(5);
@@ -79,14 +74,9 @@ describe("prompt — Anthropic", () => {
     try {
       let caught: unknown;
       try {
-        await prompt(
-          {
-            name: Providers.anthropic,
-            apiKey: "test-key",
-            baseUrl: server.url,
-          },
-          { user: "ping" },
-        );
+        const c = newClient(Providers.anthropic, "test-key");
+        c.provider.baseUrl = server.url;
+        await c.text.prompt("ping");
       } catch (err) {
         caught = err;
       }
@@ -118,14 +108,9 @@ describe("prompt — OpenAI", () => {
     });
 
     try {
-      const resp = await prompt(
-        {
-          name: Providers.openai,
-          apiKey: "test-key",
-          baseUrl: server.url,
-        },
-        { system: "Reply with pong", user: "ping" },
-      );
+      const c = newClient(Providers.openai, "test-key");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.system("Reply with pong").prompt("ping");
 
       expect(resp.text).toBe("pong");
       expect(resp.tokens.input).toBe(18);
@@ -161,10 +146,9 @@ describe("prompt — reasoning tokens", () => {
         ),
     );
     try {
-      const response = await prompt(
-        { name: Providers.openai, apiKey: "sk-test", baseUrl: server.url },
-        { user: "think" },
-      );
+      const c = newClient(Providers.openai, "sk-test");
+      c.provider.baseUrl = server.url;
+      const response = await c.text.prompt("think");
       expect(response.tokens.reasoning).toBe(17);
       expect(response.tokens.input).toBe(40);
       expect(response.tokens.output).toBe(25);
@@ -185,10 +169,9 @@ describe("prompt — reasoning tokens", () => {
         ),
     );
     try {
-      const response = await prompt(
-        { name: Providers.anthropic, apiKey: "sk-test", baseUrl: server.url },
-        { user: "hi" },
-      );
+      const c = newClient(Providers.anthropic, "sk-test");
+      c.provider.baseUrl = server.url;
+      const response = await c.text.prompt("hi");
       expect(response.tokens.reasoning).toBe(0);
     } finally {
       server.stop();

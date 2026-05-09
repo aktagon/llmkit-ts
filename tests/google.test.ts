@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Agent } from "../src/agent.ts";
-import { prompt } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 
 interface Captured {
@@ -47,25 +47,24 @@ describe("Google — SystemPlacement.SiblingObject", () => {
       captured,
     );
     try {
-      const resp = await prompt(
-        { name: Providers.google, apiKey: "g-key", baseUrl: server.url },
-        { system: "Be terse.", user: "hi" },
-      );
+      const c = newClient(Providers.google, "g-key");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.system("Be terse.").prompt("hi");
       expect(resp.text).toBe("hi from gemini");
       expect(resp.tokens.input).toBe(8);
       expect(resp.tokens.output).toBe(4);
-      const c = captured[0]!;
-      expect(c.url).toContain(":generateContent");
-      expect(c.url).toContain("gemini-2.5-flash");
-      expect(c.url).toContain("key=g-key");
-      expect(c.body.system_instruction).toEqual({
+      const cap = captured[0]!;
+      expect(cap.url).toContain(":generateContent");
+      expect(cap.url).toContain("gemini-2.5-flash");
+      expect(cap.url).toContain("key=g-key");
+      expect(cap.body.system_instruction).toEqual({
         parts: [{ text: "Be terse." }],
       });
-      const contents = c.body.contents as Array<Record<string, unknown>>;
+      const contents = cap.body.contents as Array<Record<string, unknown>>;
       expect(contents).toHaveLength(1);
       expect(contents[0]?.role).toBe("user");
       expect(contents[0]?.parts).toEqual([{ text: "hi" }]);
-      expect(c.body.messages).toBeUndefined();
+      expect(cap.body.messages).toBeUndefined();
     } finally {
       server.stop();
     }
@@ -172,11 +171,12 @@ describe("Google — ResourceCaching", () => {
       captured,
     );
     try {
-      const resp = await prompt(
-        { name: Providers.google, apiKey: "g-key", baseUrl: server.url },
-        { system: "Long cached system prompt.", user: "Q" },
-        { caching: true },
-      );
+      const c = newClient(Providers.google, "g-key");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text
+        .system("Long cached system prompt.")
+        .caching()
+        .prompt("Q");
       expect(resp.text).toBe("cached answer");
       expect(resp.tokens.cacheRead).toBe(1024);
       // 1st call: cache create

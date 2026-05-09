@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { prompt, Agent } from "../src/llmkit.ts";
+import { Agent } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 
 interface Captured {
@@ -74,35 +75,33 @@ describe("Bedrock — Converse + SigV4", () => {
       captured,
     );
     try {
-      const resp = await prompt(
-        {
-          name: Providers.bedrock,
-          apiKey: "AKID-test",
-          baseUrl: server.url,
-        },
-        { system: "x", user: "y" },
-      );
+      const c = newClient(Providers.bedrock, "AKID-test");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.system("x").prompt("y");
       expect(resp.text).toBe("answer");
       expect(resp.tokens.input).toBe(7);
       expect(resp.tokens.output).toBe(3);
-      const c = captured[0]!;
+      const cap = captured[0]!;
       // Converse body shape
-      expect(c.body.system).toEqual([{ text: "x" }]);
-      const messages = c.body.messages as Array<Record<string, unknown>>;
+      expect(cap.body.system).toEqual([{ text: "x" }]);
+      const messages = cap.body.messages as Array<Record<string, unknown>>;
       expect(messages).toEqual([{ role: "user", content: [{ text: "y" }] }]);
       // inferenceConfig wrapping
-      const inferenceConfig = c.body.inferenceConfig as Record<string, unknown>;
+      const inferenceConfig = cap.body.inferenceConfig as Record<
+        string,
+        unknown
+      >;
       expect(inferenceConfig.maxTokens).toBe(4096);
-      expect(c.body.max_tokens).toBeUndefined();
+      expect(cap.body.max_tokens).toBeUndefined();
       // Endpoint templating
-      expect(c.url).toContain(
+      expect(cap.url).toContain(
         "/model/anthropic.claude-sonnet-4-20250514-v1:0/converse",
       );
       // SigV4 signed
-      expect(c.authorization).toMatch(
+      expect(cap.authorization).toMatch(
         /^AWS4-HMAC-SHA256 Credential=AKID-test\/\d{8}\/us-east-1\/bedrock\/aws4_request,/,
       );
-      expect(c.amzDate).toMatch(/^\d{8}T\d{6}Z$/);
+      expect(cap.amzDate).toMatch(/^\d{8}T\d{6}Z$/);
     } finally {
       server.stop();
     }

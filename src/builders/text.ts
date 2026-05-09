@@ -1,31 +1,44 @@
-// Phase 3 slice 1 — wires Text.prompt against the legacy free-function
-// runtime. The codegen-emitted Text.prompt method delegates to
-// `textPrompt(this, msg)` (see TS_BUILDER_SKIP_TERMINALS in
-// codegen/generate.py). This file owns the request translation; the
-// generated class body is just a thin forwarder so coverage tooling
-// sees the method body executed.
+// D2.1 (plan-018) — owns the runtime for *Text.prompt. The body
+// previously lived in `prompt(provider, request, options)` exported
+// from llmkit.ts; that public free function was absorbed here so the
+// typed-builder is the single canonical entry point.
+//
+// `buildPromptArgs` translates a chained Text builder + final user
+// message into the lower-level (provider, Request, PromptOptions)
+// triple consumed by request.ts helpers. Doing this lift lets us
+// reuse the existing buildRequest/executeRequest/applyCaching layer
+// without duplicating ~150 LOC of provider-specific request shaping.
+//
+// Limitations carried over from slice 1:
+//  - `_files` is ignored (legacy TS Request has no `files` field).
+//  - Image parts in `_parts` are ignored (legacy TS Request has no
+//    `images` field). Text parts are concatenated, then `finalText`
+//    is appended as the last text segment if non-empty.
+// Both gaps are tracked under ADR-008 OQ-2.
 
-import { prompt as legacyPrompt } from "../llmkit.ts";
+import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
+import { APIError, ValidationError } from "../errors.ts";
+import { extractPath, extractIntPath } from "../paths.ts";
+import { applyCaching, parseCacheUsage } from "../caching.ts";
+import {
+  buildRequest as buildLegacyRequest,
+  executeRequest,
+  validateOptions,
+} from "../request.ts";
+import { firePost, firePre } from "../middleware.ts";
+import type { Event } from "../providers/middleware.ts";
 import type { PromptOptions, Provider, Request, Response } from "../types.ts";
 import type { Text } from "./builders.ts";
 
 /**
  * Translates a chained Text builder + final prompt text into the
- * legacy `prompt` API's three arguments: provider, request, options.
- *
- * Limitations in slice 1:
- *  - `_files` is ignored (legacy TS Request has no `files` field; mirror
- *    of how Go's slice 1 handled the same gap before Request was extended).
- *  - Image parts in `_parts` are ignored (legacy TS Request has no `images`
- *    field). Text parts in `_parts` are concatenated, then `finalText` is
- *    appended as the last text segment if non-empty. This matches Go
- *    slice 1's `splitTextAndImages` behaviour minus the image side.
- *
- * Both gaps are tracked under ADR-008 OQ-2 (text generation onto Part-based
- * vocabulary across SDKs).
+ * triple consumed by the lower-level legacy runtime: provider,
+ * Request, PromptOptions. Same behaviour as the slice-1 buildRequest
+ * helper; renamed so it doesn't collide with `buildRequest` from
+ * request.ts (which builds the on-the-wire body).
  */
-export function buildRequest(
+export function buildPromptArgs(
   b: Text,
   finalText: string,
 ): { provider: Provider; request: Request; options: PromptOptions } {
@@ -45,7 +58,7 @@ export function buildRequest(
   const user = textSegments.join("");
 
   // Legacy TS Request treats `messages` and `user` as mutually exclusive
-  // (request.ts:205 uses if/else if). The typed-builder shields callers
+  // (request.ts uses if/else if). The typed-builder shields callers
   // from that quirk: when history is present, append the final user turn
   // to the message list; otherwise use the simpler `user` field.
   const request: Request = {};
@@ -80,6 +93,69 @@ export function buildRequest(
 }
 
 export async function textPrompt(b: Text, msg: string): Promise<Response> {
-  const { provider, request, options } = buildRequest(b, msg);
-  return await legacyPrompt(provider, request, options);
+  const { provider, request, options } = buildPromptArgs(b, msg);
+
+  const cfg = PROVIDERS[provider.name];
+  if (!cfg) {
+    throw new ValidationError("provider", `unknown: ${provider.name}`);
+  }
+  if (!provider.apiKey) {
+    throw new ValidationError("apiKey", "required");
+  }
+
+  validateOptions(provider.name, options);
+
+  const baseEvent: Event = {
+    op: "llm_request",
+    phase: "pre",
+    provider: provider.name,
+    model: provider.model || cfg.defaultModel,
+  };
+  const veto = firePre(options.middleware, baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
+
+  try {
+    const body = buildLegacyRequest(provider, request, cfg, options);
+    if (options.caching) {
+      await applyCaching(body, provider, cfg, options);
+    }
+
+    const resp = await executeRequest(provider, cfg, body, options);
+    if (!resp.ok) {
+      throw new APIError(
+        resp.status,
+        resp.text,
+        resp.status === 429 || resp.status >= 500,
+      );
+    }
+
+    const raw = JSON.parse(resp.text) as unknown;
+    const cache = parseCacheUsage(raw, provider.name);
+    const result: Response = {
+      text: extractPath(raw, cfg.responseTextPath),
+      tokens: {
+        input: extractIntPath(raw, cfg.usageInputPath),
+        output: extractIntPath(raw, cfg.usageOutputPath),
+        cacheWrite: cache.write,
+        cacheRead: cache.read,
+        reasoning: cfg.reasoningTokensPath
+          ? extractIntPath(raw, cfg.reasoningTokensPath)
+          : 0,
+      },
+    };
+    firePost(options.middleware, {
+      ...baseEvent,
+      usage: result.tokens,
+      duration: performance.now() - start,
+    });
+    return result;
+  } catch (err) {
+    firePost(options.middleware, {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
+  }
 }

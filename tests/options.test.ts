@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { prompt } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { ValidationError } from "../src/errors.ts";
 import { Providers } from "../src/providers/providers.ts";
 
@@ -51,16 +51,14 @@ async function captureBody(
 describe("prompt — option setters", () => {
   test("OpenAI: frequencyPenalty, presencePenalty, seed, stopSequences land with snake_case keys", async () => {
     const body = await captureBody(openaiResp, async (url) => {
-      await prompt(
-        { name: Providers.openai, apiKey: "sk", baseUrl: url },
-        { user: "hi" },
-        {
-          frequencyPenalty: 0.5,
-          presencePenalty: -0.25,
-          seed: 42,
-          stopSequences: ["END"],
-        },
-      );
+      const c = newClient(Providers.openai, "sk");
+      c.provider.baseUrl = url;
+      await c.text
+        .frequencyPenalty(0.5)
+        .presencePenalty(-0.25)
+        .seed(42)
+        .stopSequences("END")
+        .prompt("hi");
     });
     expect(body.frequency_penalty).toBe(0.5);
     expect(body.presence_penalty).toBe(-0.25);
@@ -70,11 +68,9 @@ describe("prompt — option setters", () => {
 
   test("Anthropic: topK and stopSequences land at top level with their provider json keys", async () => {
     const body = await captureBody(anthropicResp, async (url) => {
-      await prompt(
-        { name: Providers.anthropic, apiKey: "k", baseUrl: url },
-        { user: "hi" },
-        { topK: 5, stopSequences: ["END"] },
-      );
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = url;
+      await c.text.topK(5).stopSequences("END").prompt("hi");
     });
     expect(body.top_k).toBe(5);
     expect(body.stop_sequences).toEqual(["END"]);
@@ -82,32 +78,26 @@ describe("prompt — option setters", () => {
 
   test("Anthropic: thinkingBudget nests under thinking.* and merges extraFieldsJson", async () => {
     const body = await captureBody(anthropicResp, async (url) => {
-      await prompt(
-        { name: Providers.anthropic, apiKey: "k", baseUrl: url },
-        { user: "hi" },
-        { thinkingBudget: 1024 },
-      );
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = url;
+      await c.text.thinkingBudget(1024).prompt("hi");
     });
     expect(body.thinking).toEqual({ budget_tokens: 1024, type: "enabled" });
   });
 
   test("OpenAI: reasoningEffort accepts allowed values; rejects others", async () => {
     const body = await captureBody(openaiResp, async (url) => {
-      await prompt(
-        { name: Providers.openai, apiKey: "sk", baseUrl: url },
-        { user: "hi" },
-        { reasoningEffort: "low" },
-      );
+      const c = newClient(Providers.openai, "sk");
+      c.provider.baseUrl = url;
+      await c.text.reasoningEffort("low").prompt("hi");
     });
     expect(body.reasoning_effort).toBe("low");
 
     let caught: unknown;
     try {
-      await prompt(
-        { name: Providers.openai, apiKey: "sk", baseUrl: "http://localhost:1" },
-        { user: "hi" },
-        { reasoningEffort: "yolo" },
-      );
+      const c = newClient(Providers.openai, "sk");
+      c.provider.baseUrl = "http://localhost:1";
+      await c.text.reasoningEffort("yolo").prompt("hi");
     } catch (err) {
       caught = err;
     }
@@ -117,15 +107,9 @@ describe("prompt — option setters", () => {
   test("Anthropic: frequencyPenalty rejected as unsupported", async () => {
     let caught: unknown;
     try {
-      await prompt(
-        {
-          name: Providers.anthropic,
-          apiKey: "k",
-          baseUrl: "http://localhost:1",
-        },
-        { user: "hi" },
-        { frequencyPenalty: 0.1 },
-      );
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = "http://localhost:1";
+      await c.text.frequencyPenalty(0.1).prompt("hi");
     } catch (err) {
       caught = err;
     }
@@ -135,11 +119,9 @@ describe("prompt — option setters", () => {
 
   test("Google: options nest under generationConfig (wrapsOptionsIn)", async () => {
     const body = await captureBody(googleResp, async (url) => {
-      await prompt(
-        { name: Providers.google, apiKey: "k", baseUrl: url },
-        { user: "hi" },
-        { temperature: 0.7, topK: 10, maxTokens: 256 },
-      );
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = url;
+      await c.text.temperature(0.7).topK(10).maxTokens(256).prompt("hi");
     });
     const gc = body.generationConfig as Record<string, unknown>;
     expect(gc).toBeDefined();

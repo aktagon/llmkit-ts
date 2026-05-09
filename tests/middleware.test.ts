@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { Agent, MiddlewareVetoError, prompt } from "../src/llmkit.ts";
+import { Agent, MiddlewareVetoError } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 import type { Event, MiddlewareFn } from "../src/providers/middleware.ts";
 
@@ -44,11 +45,9 @@ describe("middleware — observation", () => {
       },
     ]);
     try {
-      await prompt(
-        { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
-        { user: "hi" },
-        { middleware: [observer] },
-      );
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      await c.text.middleware(observer).prompt("hi");
       expect(events).toHaveLength(2);
       expect(events[0]?.op).toBe("llm_request");
       expect(events[0]?.phase).toBe("pre");
@@ -78,13 +77,11 @@ describe("middleware — veto", () => {
     const veto: MiddlewareFn = (_ctx, _e) => new Error("blocked by policy");
     const server = startMockJSON([{ should: "never be called" }]);
     try {
-      await expect(
-        prompt(
-          { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
-          { user: "hi" },
-          { middleware: [veto] },
-        ),
-      ).rejects.toThrow(MiddlewareVetoError);
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      await expect(c.text.middleware(veto).prompt("hi")).rejects.toThrow(
+        MiddlewareVetoError,
+      );
       expect(server.calls).toBe(0);
     } finally {
       server.stop();
@@ -107,13 +104,11 @@ describe("middleware — veto", () => {
     };
     const server = startMockJSON([{ x: 1 }]);
     try {
-      await expect(
-        prompt(
-          { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
-          { user: "hi" },
-          { middleware: [m1, m2, m3] },
-        ),
-      ).rejects.toThrow(MiddlewareVetoError);
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      await expect(c.text.middleware(m1, m2, m3).prompt("hi")).rejects.toThrow(
+        MiddlewareVetoError,
+      );
       expect(order).toEqual(["m1", "m2"]);
       expect(server.calls).toBe(0);
     } finally {
@@ -184,11 +179,13 @@ describe("middleware — upload, batch_submit, cache_create", () => {
       },
     ]);
     try {
-      await prompt(
-        { name: Providers.google, apiKey: "g", baseUrl: server.url },
-        { system: "long sys", user: "q" },
-        { caching: true, middleware: [observer] },
-      );
+      const c = newClient(Providers.google, "g");
+      c.provider.baseUrl = server.url;
+      await c.text
+        .system("long sys")
+        .caching()
+        .middleware(observer)
+        .prompt("q");
       const ops = events.map((e) => `${e.op}:${e.phase}`);
       // llm_request:pre fires first, then cache_create:pre/post inside it,
       // then llm_request:post after the main call.
