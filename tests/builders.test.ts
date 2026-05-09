@@ -771,10 +771,19 @@ describe("Phase 3 slice 2b — Text.stream wired", () => {
       const c = openai("k");
       c.provider.baseUrl = server.url;
       const got: string[] = [];
-      for await (const chunk of c.text.stream("hi")) {
+      const stream = c.text.stream("hi");
+      for await (const chunk of stream) {
         got.push(chunk);
       }
       expect(got).toEqual(["Hel", "lo ", "world"]);
+      // Trailing handle: response() carries the accumulated text +
+      // tokens after iteration completes.
+      const resp = stream.response();
+      expect(resp).not.toBeNull();
+      expect(resp!.text).toBe("Hello world");
+      expect(resp!.tokens.input).toBe(1);
+      expect(resp!.tokens.output).toBe(3);
+      expect(stream.error()).toBeNull();
     } finally {
       server.stop();
     }
