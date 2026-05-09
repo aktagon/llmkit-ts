@@ -2,12 +2,10 @@ import { PROVIDERS } from "./providers/providers.ts";
 import { type StreamDef, streamConfig } from "./providers/stream.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractPath, extractIntPath } from "./paths.ts";
-import { applyCaching, parseCacheUsage } from "./caching.ts";
 import {
   buildRequest,
   buildAuthHeaders,
   buildUrl,
-  executeRequest,
   validateOptions,
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
@@ -46,76 +44,6 @@ export { Agent } from "./agent.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export type { Tool, AgentOptions } from "./types.ts";
-
-export async function prompt(
-  provider: Provider,
-  request: PromptRequest,
-  options: PromptOptions = {},
-): Promise<PromptResponse> {
-  const cfg = PROVIDERS[provider.name];
-  if (!cfg) {
-    throw new ValidationError("provider", `unknown: ${provider.name}`);
-  }
-  if (!provider.apiKey) {
-    throw new ValidationError("apiKey", "required");
-  }
-
-  validateOptions(provider.name, options);
-
-  const baseEvent: Event = {
-    op: "llm_request",
-    phase: "pre",
-    provider: provider.name,
-    model: provider.model || cfg.defaultModel,
-  };
-  const veto = firePre(options.middleware, baseEvent);
-  if (veto) throw veto;
-  const start = performance.now();
-
-  try {
-    const body = buildRequest(provider, request, cfg, options);
-    if (options.caching) {
-      await applyCaching(body, provider, cfg, options);
-    }
-
-    const resp = await executeRequest(provider, cfg, body, options);
-    if (!resp.ok) {
-      throw new APIError(
-        resp.status,
-        resp.text,
-        resp.status === 429 || resp.status >= 500,
-      );
-    }
-
-    const raw = JSON.parse(resp.text) as unknown;
-    const cache = parseCacheUsage(raw, provider.name);
-    const result: PromptResponse = {
-      text: extractPath(raw, cfg.responseTextPath),
-      tokens: {
-        input: extractIntPath(raw, cfg.usageInputPath),
-        output: extractIntPath(raw, cfg.usageOutputPath),
-        cacheWrite: cache.write,
-        cacheRead: cache.read,
-        reasoning: cfg.reasoningTokensPath
-          ? extractIntPath(raw, cfg.reasoningTokensPath)
-          : 0,
-      },
-    };
-    firePost(options.middleware, {
-      ...baseEvent,
-      usage: result.tokens,
-      duration: performance.now() - start,
-    });
-    return result;
-  } catch (err) {
-    firePost(options.middleware, {
-      ...baseEvent,
-      err: err instanceof Error ? err : new Error(String(err)),
-      duration: performance.now() - start,
-    });
-    throw err;
-  }
-}
 
 export async function promptStream(
   provider: Provider,

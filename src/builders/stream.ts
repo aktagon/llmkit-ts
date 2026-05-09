@@ -19,7 +19,7 @@
 
 import { promptStream as legacyPromptStream } from "../llmkit.ts";
 import type { Text } from "./builders.ts";
-import { buildRequest } from "./text.ts";
+import { buildPromptArgs } from "./text.ts";
 
 // Maximum chunks held in the bridge queue before the producer
 // pauses. Matches Go chan(64) and Python asyncio.Queue(maxsize=64)
@@ -29,7 +29,7 @@ import { buildRequest } from "./text.ts";
 const STREAM_QUEUE_MAX = 64;
 
 export async function* textStream(b: Text, msg: string): AsyncIterable<string> {
-  const { provider, request, options } = buildRequest(b, msg);
+  const { provider, request, options } = buildPromptArgs(b, msg);
   const ac = new AbortController();
   const opts = { ...options, signal: ac.signal };
 
