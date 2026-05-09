@@ -24,7 +24,6 @@ export type {
   Part,
   ImageOptions,
 } from "./image.ts";
-export { Agent } from "./agent.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export type { Tool, AgentOptions } from "./types.ts";
