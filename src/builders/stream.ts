@@ -226,80 +226,129 @@ async function consumeSSE(
   }
 }
 
-export async function* textStream(b: Text, msg: string): AsyncIterable<string> {
-  const { provider, request, options } = buildPromptArgs(b, msg);
-  const ac = new AbortController();
-  const opts = { ...options, signal: ac.signal };
 
-  const queue: string[] = [];
-  let consumerWaiter: { resolve: () => void } | null = null;
-  let producerWaiter: { resolve: () => void } | null = null;
-  let done = false;
-  let error: Error | null = null;
 
-  const wakeConsumer = () => {
-    const w = consumerWaiter;
-    consumerWaiter = null;
-    w?.resolve();
-  };
 
-  const wakeProducer = () => {
-    const w = producerWaiter;
-    producerWaiter = null;
-    w?.resolve();
-  };
 
-  runStream(
-    provider,
-    request,
-    async (chunk) => {
-      queue.push(chunk);
-      wakeConsumer();
-      //
-      //
-      //
-      //
-      while (queue.length >= STREAM_QUEUE_MAX) {
+
+
+
+
+
+
+
+
+export class TextStream implements AsyncIterable<string> {
+  #provider: Provider;
+  #request: PromptRequest;
+  #options: PromptOptions;
+  #resp: PromptResponse | null = null;
+  #err: Error | null = null;
+
+  constructor(b: Text, msg: string) {
+    const { provider, request, options } = buildPromptArgs(b, msg);
+    this.#provider = provider;
+    this.#request = request;
+    this.#options = options;
+  }
+
+
+  response(): PromptResponse | null {
+    return this.#resp;
+  }
+
+
+  error(): Error | null {
+    return this.#err;
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<string> {
+    return this.#iterate();
+  }
+
+  async *#iterate(): AsyncIterator<string> {
+    const ac = new AbortController();
+    const opts = { ...this.#options, signal: ac.signal };
+
+    const queue: string[] = [];
+    let consumerWaiter: { resolve: () => void } | null = null;
+    let producerWaiter: { resolve: () => void } | null = null;
+    let done = false;
+    let error: Error | null = null;
+    let response: PromptResponse | null = null;
+
+    const wakeConsumer = () => {
+      const w = consumerWaiter;
+      consumerWaiter = null;
+      w?.resolve();
+    };
+
+    const wakeProducer = () => {
+      const w = producerWaiter;
+      producerWaiter = null;
+      w?.resolve();
+    };
+
+    runStream(
+      this.#provider,
+      this.#request,
+      async (chunk) => {
+        queue.push(chunk);
+        wakeConsumer();
+        while (queue.length >= STREAM_QUEUE_MAX) {
+          await new Promise<void>((resolve) => {
+            producerWaiter = { resolve };
+          });
+        }
+      },
+      opts,
+    ).then(
+      (resp) => {
+        response = resp;
+        done = true;
+        wakeConsumer();
+      },
+      (err) => {
+        //
+        if (!(err instanceof Error) || err.name !== "AbortError") {
+          error = err instanceof Error ? err : new Error(String(err));
+        }
+        done = true;
+        wakeConsumer();
+      },
+    );
+
+    try {
+      while (true) {
+        if (queue.length > 0) {
+          const chunk = queue.shift() as string;
+          wakeProducer();
+          yield chunk;
+          continue;
+        }
+        if (done) {
+          this.#resp = response;
+          this.#err = error;
+          if (error) throw error;
+          return;
+        }
         await new Promise<void>((resolve) => {
-          producerWaiter = { resolve };
+          consumerWaiter = { resolve };
         });
       }
-    },
-    opts,
-  ).then(
-    () => {
-      done = true;
-      wakeConsumer();
-    },
-    (err) => {
-      //
-      if (!(err instanceof Error) || err.name !== "AbortError") {
-        error = err instanceof Error ? err : new Error(String(err));
-      }
-      done = true;
-      wakeConsumer();
-    },
-  );
-
-  try {
-    while (true) {
-      if (queue.length > 0) {
-        const chunk = queue.shift() as string;
+    } finally {
+      if (!done) {
+        ac.abort();
         wakeProducer();
-        yield chunk;
-        continue;
       }
-      if (done) {
-        if (error) throw error;
-        return;
-      }
-      await new Promise<void>((resolve) => {
-        consumerWaiter = { resolve };
-      });
+      //
+      //
+      if (this.#resp === null) this.#resp = response;
+      if (this.#err === null) this.#err = error;
     }
-  } finally {
-    if (!done) ac.abort();
-    //
-    wakeProducer();
   }
+}
+
+export function textStream(b: Text, msg: string): TextStream {
+  return new TextStream(b, msg);
 }
