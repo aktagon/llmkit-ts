@@ -28,17 +28,8 @@ export interface MediaRef {
 
 
 
+
 export type Part = { text: string } | { image: MediaRef };
-
-
-export function text(s: string): Part {
-  return { text: s };
-}
-
-
-export function image(mime: string, bytes: Uint8Array): Part {
-  return { image: { mimeType: mime, bytes } };
-}
 
 export interface ImageData {
   mimeType: string;
@@ -214,7 +205,7 @@ function normalizeImageParts(request: ImageRequest): Part[] {
   if (!hasPrompt && !hasParts) {
     throw new ValidationError("prompt", "set either prompt or parts");
   }
-  return hasPrompt ? [text(request.prompt!)] : (request.parts as Part[]);
+  return hasPrompt ? [{ text: request.prompt! }] : (request.parts as Part[]);
 }
 
 function buildImageBody(

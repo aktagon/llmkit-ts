@@ -17,7 +17,6 @@ export type {
 export { Providers } from "./providers/providers.ts";
 export { APIError, ValidationError } from "./errors.ts";
 export { uploadFile } from "./upload.ts";
-export { generateImage, text, image } from "./image.ts";
 export type {
   ImageRequest,
   ImageResponse,

@@ -2,9 +2,10 @@
 //
 //
 //
+//
 
 import {
-  generateImage as legacyGenerateImage,
+  generateImage as runImageGeneration,
   type ImageOptions,
   type ImageRequest,
   type ImageResponse,
@@ -42,5 +43,5 @@ export async function imageGenerate(
   if (b._includeText) options.includeText = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
 
-  return await legacyGenerateImage(provider, request, options);
+  return await runImageGeneration(provider, request, options);
 }
