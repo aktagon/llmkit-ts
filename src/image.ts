@@ -25,20 +25,11 @@ export interface MediaRef {
 
 /**
  * Universal multimodal input atom. Discriminated union: a Part is either
- * a text part or an image part. Same constructors (text, image) read
- * identically across every capability that takes user input.
+ * a text part or an image part. Construct via object literal — typed-builder
+ * accumulators (`c.text.text(s)`, `c.image.image(m, b)`, ...) are the
+ * canonical user-facing path.
  */
 export type Part = { text: string } | { image: MediaRef };
-
-/** Construct a text Part. */
-export function text(s: string): Part {
-  return { text: s };
-}
-
-/** Construct an image Part. mime is the IANA media type; bytes are raw (not base64). */
-export function image(mime: string, bytes: Uint8Array): Part {
-  return { image: { mimeType: mime, bytes } };
-}
 
 export interface ImageData {
   mimeType: string;
@@ -214,7 +205,7 @@ function normalizeImageParts(request: ImageRequest): Part[] {
   if (!hasPrompt && !hasParts) {
     throw new ValidationError("prompt", "set either prompt or parts");
   }
-  return hasPrompt ? [text(request.prompt!)] : (request.parts as Part[]);
+  return hasPrompt ? [{ text: request.prompt! }] : (request.parts as Part[]);
 }
 
 function buildImageBody(
