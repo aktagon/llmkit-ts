@@ -145,7 +145,6 @@ export class Text {
 export class Image {
   client: Client;
   _aspectRatio: string = "";
-  _caching: boolean = false;
   _parts: Part[] = [];
   _imageSize: string = "";
   _includeText: boolean = false;
@@ -155,7 +154,6 @@ export class Image {
   constructor(client: Client) { this.client = client; }
 
   aspectRatio(r: string): Image { const out = clone(this); out._aspectRatio = r; return out; }
-  caching(): Image { const out = clone(this); out._caching = true; return out; }
   image(mime: string, data: Uint8Array): Image { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   imageSize(s: string): Image { const out = clone(this); out._imageSize = s; return out; }
   includeText(): Image { const out = clone(this); out._includeText = true; return out; }
