@@ -1,5 +1,4 @@
 import { describe, test, expect } from "bun:test";
-import { Agent } from "../src/agent.ts";
 import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 
@@ -105,22 +104,20 @@ describe("Google — SystemPlacement.SiblingObject", () => {
       captured,
     );
     try {
-      const agent = new Agent({
-        name: Providers.google,
-        apiKey: "g-key",
-        baseUrl: server.url,
-      });
       let received: Record<string, unknown> | undefined;
-      agent.addTool({
-        name: "lookup",
-        description: "lookup id",
-        schema: { type: "object" },
-        run: (input) => {
-          received = input;
-          return "foo";
-        },
-      });
-      const resp = await agent.chat("look up 42");
+      const c = newClient(Providers.google, "g-key");
+      c.provider.baseUrl = server.url;
+      const resp = await c.agent
+        .tool({
+          name: "lookup",
+          description: "lookup id",
+          schema: { type: "object" },
+          run: (input) => {
+            received = input;
+            return "foo";
+          },
+        })
+        .prompt("look up 42");
       expect(resp.text).toBe("result is foo");
       expect(received).toEqual({ id: 42 });
       expect(resp.tokens.input).toBe(12);

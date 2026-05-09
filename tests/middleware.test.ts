@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { Agent, MiddlewareVetoError } from "../src/llmkit.ts";
+import { MiddlewareVetoError } from "../src/llmkit.ts";
 import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 import type { Event, MiddlewareFn } from "../src/providers/middleware.ts";
@@ -224,17 +224,17 @@ describe("middleware — Agent tool_call events", () => {
     ];
     const server = startMockJSON(responses);
     try {
-      const agent = new Agent(
-        { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
-        { middleware: [observer] },
-      );
-      agent.addTool({
-        name: "echo",
-        description: "echo",
-        schema: { type: "object" },
-        run: (input) => `got ${JSON.stringify(input)}`,
-      });
-      await agent.chat("call echo");
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      await c.agent
+        .middleware(observer)
+        .tool({
+          name: "echo",
+          description: "echo",
+          schema: { type: "object" },
+          run: (input) => `got ${JSON.stringify(input)}`,
+        })
+        .prompt("call echo");
 
       const ops = events.map((e) => `${e.op}:${e.phase}`);
       // Two LLM calls + one tool call, each with pre+post.

@@ -1,5 +1,4 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { Agent } from "../src/llmkit.ts";
 import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 
@@ -141,22 +140,20 @@ describe("Bedrock — Converse + SigV4", () => {
       captured,
     );
     try {
-      const agent = new Agent({
-        name: Providers.bedrock,
-        apiKey: "AKID-agent",
-        baseUrl: server.url,
-      });
       let received: Record<string, unknown> | undefined;
-      agent.addTool({
-        name: "weather",
-        description: "Get weather",
-        schema: { type: "object" },
-        run: (input) => {
-          received = input;
-          return "cold";
-        },
-      });
-      const resp = await agent.chat("weather?");
+      const c = newClient(Providers.bedrock, "AKID-agent");
+      c.provider.baseUrl = server.url;
+      const resp = await c.agent
+        .tool({
+          name: "weather",
+          description: "Get weather",
+          schema: { type: "object" },
+          run: (input) => {
+            received = input;
+            return "cold";
+          },
+        })
+        .prompt("weather?");
       expect(resp.text).toBe("It's cold.");
       expect(resp.tokens.input).toBe(17);
       expect(resp.tokens.output).toBe(8);

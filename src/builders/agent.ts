@@ -1,7 +1,8 @@
-// Phase 3 slice 2c — wires Agent.prompt + Agent.reset against the
-// legacy Agent class. The codegen-emitted methods delegate to
-// `agentPrompt(this, msg)` and `agentReset(this)` (see
-// TS_BUILDER_SKIP_TERMINALS in codegen/generate.py).
+// D2.6 (plan-018) — owns Agent.prompt + Agent.reset translation. The
+// legacy `Agent` class (formerly exported from llmkit.ts) is now
+// reachable only as an internal helper imported from agent.ts under
+// the alias `LegacyAgent`; the typed-builder is the only public entry
+// point for tool-calling sessions.
 //
 // Stateful builder pattern: *Agent (typed-builder) has a private
 // `_state?: AgentState` field that wraps a live LegacyAgent instance.
