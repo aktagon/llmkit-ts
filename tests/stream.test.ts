@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { promptStream } from "../src/llmkit.ts";
+import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 
 function startMockSSE(lines: string[]): { url: string; stop: () => void } {
@@ -17,8 +17,12 @@ function startMockSSE(lines: string[]): { url: string; stop: () => void } {
   };
 }
 
-describe("promptStream — OpenAI flavor (no event types)", () => {
-  test("delivers chunks, stops at [DONE], returns accumulated text", async () => {
+// Typed-builder *Text.stream returns AsyncIterable<string> — token
+// counts/totals aren't surfaced through the iterator (see Go D1.3b
+// equivalent gap with iter.Seq2). These tests only assert chunk
+// delivery + termination, which is the iterator's contract.
+describe("Text.stream — OpenAI flavor (no event types)", () => {
+  test("delivers chunks, stops at [DONE]", async () => {
     const server = startMockSSE([
       `data: {"choices":[{"delta":{"content":"hel"}}]}`,
       `data: {"choices":[{"delta":{"content":"lo"}}]}`,
@@ -26,25 +30,20 @@ describe("promptStream — OpenAI flavor (no event types)", () => {
       `data: [DONE]`,
     ]);
     try {
+      const c = newClient(Providers.openai, "sk");
+      c.provider.baseUrl = server.url;
       const chunks: string[] = [];
-      const resp = await promptStream(
-        { name: Providers.openai, apiKey: "sk", baseUrl: server.url },
-        { user: "hi" },
-        (c) => {
-          chunks.push(c);
-        },
-      );
+      for await (const chunk of c.text.stream("hi")) {
+        chunks.push(chunk);
+      }
       expect(chunks).toEqual(["hel", "lo", "!"]);
-      expect(resp.text).toBe("hello!");
-      expect(resp.tokens.input).toBe(3);
-      expect(resp.tokens.output).toBe(3);
     } finally {
       server.stop();
     }
   });
 });
 
-describe("promptStream — Anthropic flavor (event types)", () => {
+describe("Text.stream — Anthropic flavor (event types)", () => {
   test("dispatches only content_block_delta events, terminates on message_stop", async () => {
     const server = startMockSSE([
       `event: message_start`,
@@ -59,17 +58,13 @@ describe("promptStream — Anthropic flavor (event types)", () => {
       `data: {"type":"message_stop"}`,
     ]);
     try {
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
       const chunks: string[] = [];
-      const resp = await promptStream(
-        { name: Providers.anthropic, apiKey: "k", baseUrl: server.url },
-        { user: "hi" },
-        (c) => {
-          chunks.push(c);
-        },
-      );
+      for await (const chunk of c.text.stream("hi")) {
+        chunks.push(chunk);
+      }
       expect(chunks).toEqual(["foo", "bar"]);
-      expect(resp.text).toBe("foobar");
-      expect(resp.tokens.output).toBe(7);
     } finally {
       server.stop();
     }
