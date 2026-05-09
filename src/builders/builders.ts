@@ -172,6 +172,7 @@ export class Agent {
   _caching: boolean = false;
   _frequencyPenalty?: number;
   _maxTokens?: number;
+  _maxToolIterations?: number;
   _middleware: MiddlewareFn[] = [];
   _model: string = "";
   _presencePenalty?: number;
@@ -191,6 +192,7 @@ export class Agent {
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
   frequencyPenalty(v: number): Agent { const out = clone(this); out._frequencyPenalty = v; out._state = undefined; return out; }
   maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
+  maxToolIterations(n: number): Agent { const out = clone(this); out._maxToolIterations = n; out._state = undefined; return out; }
   middleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
   model(name: string): Agent { const out = clone(this); out._model = name; out._state = undefined; return out; }
   presencePenalty(v: number): Agent { const out = clone(this); out._presencePenalty = v; out._state = undefined; return out; }
