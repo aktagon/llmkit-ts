@@ -24,7 +24,6 @@ export type {
   Part,
   ImageOptions,
 } from "./image.ts";
-export { promptBatch, submitBatch, waitBatch } from "./batch.ts";
 export { Agent } from "./agent.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";

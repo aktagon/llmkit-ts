@@ -9,11 +9,12 @@
 //
 //
 //
+//
 
 import {
-  promptBatch as legacyPromptBatch,
-  submitBatch as legacySubmitBatch,
-  waitBatch as legacyWaitBatch,
+  promptBatch as runBatch,
+  submitBatch as runSubmitBatch,
+  waitBatch as runWaitBatch,
   type BatchOptions,
 } from "../batch.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -31,7 +32,7 @@ export class BatchHandle {
   }
 
   async wait(options: BatchOptions = {}): Promise<Response[]> {
-    return await legacyWaitBatch(
+    return await runWaitBatch(
       { id: this.id, provider: this.provider },
       options,
     );
@@ -73,7 +74,7 @@ export async function textBatch(
   ...prompts: string[]
 ): Promise<Response[]> {
   const { provider, requests, options } = batchInputs(b, prompts);
-  return await legacyPromptBatch(provider, requests, options);
+  return await runBatch(provider, requests, options);
 }
 
 export async function textSubmitBatch(
@@ -81,6 +82,6 @@ export async function textSubmitBatch(
   ...prompts: string[]
 ): Promise<BatchHandle> {
   const { provider, requests, options } = batchInputs(b, prompts);
-  const legacy = await legacySubmitBatch(provider, requests, options);
+  const legacy = await runSubmitBatch(provider, requests, options);
   return new BatchHandle(legacy.id, legacy.provider);
 }
