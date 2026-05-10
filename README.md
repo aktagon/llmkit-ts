@@ -1,31 +1,49 @@
 # @aktagon/llmkit-ts
 
-TypeScript library for unified LLM API access. Write OpenAI-shaped requests, hit any provider. Per-provider config in `src/providers/` is generated; runtime behavior (HTTP, transforms, agent loop, SigV4) is hand-coded with the help of AI. Shares a code-generation pipeline with the [Go SDK](https://github.com/aktagon/llmkit-go).
+TypeScript library for unified LLM API access. Write one chain, hit any provider. Per-provider config in `src/providers/` is generated; runtime behavior (HTTP, transforms, agent loop, SigV4) is hand-coded with the help of AI. Shares a code-generation pipeline with the [Go](https://github.com/aktagon/llmkit-go), [Python](https://github.com/aktagon/llmkit-python), and [Rust](https://github.com/aktagon/llmkit-rust) SDKs.
 
-Runtime: Bun, Node 19+, Deno, or any environment with `fetch` and Web Crypto.
+Runtime: Node ≥18, Bun, Deno, Cloudflare Workers, or any modern bundler (Vite, Next.js, esbuild, webpack 5+) — anywhere with `fetch` and Web Crypto.
 
 ## Install
 
+From npm:
+
 ```bash
-bun add github:aktagon/llmkit-ts
+bun add @aktagon/llmkit-ts
+# or
+npm install @aktagon/llmkit-ts
 ```
+
+From GitHub (skip the npm publish loop):
+
+```bash
+bun add github:aktagon/llmkit-ts#ts-v1.0.1
+# or
+npm install github:aktagon/llmkit-ts#ts-v1.0.1
+```
+
+The package ships compiled ESM in `dist/` (works in plain Node ESM, Workers, Deno) plus the TypeScript source in `src/` (consumed for type info by Bun, Vite, Next.js, and any bundler with `moduleResolution: "bundler"`). No build step required at the consumer.
 
 ## Quick Start
 
 ```ts
-import { prompt, Providers } from "@aktagon/llmkit-ts";
+import { anthropic } from "@aktagon/llmkit-ts/builders";
 
-const resp = await prompt(
-  { name: Providers.anthropic, apiKey: process.env.ANTHROPIC_API_KEY! },
-  { system: "You are helpful", user: "Hello" },
-);
+const c = anthropic(process.env.ANTHROPIC_API_KEY!);
+const resp = await c
+  .text()
+  .system("You are concise.")
+  .prompt("Why is the sky blue?");
+
 console.log(resp.text);
-console.log(resp.tokens.input, resp.tokens.output);
+console.log(resp.usage.input, resp.usage.output);
 ```
+
+The typed builder is the only public surface as of v1.0.0. One mental model — `client.<capability>().<chain>.<terminal>` — across every capability.
 
 ## Providers
 
-| Provider  | Default Model                               | Env Var           |
+| Provider  | Default model                               | Env var           |
 | --------- | ------------------------------------------- | ----------------- |
 | anthropic | claude-sonnet-4-6                           | ANTHROPIC_API_KEY |
 | openai    | gpt-4o                                      | OPENAI_API_KEY    |
@@ -43,55 +61,48 @@ console.log(resp.tokens.input, resp.tokens.output);
 
 27 providers, 4 API shapes (OpenAI-compatible, Anthropic Messages, Google Generative AI, AWS Bedrock Converse). Bedrock auth uses SigV4; other providers use API-key auth.
 
+Per-provider factory functions: `ai21`, `anthropic`, `azure`, `bedrock`, `cerebras`, `cohere`, `deepseek`, `doubao`, `ernie`, `fireworks`, `google`, `grok`, `groq`, `lmstudio`, `minimax`, `mistral`, `moonshot`, `ollama`, `openai`, `openrouter`, `perplexity`, `qwen`, `sambanova`, `together`, `vllm`, `yi`, `zhipu`. Or use the generic `newClient(name, key)`.
+
 ## API
 
-### prompt
-
-One-shot request:
+### Text — one-shot prompt
 
 ```ts
-const resp = await prompt(
-  provider,
-  {
-    system: "You are helpful",
-    user: "What is 2+2?",
-  },
-  { temperature: 0.7 },
-);
+const resp = await c
+  .text()
+  .system("You are helpful")
+  .temperature(0.7)
+  .maxTokens(200)
+  .prompt("What is 2+2?");
 
 console.log(resp.text); // "4"
-console.log(resp.tokens.input); // prompt tokens
-console.log(resp.tokens.output); // completion tokens
-console.log(resp.tokens.cacheRead); // tokens served from cache
-console.log(resp.tokens.cacheWrite); // tokens written to cache (Anthropic explicit)
-console.log(resp.tokens.reasoning); // internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
+console.log(resp.usage.input); // prompt tokens
+console.log(resp.usage.output); // completion tokens
+console.log(resp.usage.cacheRead); // tokens served from cache
+console.log(resp.usage.cacheWrite); // tokens written to cache (Anthropic explicit)
+console.log(resp.usage.reasoning); // internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
 ```
 
 Capability-scoped fields (`cacheRead`, `cacheWrite`, `reasoning`) are zero when the provider doesn't report them separately.
 
-### promptStream
-
-Streaming with a chunk callback:
+### Stream — chunks + trailing handle
 
 ```ts
-const resp = await promptStream(provider, { user: "Count to 5" }, (chunk) =>
-  process.stdout.write(chunk),
-);
-console.log("\n", resp.tokens);
+const stream = c.text().system("Be brief").stream("Tell me a joke");
+for await (const chunk of stream) {
+  process.stdout.write(chunk);
+}
+console.log("\n", stream.response()?.usage);
 ```
 
-Handles both Anthropic-style typed events (`event: content_block_delta`) and OpenAI-style data-only frames with the `data: [DONE]` sentinel.
+`TextStream` implements `AsyncIterable<string>`. After iteration completes, `stream.response()` returns the final `Response` (with token counts) and `stream.error()` returns any terminal error. Handles both Anthropic-style typed events and OpenAI-style data-only frames internally.
 
-### Agent with tools
-
-Multi-turn conversations with function calling:
+### Agent — tool loop
 
 ```ts
-import { Agent } from "@aktagon/llmkit-ts";
+import type { Tool } from "@aktagon/llmkit-ts";
 
-const agent = new Agent(provider);
-agent.setSystem("You are a calculator");
-agent.addTool({
+const add: Tool = {
   name: "add",
   description: "Add two numbers",
   schema: {
@@ -102,79 +113,52 @@ agent.addTool({
     },
   },
   run: ({ a, b }) => String(Number(a) + Number(b)),
-});
+};
 
-const resp = await agent.chat("What is 2+3?");
+const bot = c
+  .agent()
+  .system("You are a calculator.")
+  .tool(add)
+  .maxToolIterations(5);
+
+const resp = await bot.prompt("What is 2+3?");
 console.log(resp.text);
 ```
 
-The loop runs up to `maxToolIterations` (default 10), executing tools and feeding results back until the model returns text. Tool calls are dispatched per provider shape (Anthropic `tool_use`, OpenAI `tool_calls`, Google `functionCall`, Bedrock Converse `toolUse`).
+`*Agent` is **stateful** — repeated `bot.prompt(...)` calls accumulate history. Chain methods (`.system(...)`, `.tool(...)`) clone and reset state, so a forked builder gets a fresh conversation. `bot.reset()` clears state without dropping chained config.
 
-### uploadFile
+Tool dispatch covers Anthropic `tool_use`, OpenAI `tool_calls`, Google `functionCall`, and Bedrock Converse `toolUse`. Tool errors surface to the model as the result string verbatim — sanitise tool inputs at the source.
 
-Upload a file to a provider's file API:
-
-```ts
-import { uploadFile, Providers } from "@aktagon/llmkit-ts";
-
-const data = await Bun.file("document.pdf").bytes();
-const file = await uploadFile(
-  { name: Providers.openai, apiKey: process.env.OPENAI_API_KEY! },
-  data,
-  "document.pdf",
-);
-console.log(file.id, file.uri);
-```
-
-### GenerateImage
-
-Generate images from text, optionally conditioned on reference images for
-editing or composition. Currently supports Google's Nano Banana 2
-(`gemini-3.1-flash-image-preview`) and Pro (`gemini-3-pro-image-preview`).
-
-Text-to-image — pass `prompt` for the terse hot path:
+### Image — text-to-image and edit
 
 ```ts
-import { generateImage, Providers } from "@aktagon/llmkit-ts";
+import { google } from "@aktagon/llmkit-ts/builders";
 
-const resp = await generateImage(
-  { name: Providers.google, apiKey: process.env.GOOGLE_API_KEY! },
-  {
-    model: "gemini-3.1-flash-image-preview",
-    prompt: "A nano banana dish in a fancy restaurant",
-  },
-  { aspectRatio: "16:9", imageSize: "2K" },
-);
-await Bun.write("out.png", resp.images[0].bytes);
+const c = google(process.env.GOOGLE_API_KEY!);
+const img = await c
+  .image()
+  .model("gemini-3.1-flash-image-preview")
+  .aspectRatio("16:9")
+  .imageSize("2K")
+  .generate("A nano banana dish, studio lighting");
+
+await Bun.write("out.png", img.images[0].data);
 ```
 
-For editing or compositional generation, pass `parts` — an ordered
-sequence of text and image parts. The `text(...)` and `image(...)`
-constructors build each part; on-wire ordering matches the array order,
-so the model attends to descriptions and references in the pairing you
-intend:
+For compositional editing, chain `.text(...)` and `.image(mime, bytes)` to interleave references with descriptions. The terminal `msg` is appended as a final text Part:
 
 ```ts
-import { generateImage, text, image } from "@aktagon/llmkit-ts";
-
-const edited = await generateImage(provider, {
-  model: "gemini-3.1-flash-image-preview",
-  parts: [
-    text("Person:"),
-    image("image/png", personBytes),
-    text("Outfit:"),
-    image("image/png", outfitBytes),
-    text("Generate the person wearing the outfit."),
-  ],
-});
+await c
+  .image()
+  .model("gemini-3.1-flash-image-preview")
+  .text("Person:")
+  .image("image/png", personBytes)
+  .text("Outfit:")
+  .image("image/png", outfitBytes)
+  .generate("Generate the person wearing the outfit.");
 ```
 
-Set exactly one of `prompt` or `parts` — both empty or both set throws
-`ValidationError`.
-
-Aspect ratios and sizes are validated against a per-model whitelist before
-the HTTP request — `imageSize: "512"` on Pro throws `ValidationError`
-without paying for a 4xx round-trip.
+Aspect ratios and sizes validate against a per-model whitelist before the HTTP request — `imageSize: "512"` on Pro throws `ValidationError` without paying for a 4xx round-trip.
 
 | Model                 | Aspect ratios                                                               | Sizes           |
 | --------------------- | --------------------------------------------------------------------------- | --------------- |
@@ -183,96 +167,90 @@ without paying for a 4xx round-trip.
 
 Up to 14 reference images per request.
 
-### Batches
-
-Submit many requests at once for the provider's batch tier:
+### Upload — Path or Bytes
 
 ```ts
-import { promptBatch } from "@aktagon/llmkit-ts";
+import { openai } from "@aktagon/llmkit-ts/builders";
 
-const results = await promptBatch(provider, [
-  { user: "Translate hello to French" },
-  { user: "Translate hello to Spanish" },
-  { user: "Translate hello to German" },
-]);
+const c = openai(process.env.OPENAI_API_KEY!);
+
+// from a path (Node/Bun only)
+const file = await c.upload().path("./data.pdf").run();
+
+// from bytes (works everywhere)
+const file2 = await c
+  .upload()
+  .bytes(buf) // Uint8Array
+  .filename("report.pdf")
+  .mimeType("application/pdf")
+  .run();
+```
+
+The `.path()` branch dynamically loads `node:fs/promises` and is unavailable in browsers / Cloudflare Workers / Deno without `--allow-read`. Use `.bytes()` for portable code.
+
+### Batches
+
+```ts
+const results = await c
+  .text()
+  .system("Be brief")
+  .batch([
+    "Translate hello to French",
+    "Translate hello to Spanish",
+    "Translate hello to German",
+  ]);
 results.forEach((r) => console.log(r.text));
 ```
 
-`promptBatch` is `submitBatch` + `waitBatch`. Use `submitBatch` to get a `BatchHandle` you can persist, then call `waitBatch(handle)` later. Both inline (Anthropic) and file-reference (OpenAI two-hop) flows are handled internally.
+`.batch(prompts)` is `.submitBatch(prompts)` + `handle.wait()`. Use `.submitBatch(prompts)` to get a `BatchHandle` you can persist, then call `handle.wait()` later. Both inline (Anthropic) and file-reference (OpenAI two-hop) flows are handled internally.
 
 ### Caching
 
-Opt in with `caching: true`. The mode is provider-specific and inferred:
-
 ```ts
 // Anthropic — explicit cache_control wrap of the system prompt:
-await prompt(
-  anthropic,
-  { system: longSysPrompt, user: "..." },
-  { caching: true },
-);
+await c.text().system(longSysPrompt).caching().prompt("...");
 
-// OpenAI — automatic server-side caching (caching: true is a hint; reads
-// surface in resp.tokens.cacheRead regardless):
-await prompt(openai, { system: longSysPrompt, user: "..." }, { caching: true });
+// OpenAI — automatic server-side caching (caching() is a hint; reads
+// surface in resp.usage.cacheRead regardless):
+await c.text().system(longSysPrompt).caching().prompt("...");
 
 // Google — pre-flight POST creates a cachedContents resource, then the
 // main call references it. Google requires ~1k+ tokens of system prompt:
-await prompt(
-  google,
-  { system: bigSysPrompt, user: "..." },
-  {
-    caching: true,
-    cacheTTL: 3600, // seconds
-  },
-);
+await c.text().system(bigSysPrompt).caching().prompt("...");
 ```
+
+The mode is provider-specific and inferred from the provider config. The default TTL comes from `src/providers/caching.ts` (Google: 3600s).
 
 ## Options
 
-```ts
-const options = {
-  temperature: 0.7,
-  topP: 0.9,
-  topK: 40,
-  maxTokens: 1000,
-  stopSequences: ["END"],
-  seed: 42,
-  frequencyPenalty: 0.5,
-  presencePenalty: 0.5,
-  thinkingBudget: 2000,
-  reasoningEffort: "high",
-  caching: true,
-  cacheTTL: 300,
-  signal: abortController.signal,
-  middleware: [logUsage],
-};
-```
+Across every `*Text` / `*Agent` builder:
 
-| Option           | anthropic | openai | google | grok |
-| ---------------- | --------- | ------ | ------ | ---- |
-| temperature      | x         | x      | x      | x    |
-| topP             | x         | x      | x      | x    |
-| topK             | x         |        | x      | x    |
-| maxTokens        | x         | x      | x      | x    |
-| stopSequences    | x         | x      | x      | x    |
-| seed             |           | x      | x      | x    |
-| frequencyPenalty |           | x      |        | x    |
-| presencePenalty  |           | x      |        | x    |
-| thinkingBudget   | x         |        | x      |      |
-| reasoningEffort  |           | x      | x      |      |
+| Concept           | Method                | Notes                                                                                     |
+| ----------------- | --------------------- | ----------------------------------------------------------------------------------------- |
+| System prompt     | `.system(s)`          |                                                                                           |
+| Model override    | `.model(name)`        |                                                                                           |
+| Sampling          | `.temperature(t)`     |                                                                                           |
+| Token cap         | `.maxTokens(n)`       |                                                                                           |
+| Caching           | `.caching()`          |                                                                                           |
+| Conversation hist | `.history(msgs)`      |                                                                                           |
+| Structured output | `.schema(json)`       | OpenAI strict mode requires `additionalProperties: false` and `required` on object types. |
+| Middleware hooks  | `.middleware(fns)`    | See below.                                                                                |
+| Reasoning effort  | `.reasoningEffort(l)` | OpenAI o-series, Gemini 2.5+                                                              |
+| Thinking budget   | `.thinkingBudget(n)`  | Anthropic, Gemini                                                                         |
 
-Unsupported options throw `ValidationError` rather than silently dropping. Provider-specific dotted-path overrides (Anthropic `thinking.budget_tokens` with sibling `type: "enabled"`) are nested correctly.
+Sampling hyperparameters (`.topP`, `.topK`, `.seed`, `.frequencyPenalty`, `.presencePenalty`, `.stopSequences`) are validated per provider; unsupported options throw `ValidationError` rather than silently dropping.
+
+The Image builder has a narrower set: `.model`, `.aspectRatio`, `.imageSize`, `.includeText`, `.text`, `.image`, `.middleware`. Upload: `.path`, `.bytes`, `.filename`, `.mimeType`, `.middleware`.
 
 ## Middleware
 
-Register pre/post hooks around LLM requests, tool calls, cache creation, uploads, and batch submits. Pre-phase middleware can veto an operation by returning a non-null `Error`; post-phase runs for observation only.
+Register pre/post hooks around LLM requests, tool calls, cache creation, uploads, and batch submits. Pre-phase middleware can veto by returning a non-null `Error`; post-phase runs for observation only.
 
 ```ts
 import type { Event, MiddlewareFn } from "@aktagon/llmkit-ts";
 
 // Observation: log token usage after every LLM request.
-const logUsage: MiddlewareFn = (_ctx, e) => {
+const logUsage: MiddlewareFn = (e) => {
   if (e.op === "llm_request" && e.phase === "post") {
     console.log(
       `${e.provider}/${e.model}: ${e.usage?.input} in, ${e.usage?.output} out, ${e.duration?.toFixed(1)}ms`,
@@ -281,33 +259,42 @@ const logUsage: MiddlewareFn = (_ctx, e) => {
   return null;
 };
 
-// Veto: abort if a daily budget is exceeded (pre-phase).
+// Veto: abort if a daily budget is exceeded.
 const budgetGate =
   (limit: number, spent: { value: number }): MiddlewareFn =>
-  (_ctx, e) => {
+  (e) => {
     if (e.op === "llm_request" && e.phase === "pre" && spent.value >= limit) {
       return new Error(`daily budget $${limit.toFixed(2)} exceeded`);
     }
     return null;
   };
 
-await prompt(provider, request, {
-  middleware: [budgetGate(5.0, spent), logUsage],
-});
+await c
+  .text()
+  .middleware([budgetGate(5.0, spent), logUsage])
+  .prompt("...");
 ```
 
-A pre-phase veto throws `MiddlewareVetoError` from the call site so it can be discriminated from transport or provider errors. Middlewares fire in registration order; the first non-null pre-phase return aborts.
+A pre-phase veto throws `MiddlewareVetoError` so it can be discriminated from transport or provider errors. Middlewares fire in registration order; the first non-null pre-phase return aborts.
 
-Streaming uses the same shape: one pre-phase before the request, one post-phase after the stream closes. `Event.usage` reflects accumulated usage at stream close. Per-chunk observation stays on the `onChunk` callback.
+Wired at seven sites: `Text.prompt`, `Text.stream`, `Agent` LLM call, `Agent` tool execution (`op=tool_call`), `Upload.run` (`op=upload`), `Text.submitBatch` / `Text.batch` (`op=batch_submit`), Google resource caching pre-flight (`op=cache_create`).
 
-The seven wired sites: `prompt`, `promptStream`, `Agent` LLM call, `Agent` tool execution (`op=tool_call`), `uploadFile` (`op=upload`), `submitBatch` (`op=batch_submit`), Google resource caching pre-flight (`op=cache_create`).
+## Self-hosted endpoints
+
+```ts
+import { openai } from "@aktagon/llmkit-ts/builders";
+
+const c = openai("anything").withBaseUrl("http://localhost:8080/v1");
+```
+
+Works for any OpenAI-compatible server (vLLM, LM Studio, Ollama, corporate gateways).
 
 ## Architecture
 
-- **Generated** (`src/providers/*.ts`) — per-provider config: URLs, auth, options, SSE framing, JSON paths. Pure data, no logic.
-- **Hand-coded** (`src/llmkit.ts`, `src/agent.ts`, `src/request.ts`, `src/sigv4.ts`, `src/caching.ts`, `src/batch.ts`, `src/upload.ts`, `src/middleware.ts`, `src/paths.ts`, `src/types.ts`, `src/errors.ts`) — HTTP, request shaping, SSE consumer, agent tool loop, SigV4 signing, caching, batch lifecycle, multipart upload, middleware fanout.
+- **Generated** (`src/providers/*.ts`, `src/builders/builders.ts`) — per-provider config + the typed-builder API surface. Pure data and class skeletons, no business logic.
+- **Hand-coded** (`src/llmkit.ts`, `src/agent.ts`, `src/request.ts`, `src/sigv4.ts`, `src/caching.ts`, `src/batch.ts`, `src/upload.ts`, `src/middleware.ts`, `src/paths.ts`, `src/types.ts`, `src/errors.ts`, `src/builders/{text,agent,image,stream,batch,upload}.ts`) — HTTP, request shaping, SSE consumer, agent tool loop, SigV4 signing, caching, batch lifecycle, multipart upload, middleware fanout, builder terminals.
 
-Transforms are dispatched by config fields (`systemPlacement`, `wrapsOptionsIn`, `authScheme`), not provider names. Adding an OpenAI-compatible provider requires no TypeScript code — just regenerate.
+Transforms dispatch on config fields (`systemPlacement`, `wrapsOptionsIn`, `authScheme`), not provider names. Adding an OpenAI-compatible provider requires no TypeScript code.
 
 ## Mirror
 

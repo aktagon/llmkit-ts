@@ -86,25 +86,25 @@ export function zhipu(apiKey: string): Client { return new Client("zhipu", apiKe
 //
 
 export class Text {
-  client: Client;
-  _caching: boolean = false;
-  _files: File[] = [];
-  _frequencyPenalty?: number;
-  _history: Message[] = [];
-  _parts: Part[] = [];
-  _maxTokens?: number;
-  _middleware: MiddlewareFn[] = [];
-  _model: string = "";
-  _presencePenalty?: number;
-  _reasoningEffort: string = "";
-  _schema: string = "";
-  _seed?: number;
-  _stopSequences: string[] = [];
-  _system: string = "";
-  _temperature?: number;
-  _thinkingBudget?: number;
-  _topK?: number;
-  _topP?: number;
+ client: Client;
+ _caching: boolean = false;
+ _files: File[] = [];
+ _frequencyPenalty?: number;
+ _history: Message[] = [];
+ _parts: Part[] = [];
+ _maxTokens?: number;
+ _middleware: MiddlewareFn[] = [];
+ _model: string = "";
+ _presencePenalty?: number;
+ _reasoningEffort: string = "";
+ _schema: string = "";
+ _seed?: number;
+ _stopSequences: string[] = [];
+ _system: string = "";
+ _temperature?: number;
+ _thinkingBudget?: number;
+ _topK?: number;
+ _topP?: number;
 
   constructor(client: Client) { this.client = client; }
 
@@ -144,13 +144,13 @@ export class Text {
 //
 
 export class Image {
-  client: Client;
-  _aspectRatio: string = "";
-  _parts: Part[] = [];
-  _imageSize: string = "";
-  _includeText: boolean = false;
-  _middleware: MiddlewareFn[] = [];
-  _model: string = "";
+ client: Client;
+ _aspectRatio: string = "";
+ _parts: Part[] = [];
+ _imageSize: string = "";
+ _includeText: boolean = false;
+ _middleware: MiddlewareFn[] = [];
+ _model: string = "";
 
   constructor(client: Client) { this.client = client; }
 
@@ -169,24 +169,24 @@ export class Image {
 //
 
 export class Agent {
-  client: Client;
-  _caching: boolean = false;
-  _frequencyPenalty?: number;
-  _maxTokens?: number;
-  _maxToolIterations?: number;
-  _middleware: MiddlewareFn[] = [];
-  _model: string = "";
-  _presencePenalty?: number;
-  _reasoningEffort: string = "";
-  _seed?: number;
-  _stopSequences: string[] = [];
-  _system: string = "";
-  _temperature?: number;
-  _thinkingBudget?: number;
-  _tools: Tool[] = [];
-  _topK?: number;
-  _topP?: number;
-  _state?: AgentState;
+ client: Client;
+ _caching: boolean = false;
+ _frequencyPenalty?: number;
+ _maxTokens?: number;
+ _maxToolIterations?: number;
+ _middleware: MiddlewareFn[] = [];
+ _model: string = "";
+ _presencePenalty?: number;
+ _reasoningEffort: string = "";
+ _seed?: number;
+ _stopSequences: string[] = [];
+ _system: string = "";
+ _temperature?: number;
+ _thinkingBudget?: number;
+ _tools: Tool[] = [];
+ _topK?: number;
+ _topP?: number;
+ _state?: AgentState;
 
   constructor(client: Client) { this.client = client; }
 
@@ -217,12 +217,12 @@ export class Agent {
 //
 
 export class Upload {
-  client: Client;
-  _bytes: Uint8Array = new Uint8Array(0);
-  _filename: string = "";
-  _middleware: MiddlewareFn[] = [];
-  _mimeType: string = "";
-  _path: string = "";
+ client: Client;
+ _bytes: Uint8Array = new Uint8Array(0);
+ _filename: string = "";
+ _middleware: MiddlewareFn[] = [];
+ _mimeType: string = "";
+ _path: string = "";
 
   constructor(client: Client) { this.client = client; }
 

@@ -5,8 +5,8 @@
     "": {
       "name": "@aktagon/llmkit",
       "devDependencies": {
-        "@types/bun": "latest",
-        "typescript": "^5.5.0",
+        "@types/bun": "^1.1.0",
+        "typescript": "^5.7",
       },
     },
   },
