@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-05-09
+
+### Packaging
+
+- Bundled `dist/` build output (`bun build` → ESM, code-split, with sourcemaps). The package resolves under plain `node` (Node ≥18 ESM), Cloudflare Workers, Deno (with `--allow-net`), and any modern bundler — not just Bun. The `dist/llmkit.js` and `dist/builders/index.js` entry points are auto-generated on `bun run build` and on `npm pack` via the `prepack` hook.
+- `package.json` `exports` map multi-targets: `types` resolves to the `.ts` source (Bun, Vite, Next.js, esbuild, modern bundlers consume the source directly for type info), `import` resolves to `dist/.js` (compiled output for runtimes that can't load `.ts`).
+- `engines.node = ">=18"` declared alongside `engines.bun`.
+- `@aktagon/llmkit-ts/builders` is the explicit subpackage entry. The main entry also re-exports the typed-builder factories so `import { anthropic } from "@aktagon/llmkit-ts"` works for the common case.
+- `.d.ts` declaration files are not yet shipped — types come from the bundled `.ts` source. NodeNext-strict TypeScript consumers (rare; require explicit file extensions) need `allowImportingTsExtensions: true` or to wait for a follow-up patch with a `tsc --emitDeclarationOnly` step. Tracked as a 1.0.x follow-up.
+
 ### Breaking
 
 - Legacy free-function layer removed from the public API (plan-018 D2, ADR-010). `prompt`, `promptStream`, `generateImage`, `uploadFile`, `promptBatch`, `submitBatch`, `waitBatch`, `Agent` (class), and the `text()` / `image()` Part constructors are no longer re-exported from `llmkit.ts`. Use the typed builder via `import { newClient } from "@aktagon/llmkit-ts/builders"`:
