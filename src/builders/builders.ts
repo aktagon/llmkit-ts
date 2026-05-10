@@ -86,25 +86,25 @@ export function zhipu(apiKey: string): Client { return new Client("zhipu", apiKe
 // === Text — ChatCompletion builder ===
 
 export class Text {
-  client: Client;
-  _caching: boolean = false;
-  _files: File[] = [];
-  _frequencyPenalty?: number;
-  _history: Message[] = [];
-  _parts: Part[] = [];
-  _maxTokens?: number;
-  _middleware: MiddlewareFn[] = [];
-  _model: string = "";
-  _presencePenalty?: number;
-  _reasoningEffort: string = "";
-  _schema: string = "";
-  _seed?: number;
-  _stopSequences: string[] = [];
-  _system: string = "";
-  _temperature?: number;
-  _thinkingBudget?: number;
-  _topK?: number;
-  _topP?: number;
+  /** @internal */ client: Client;
+  /** @internal */ _caching: boolean = false;
+  /** @internal */ _files: File[] = [];
+  /** @internal */ _frequencyPenalty?: number;
+  /** @internal */ _history: Message[] = [];
+  /** @internal */ _parts: Part[] = [];
+  /** @internal */ _maxTokens?: number;
+  /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _model: string = "";
+  /** @internal */ _presencePenalty?: number;
+  /** @internal */ _reasoningEffort: string = "";
+  /** @internal */ _schema: string = "";
+  /** @internal */ _seed?: number;
+  /** @internal */ _stopSequences: string[] = [];
+  /** @internal */ _system: string = "";
+  /** @internal */ _temperature?: number;
+  /** @internal */ _thinkingBudget?: number;
+  /** @internal */ _topK?: number;
+  /** @internal */ _topP?: number;
 
   constructor(client: Client) { this.client = client; }
 
@@ -144,13 +144,13 @@ export class Text {
 // === Image — ImageGeneration builder ===
 
 export class Image {
-  client: Client;
-  _aspectRatio: string = "";
-  _parts: Part[] = [];
-  _imageSize: string = "";
-  _includeText: boolean = false;
-  _middleware: MiddlewareFn[] = [];
-  _model: string = "";
+  /** @internal */ client: Client;
+  /** @internal */ _aspectRatio: string = "";
+  /** @internal */ _parts: Part[] = [];
+  /** @internal */ _imageSize: string = "";
+  /** @internal */ _includeText: boolean = false;
+  /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _model: string = "";
 
   constructor(client: Client) { this.client = client; }
 
@@ -169,24 +169,24 @@ export class Image {
 // === Agent — ToolCalling builder ===
 
 export class Agent {
-  client: Client;
-  _caching: boolean = false;
-  _frequencyPenalty?: number;
-  _maxTokens?: number;
-  _maxToolIterations?: number;
-  _middleware: MiddlewareFn[] = [];
-  _model: string = "";
-  _presencePenalty?: number;
-  _reasoningEffort: string = "";
-  _seed?: number;
-  _stopSequences: string[] = [];
-  _system: string = "";
-  _temperature?: number;
-  _thinkingBudget?: number;
-  _tools: Tool[] = [];
-  _topK?: number;
-  _topP?: number;
-  _state?: AgentState;
+  /** @internal */ client: Client;
+  /** @internal */ _caching: boolean = false;
+  /** @internal */ _frequencyPenalty?: number;
+  /** @internal */ _maxTokens?: number;
+  /** @internal */ _maxToolIterations?: number;
+  /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _model: string = "";
+  /** @internal */ _presencePenalty?: number;
+  /** @internal */ _reasoningEffort: string = "";
+  /** @internal */ _seed?: number;
+  /** @internal */ _stopSequences: string[] = [];
+  /** @internal */ _system: string = "";
+  /** @internal */ _temperature?: number;
+  /** @internal */ _thinkingBudget?: number;
+  /** @internal */ _tools: Tool[] = [];
+  /** @internal */ _topK?: number;
+  /** @internal */ _topP?: number;
+  /** @internal */ _state?: AgentState;
 
   constructor(client: Client) { this.client = client; }
 
@@ -217,12 +217,12 @@ export class Agent {
 // === Upload — FileUpload builder ===
 
 export class Upload {
-  client: Client;
-  _bytes: Uint8Array = new Uint8Array(0);
-  _filename: string = "";
-  _middleware: MiddlewareFn[] = [];
-  _mimeType: string = "";
-  _path: string = "";
+  /** @internal */ client: Client;
+  /** @internal */ _bytes: Uint8Array = new Uint8Array(0);
+  /** @internal */ _filename: string = "";
+  /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _mimeType: string = "";
+  /** @internal */ _path: string = "";
 
   constructor(client: Client) { this.client = client; }
 
