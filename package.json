@@ -1,39 +1,65 @@
 {
   "name": "@aktagon/llmkit-ts",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Unified LLM client library. One API, 27 providers, zero runtime dependencies.",
   "type": "module",
-  "main": "src/llmkit.ts",
-  "types": "src/llmkit.ts",
+  "main": "./dist/llmkit.js",
+  "module": "./dist/llmkit.js",
+  "types": "./src/llmkit.ts",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/llmkit.ts"
+    ".": {
+      "types": "./src/llmkit.ts",
+      "import": "./dist/llmkit.js"
+    },
+    "./builders": {
+      "types": "./src/builders/index.ts",
+      "import": "./dist/builders/index.js"
+    }
   },
   "files": [
     "src",
+    "dist",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
   "keywords": [
     "llm",
+    "ai",
     "anthropic",
     "openai",
     "google",
+    "gemini",
     "bedrock",
-    "ai",
-    "sdk"
+    "claude",
+    "gpt",
+    "agent",
+    "sdk",
+    "streaming",
+    "tool-calling"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/aktagon/llmkit-ts.git"
   },
+  "bugs": {
+    "url": "https://github.com/aktagon/llmkit-ts/issues"
+  },
+  "homepage": "https://github.com/aktagon/llmkit-ts",
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1.0.0"
+  },
   "scripts": {
+    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target node --format esm --splitting --sourcemap=external",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "bun run build"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.5.0"
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.7"
   }
 }
