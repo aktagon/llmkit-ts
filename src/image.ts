@@ -1,9 +1,10 @@
 // Image generation runtime — mirror of go/image.go.
 //
 // Pre-flight validation (model whitelist, aspect ratio, image size,
-// reference-image count) runs before any HTTP call. The body shape matches
-// Google's generateContent endpoint; OpenAI/Vertex variants will dispatch
-// on cfg.inputMode when those land.
+// reference-image count) runs before any HTTP call. Dispatch branches on
+// imgCfg.inputMode (InlineParts → Google generateContent; MultipartForm →
+// OpenAI Image API with /generations vs /edits picked dynamically per
+// call based on whether image parts are present in the request).
 
 import { PROVIDERS } from "./providers/providers.ts";
 import {
@@ -62,6 +63,24 @@ export interface ImageOptions {
   aspectRatio?: string;
   imageSize?: string;
   includeText?: boolean;
+  /** OpenAI gpt-image-* quality enum (low|medium|high|auto). */
+  quality?: string;
+  /** OpenAI gpt-image-* output MIME format (png|webp|jpeg). */
+  outputFormat?: string;
+  /** OpenAI gpt-image-* background treatment (transparent|opaque|auto). */
+  background?: string;
+  /** Number of images to generate; wire field `n`. OpenAI + xAI Grok. */
+  count?: number;
+  /** PNG mask indicating which pixels to edit (transparent regions replaced).
+   * OpenAI gpt-image-* /v1/images/edits only. */
+  mask?: MediaRef;
+  /**
+   * Free-form extras spread into the wire body. Reserved for provider knobs
+   * that don't yet have typed chain methods (OpenAI: output_compression,
+   * moderation). Knobs covered by typed methods (quality, output_format,
+   * background, count) are validated per provider; ExtraFields is not.
+   */
+  extraFields?: Record<string, unknown>;
   middleware?: MiddlewareFn[];
   signal?: AbortSignal;
 }
@@ -98,8 +117,13 @@ export async function generateImage(
       `${request.model} is not a known image-generation model for ${provider.name}`,
     );
   }
+  // Empty whitelist means "no client-side check; pass through" — used by
+  // providers (e.g., OpenAI) that accept arbitrary sizes within documented
+  // bounds. Trust the API boundary instead of carrying a stale whitelist
+  // (plan 020 q1).
   if (
     options.aspectRatio &&
+    model.aspectRatios.length > 0 &&
     !model.aspectRatios.includes(options.aspectRatio)
   ) {
     throw new ValidationError(
@@ -107,7 +131,11 @@ export async function generateImage(
       `${options.aspectRatio} not supported by ${request.model}`,
     );
   }
-  if (options.imageSize && !model.imageSizes.includes(options.imageSize)) {
+  if (
+    options.imageSize &&
+    model.imageSizes.length > 0 &&
+    !model.imageSizes.includes(options.imageSize)
+  ) {
     throw new ValidationError(
       "image_size",
       `${options.imageSize} not supported by ${request.model}`,
@@ -121,6 +149,50 @@ export async function generateImage(
     );
   }
 
+  // Per-provider knob validation. Quality/OutputFormat/Background are
+  // OpenAI-only on the wire; Count (n) is OpenAI + xAI; Mask is OpenAI
+  // edits-only. Mirrors go/image.go.
+  if (imgCfg.inputMode === "InlineParts") {
+    if (options.quality !== undefined)
+      throw new ValidationError("quality", `not supported by ${provider.name}`);
+    if (options.outputFormat !== undefined)
+      throw new ValidationError(
+        "output_format",
+        `not supported by ${provider.name}`,
+      );
+    if (options.background !== undefined)
+      throw new ValidationError(
+        "background",
+        `not supported by ${provider.name}`,
+      );
+    if (options.count !== undefined)
+      throw new ValidationError("count", `not supported by ${provider.name}`);
+    if (options.mask !== undefined)
+      throw new ValidationError("mask", `not supported by ${provider.name}`);
+  } else if (imgCfg.inputMode === "JSONInlineRefs") {
+    if (options.quality !== undefined)
+      throw new ValidationError("quality", `not supported by ${provider.name}`);
+    if (options.outputFormat !== undefined)
+      throw new ValidationError(
+        "output_format",
+        `not supported by ${provider.name}`,
+      );
+    if (options.background !== undefined)
+      throw new ValidationError(
+        "background",
+        `not supported by ${provider.name}`,
+      );
+    if (options.mask !== undefined)
+      throw new ValidationError("mask", `not supported by ${provider.name}`);
+  } else if (imgCfg.inputMode === "MultipartForm") {
+    if (options.mask !== undefined && imageCount === 0) {
+      throw new ValidationError(
+        "mask",
+        "requires at least one image part (edits branch only)",
+      );
+    }
+  }
+
   const baseEvent: Event = {
     op: "image_generation",
     phase: "pre",
@@ -132,26 +204,57 @@ export async function generateImage(
   const start = performance.now();
 
   try {
-    const body = buildImageBody(parts, options);
     const baseUrl = provider.baseUrl || cfg.baseUrl;
-    let endpoint = (cfg.endpoint || "").replaceAll("{model}", request.model);
-    if (cfg.authScheme === "QueryParamKey" && cfg.authQueryParam) {
-      const sep = endpoint.includes("?") ? "&" : "?";
-      endpoint = `${endpoint}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
+    const authHeaders = buildAuthHeaders(provider, cfg);
+
+    let httpResp: Response;
+    const hasImages = parts.some((p) => "image" in p);
+    if (imgCfg.inputMode === "JSONInlineRefs") {
+      const body = hasImages
+        ? buildXAIEditBody(parts, request.model, options)
+        : buildXAIGenBody(parts, request.model, options);
+      const url =
+        baseUrl + (hasImages ? imgCfg.editEndpoint : imgCfg.genEndpoint);
+      httpResp = await fetch(url, {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
+    } else if (imgCfg.inputMode === "MultipartForm") {
+      if (hasImages) {
+        const form = buildOpenAIEditFormData(parts, request.model, options);
+        httpResp = await fetch(baseUrl + imgCfg.editEndpoint, {
+          method: "POST",
+          headers: authHeaders, // FormData sets its own Content-Type
+          body: form,
+          signal: options.signal,
+        });
+      } else {
+        const body = buildOpenAIGenBody(parts, request.model, options);
+        httpResp = await fetch(baseUrl + imgCfg.genEndpoint, {
+          method: "POST",
+          headers: { ...authHeaders, "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: options.signal,
+        });
+      }
+    } else {
+      // InlineParts (Google).
+      let endpoint = (cfg.endpoint || "").replaceAll("{model}", request.model);
+      if (cfg.authScheme === "QueryParamKey" && cfg.authQueryParam) {
+        const sep = endpoint.includes("?") ? "&" : "?";
+        endpoint = `${endpoint}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
+      }
+      const body = buildImageBody(parts, options);
+      httpResp = await fetch(baseUrl + endpoint, {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
     }
-    const url = baseUrl + endpoint;
 
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      ...buildAuthHeaders(provider, cfg),
-    };
-
-    const httpResp = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: options.signal,
-    });
     const respText = await httpResp.text();
     if (!httpResp.ok) {
       throw new APIError(
@@ -162,11 +265,12 @@ export async function generateImage(
     }
 
     const raw = JSON.parse(respText) as unknown;
-    const result = parseImageResponse(
-      raw,
-      cfg.usageInputPath,
-      cfg.usageOutputPath,
-    );
+    const result =
+      provider.name === "openai"
+        ? parseImageResponseDataArray(raw, "input_tokens", "output_tokens")
+        : provider.name === "grok"
+          ? parseImageResponseDataArray(raw, "", "")
+          : parseImageResponse(raw, cfg.usageInputPath, cfg.usageOutputPath);
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.tokens,
@@ -181,6 +285,137 @@ export async function generateImage(
     });
     throw err;
   }
+}
+
+// Note: gpt-image-* models always return base64-encoded images via
+// `data[i].b64_json` and reject the `response_format` parameter (it
+// belonged to the legacy dall-e-* surface). Don't set it.
+function buildOpenAIGenBody(
+  parts: Part[],
+  model: string,
+  options: ImageOptions,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model,
+    prompt: joinTextParts(parts),
+  };
+  if (options.imageSize) body.size = options.imageSize;
+  if (options.quality) body.quality = options.quality;
+  if (options.outputFormat) body.output_format = options.outputFormat;
+  if (options.background) body.background = options.background;
+  if (options.count !== undefined) body.n = options.count;
+  if (options.extraFields) {
+    for (const [k, v] of Object.entries(options.extraFields)) body[k] = v;
+  }
+  return body;
+}
+
+function buildOpenAIEditFormData(
+  parts: Part[],
+  model: string,
+  options: ImageOptions,
+): FormData {
+  const form = new FormData();
+  form.append("model", model);
+  form.append("prompt", joinTextParts(parts));
+  if (options.imageSize) form.append("size", options.imageSize);
+  if (options.quality) form.append("quality", options.quality);
+  if (options.outputFormat) form.append("output_format", options.outputFormat);
+  if (options.background) form.append("background", options.background);
+  if (options.count !== undefined) form.append("n", String(options.count));
+  if (options.extraFields) {
+    for (const [k, v] of Object.entries(options.extraFields)) {
+      form.append(k, typeof v === "string" ? v : JSON.stringify(v));
+    }
+  }
+  let idx = 0;
+  for (const part of parts) {
+    if ("image" in part) {
+      const mime = part.image.mimeType || "image/png";
+      const ext =
+        mime === "image/jpeg"
+          ? ".jpg"
+          : mime === "image/webp"
+            ? ".webp"
+            : ".png";
+      // Copy bytes into a fresh ArrayBuffer so Blob never sees a SharedArrayBuffer view.
+      const buf = new ArrayBuffer(part.image.bytes.byteLength);
+      new Uint8Array(buf).set(part.image.bytes);
+      form.append(
+        "image[]",
+        new Blob([buf], { type: mime }),
+        `image-${idx}${ext}`,
+      );
+      idx++;
+    }
+  }
+  if (options.mask) {
+    const mime = options.mask.mimeType || "image/png";
+    const ext =
+      mime === "image/jpeg" ? ".jpg" : mime === "image/webp" ? ".webp" : ".png";
+    const buf = new ArrayBuffer(options.mask.bytes.byteLength);
+    new Uint8Array(buf).set(options.mask.bytes);
+    form.append("mask", new Blob([buf], { type: mime }), `mask${ext}`);
+  }
+  return form;
+}
+
+/**
+ * buildXAIGenBody assembles the JSON body for xAI Grok /v1/images/generations.
+ * imageSize maps to `resolution` (xAI's name); aspectRatio maps as-is.
+ * response_format=b64_json is forced because xAI defaults to URL.
+ */
+function buildXAIGenBody(
+  parts: Part[],
+  model: string,
+  options: ImageOptions,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model,
+    prompt: joinTextParts(parts),
+    response_format: "b64_json",
+  };
+  if (options.aspectRatio) body.aspect_ratio = options.aspectRatio;
+  if (options.imageSize) body.resolution = options.imageSize;
+  if (options.count !== undefined) body.n = options.count;
+  if (options.extraFields) {
+    for (const [k, v] of Object.entries(options.extraFields)) body[k] = v;
+  }
+  return body;
+}
+
+/**
+ * buildXAIEditBody assembles the JSON body for xAI Grok /v1/images/edits.
+ * Single image part → `image: {url: "data:..."}`. Multiple image parts →
+ * `images: [{url: "data:..."}, ...]` in caller order.
+ */
+function buildXAIEditBody(
+  parts: Part[],
+  model: string,
+  options: ImageOptions,
+): Record<string, unknown> {
+  const body = buildXAIGenBody(parts, model, options);
+  const refs: Array<{ url: string }> = [];
+  for (const p of parts) {
+    if ("image" in p) {
+      const mime = p.image.mimeType || "image/png";
+      const dataURL = `data:${mime};base64,${bytesToBase64(p.image.bytes)}`;
+      refs.push({ url: dataURL });
+    }
+  }
+  if (refs.length === 1) {
+    body.image = refs[0];
+  } else if (refs.length > 1) {
+    body.images = refs;
+  }
+  return body;
+}
+
+function joinTextParts(parts: Part[]): string {
+  return parts
+    .filter((p): p is { text: string } => "text" in p && !!p.text)
+    .map((p) => p.text)
+    .join("\n");
 }
 
 function findImageModel(
@@ -255,6 +490,62 @@ function parseImageResponse(
     tokens: {
       input: extractIntPath(raw, inputPath),
       output: extractIntPath(raw, outputPath),
+      cacheWrite: 0,
+      cacheRead: 0,
+      reasoning: 0,
+    },
+  };
+}
+
+/**
+ * parseImageResponseDataArray walks the data[] array shape used by both
+ * OpenAI's and xAI's image APIs:
+ *
+ *   - data[i].b64_json → bytes (decoded). MimeType honors data[i].mime_type
+ *     when echoed back (xAI does so; OpenAI does not), otherwise defaults
+ *     to image/png.
+ *   - data[i].revised_prompt strings concatenate into text.
+ *   - inputTokenField / outputTokenField are the keys on the `usage` object
+ *     to read for token counts. Pass empty strings for providers that
+ *     don't report them (xAI reports usage.cost_in_usd_ticks instead).
+ */
+function parseImageResponseDataArray(
+  raw: unknown,
+  inputTokenField: string,
+  outputTokenField: string,
+): ImageResponse {
+  const root = raw as {
+    data?: Array<{
+      b64_json?: string;
+      mime_type?: string;
+      revised_prompt?: string;
+    }>;
+    usage?: Record<string, number | undefined>;
+  };
+  const images: ImageData[] = [];
+  const revised: string[] = [];
+  for (const entry of root?.data ?? []) {
+    if (typeof entry?.b64_json === "string" && entry.b64_json.length > 0) {
+      const echoed =
+        typeof entry.mime_type === "string" && entry.mime_type
+          ? entry.mime_type
+          : "image/png";
+      images.push({
+        mimeType: echoed,
+        bytes: base64ToBytes(entry.b64_json),
+      });
+    }
+    if (typeof entry?.revised_prompt === "string" && entry.revised_prompt) {
+      revised.push(entry.revised_prompt);
+    }
+  }
+  const usage = root?.usage ?? {};
+  return {
+    images,
+    text: revised.join("\n"),
+    tokens: {
+      input: inputTokenField ? (usage[inputTokenField] ?? 0) : 0,
+      output: outputTokenField ? (usage[outputTokenField] ?? 0) : 0,
       cacheWrite: 0,
       cacheRead: 0,
       reasoning: 0,

@@ -1,7 +1,7 @@
 {
   "name": "@aktagon/llmkit-ts",
   "version": "1.0.0",
-  "description": "Unified LLM client library. One API, 27 providers, zero runtime dependencies.",
+  "description": "Unified LLM client library for TypeScript — one API, 27 providers (Anthropic, OpenAI, Google Gemini, AWS Bedrock, Mistral, Groq, DeepSeek, +20 more), zero runtime dependencies. Bun, Node, Deno, Cloudflare Workers.",
   "type": "module",
   "main": "./dist/llmkit.js",
   "module": "./dist/llmkit.js",
@@ -27,17 +27,20 @@
   "keywords": [
     "llm",
     "ai",
+    "llm-client",
+    "ai-sdk",
+    "agents",
     "anthropic",
+    "claude",
     "openai",
-    "google",
+    "gpt",
     "gemini",
     "bedrock",
-    "claude",
-    "gpt",
-    "agent",
-    "sdk",
+    "mistral",
+    "groq",
     "streaming",
-    "tool-calling"
+    "tool-calling",
+    "typescript"
   ],
   "license": "MIT",
   "repository": {
@@ -47,7 +50,7 @@
   "bugs": {
     "url": "https://github.com/aktagon/llmkit-ts/issues"
   },
-  "homepage": "https://github.com/aktagon/llmkit-ts",
+  "homepage": "https://llmkit.aktagon.com",
   "engines": {
     "node": ">=18",
     "bun": ">=1.0.0"
