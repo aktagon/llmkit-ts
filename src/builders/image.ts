@@ -41,7 +41,15 @@ export async function imageGenerate(
   if (b._aspectRatio) options.aspectRatio = b._aspectRatio;
   if (b._imageSize) options.imageSize = b._imageSize;
   if (b._includeText) options.includeText = true;
+  if (b._quality) options.quality = b._quality;
+  if (b._outputFormat) options.outputFormat = b._outputFormat;
+  if (b._background) options.background = b._background;
+  if (b._count !== undefined) options.count = b._count;
+  if (b._mask) options.mask = b._mask;
   if (b._middleware.length > 0) options.middleware = b._middleware;
+  if (b._extraFields && Object.keys(b._extraFields).length > 0) {
+    options.extraFields = b._extraFields;
+  }
 
   return await runImageGeneration(provider, request, options);
 }

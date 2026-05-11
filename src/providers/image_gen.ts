@@ -3,7 +3,7 @@
 
 import type { ProviderName } from "./providers.ts";
 
-export type ImageInputMode = "InlineParts" | "MultipartForm";
+export type ImageInputMode = "InlineParts" | "MultipartForm" | "JSONInlineRefs";
 export type ImageOutputMode = "Base64Inline" | "URLOrBase64";
 
 export interface ImageModelDef {
@@ -41,6 +41,54 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         label: "Nano Banana 2",
         aspectRatios: ["16:9", "1:1", "1:4", "1:8", "21:9", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16"],
         imageSizes: ["1K", "2K", "4K", "512"],
+      },
+    ],
+  },
+  grok: {
+    inputMode: "JSONInlineRefs",
+    outputMode: "Base64Inline",
+    maxInputCount: 16,
+    genEndpoint: "/v1/images/generations",
+    editEndpoint: "/v1/images/edits",
+    models: [
+      {
+        modelId: "grok-imagine-image-quality",
+        label: "Grok Imagine Quality",
+        aspectRatios: ["16:9", "19.5:9", "1:1", "1:2", "20:9", "2:1", "2:3", "3:2", "3:4", "4:3", "9:16", "9:19.5", "9:20", "auto"],
+        imageSizes: [],
+      },
+    ],
+  },
+  openai: {
+    inputMode: "MultipartForm",
+    outputMode: "Base64Inline",
+    maxInputCount: 16,
+    genEndpoint: "/v1/images/generations",
+    editEndpoint: "/v1/images/edits",
+    models: [
+      {
+        modelId: "gpt-image-1",
+        label: "GPT Image 1",
+        aspectRatios: [],
+        imageSizes: [],
+      },
+      {
+        modelId: "gpt-image-1-mini",
+        label: "GPT Image 1 Mini",
+        aspectRatios: [],
+        imageSizes: [],
+      },
+      {
+        modelId: "gpt-image-1.5",
+        label: "GPT Image 1.5",
+        aspectRatios: [],
+        imageSizes: [],
+      },
+      {
+        modelId: "gpt-image-2",
+        label: "GPT Image 2",
+        aspectRatios: [],
+        imageSizes: [],
       },
     ],
   },
