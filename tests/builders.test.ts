@@ -26,6 +26,7 @@ import {
   qwen,
   sambanova,
   together,
+  vertex,
   vllm,
   yi,
   zhipu,
@@ -215,6 +216,7 @@ describe("Surface — constructors", () => {
       qwen("k"),
       sambanova("k"),
       together("k"),
+      vertex("k"),
       vllm("k"),
       yi("k"),
       zhipu("k"),
@@ -223,7 +225,7 @@ describe("Surface — constructors", () => {
       expect(c).toBeInstanceOf(Client);
       expect(c.provider.apiKey).toBe("k");
     }
-    expect(clients).toHaveLength(28);
+    expect(clients).toHaveLength(29);
   });
 });
 

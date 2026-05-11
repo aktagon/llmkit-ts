@@ -1074,3 +1074,201 @@ describe("Image.generate — plan 020 phase 2 typed knobs", () => {
     }
   });
 });
+
+// =============================================================================
+// Vertex Imagen (plan 021) — JSONPredict input mode, bearer auth
+// =============================================================================
+
+const vertexImagen3 = "imagen-3.0-generate-002";
+
+function vertexImageResponse(b64: string, n: number, mime?: string) {
+  const predictions = [];
+  for (let i = 0; i < n; i++) {
+    const entry: Record<string, unknown> = { bytesBase64Encoded: b64 };
+    if (mime) entry.mimeType = mime;
+    predictions.push(entry);
+  }
+  return { predictions };
+}
+
+describe("Image.generate — Vertex Imagen (JSONPredict)", () => {
+  test("happy path: instances/parameters body shape, bearer auth, base64 round-trip", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    let receivedPath = "";
+    let receivedAuth = "";
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedPath = new URL(req.url).pathname;
+        receivedAuth = req.headers.get("authorization") || "";
+        receivedBody = await req.json();
+        return new Response(
+          JSON.stringify(vertexImageResponse(encoded, 1, "image/png")),
+        );
+      },
+    });
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image
+        .model(vertexImagen3)
+        .generate("A red circle");
+      expect(receivedPath).toBe(`/${vertexImagen3}:predict`);
+      expect(receivedAuth).toBe("Bearer test-token");
+      expect(receivedBody.instances).toHaveLength(1);
+      expect(receivedBody.instances[0].prompt).toBe("A red circle");
+      expect(receivedBody.instances[0].image).toBeUndefined();
+      expect(receivedBody.parameters.sampleCount).toBe(1);
+      expect(resp.images).toHaveLength(1);
+      expect(Array.from(resp.images[0]!.bytes)).toEqual(Array.from(fakePNG));
+      expect(resp.images[0]!.mimeType).toBe("image/png");
+      // Vertex predict does not return token counts.
+      expect(resp.tokens.input).toBe(0);
+      expect(resp.tokens.output).toBe(0);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("edit: first image part lifts into instances[0].image.bytesBase64Encoded", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    const refBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
+    const expectedRefB64 = bytesToBase64(refBytes);
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(JSON.stringify(vertexImageResponse(encoded, 1)));
+      },
+    });
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.image
+        .model(vertexImagen3)
+        .image("image/png", refBytes)
+        .generate("Make it winter");
+      expect(receivedBody.instances[0].image.bytesBase64Encoded).toBe(
+        expectedRefB64,
+      );
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("mask: maps to instances[0].mask.image.bytesBase64Encoded", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    const maskBytes = new Uint8Array([0xaa, 0xbb, 0xcc]);
+    const expectedMaskB64 = bytesToBase64(maskBytes);
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(JSON.stringify(vertexImageResponse(encoded, 1)));
+      },
+    });
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.image
+        .model(vertexImagen3)
+        .image("image/png", new Uint8Array([0x01]))
+        .mask("image/png", maskBytes)
+        .generate("Inpaint here");
+      expect(receivedBody.instances[0].mask.image.bytesBase64Encoded).toBe(
+        expectedMaskB64,
+      );
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("count maps to parameters.sampleCount", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(JSON.stringify(vertexImageResponse(encoded, 4)));
+      },
+    });
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image
+        .model(vertexImagen3)
+        .count(4)
+        .generate("x");
+      expect(receivedBody.parameters.sampleCount).toBe(4);
+      expect(resp.images).toHaveLength(4);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("aspect ratio maps to parameters.aspectRatio", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(JSON.stringify(vertexImageResponse(encoded, 1)));
+      },
+    });
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.image
+        .model(vertexImagen3)
+        .aspectRatio("16:9")
+        .generate("x");
+      expect(receivedBody.parameters.aspectRatio).toBe("16:9");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("extra fields spread into parameters (negativePrompt, safetySetting)", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(JSON.stringify(vertexImageResponse(encoded, 1)));
+      },
+    });
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.image
+        .model(vertexImagen3)
+        .extraFields({ negativePrompt: "ugly", safetySetting: "block_some" })
+        .generate("x");
+      expect(receivedBody.parameters.negativePrompt).toBe("ugly");
+      expect(receivedBody.parameters.safetySetting).toBe("block_some");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("rejects quality/output_format/background as OpenAI-only", async () => {
+    const c = newClient(Providers.vertex, "test-token");
+    c.provider.baseUrl = "http://unused";
+
+    await expect(
+      c.image.model(vertexImagen3).quality("high").generate("x"),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      c.image.model(vertexImagen3).outputFormat("png").generate("x"),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      c.image.model(vertexImagen3).background("transparent").generate("x"),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+});

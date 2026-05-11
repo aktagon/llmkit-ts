@@ -121,3 +121,54 @@ describe("image integration \u2014 openai gpt-image-2", () => {
   );
 });
 
+describe("image integration \u2014 vertex imagen-3.0-fast-generate-001", () => {
+  test.skipIf(!process.env.VERTEX_BEARER_TOKEN)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.vertex, process.env.VERTEX_BEARER_TOKEN!);
+      const resp = await c.image
+        .model("imagen-3.0-fast-generate-001")
+        .aspectRatio("1:1")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.tokens.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
+describe("image integration \u2014 vertex imagen-3.0-generate-002", () => {
+  test.skipIf(!process.env.VERTEX_BEARER_TOKEN)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.vertex, process.env.VERTEX_BEARER_TOKEN!);
+      const resp = await c.image
+        .model("imagen-3.0-generate-002")
+        .aspectRatio("1:1")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.tokens.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
+describe("image integration \u2014 vertex imagen-4.0-generate-preview-06-06", () => {
+  test.skipIf(!process.env.VERTEX_BEARER_TOKEN)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.vertex, process.env.VERTEX_BEARER_TOKEN!);
+      const resp = await c.image
+        .model("imagen-4.0-generate-preview-06-06")
+        .aspectRatio("1:1")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.tokens.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
