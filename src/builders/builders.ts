@@ -79,6 +79,7 @@ export function perplexity(apiKey: string): Client { return new Client("perplexi
 export function qwen(apiKey: string): Client { return new Client("qwen", apiKey); }
 export function sambanova(apiKey: string): Client { return new Client("sambanova", apiKey); }
 export function together(apiKey: string): Client { return new Client("together", apiKey); }
+export function vertex(apiKey: string): Client { return new Client("vertex", apiKey); }
 export function vllm(apiKey: string): Client { return new Client("vllm", apiKey); }
 export function yi(apiKey: string): Client { return new Client("yi", apiKey); }
 export function zhipu(apiKey: string): Client { return new Client("zhipu", apiKey); }

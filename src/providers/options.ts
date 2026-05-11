@@ -718,6 +718,12 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
       jsonKey: "top_p",
     },
   ],
+  vertex: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+  ],
   vllm: [
     {
       key: OptionKeys.FREQUENCY_PENALTY,
@@ -850,6 +856,8 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   sambanova: [
   ],
   together: [
+  ],
+  vertex: [
   ],
   vllm: [
   ],
