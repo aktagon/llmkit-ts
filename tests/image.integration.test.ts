@@ -41,3 +41,83 @@ describe("image integration \u2014 google gemini-3.1-flash-image-preview", () =>
   );
 });
 
+describe("image integration \u2014 grok grok-imagine-image-quality", () => {
+  test.skipIf(!process.env.XAI_API_KEY)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.grok, process.env.XAI_API_KEY!);
+      const resp = await c.image
+        .model("grok-imagine-image-quality")
+        .aspectRatio("1:1")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
+describe("image integration \u2014 openai gpt-image-1", () => {
+  test.skipIf(!process.env.OPENAI_API_KEY || !process.env.LLMKIT_RUN_SLOW_IMAGE)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.openai, process.env.OPENAI_API_KEY!);
+      const resp = await c.image
+        .model("gpt-image-1")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.tokens.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
+describe("image integration \u2014 openai gpt-image-1-mini", () => {
+  test.skipIf(!process.env.OPENAI_API_KEY || !process.env.LLMKIT_RUN_SLOW_IMAGE)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.openai, process.env.OPENAI_API_KEY!);
+      const resp = await c.image
+        .model("gpt-image-1-mini")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.tokens.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
+describe("image integration \u2014 openai gpt-image-1.5", () => {
+  test.skipIf(!process.env.OPENAI_API_KEY || !process.env.LLMKIT_RUN_SLOW_IMAGE)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.openai, process.env.OPENAI_API_KEY!);
+      const resp = await c.image
+        .model("gpt-image-1.5")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.tokens.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
+describe("image integration \u2014 openai gpt-image-2", () => {
+  test.skipIf(!process.env.OPENAI_API_KEY)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.openai, process.env.OPENAI_API_KEY!);
+      const resp = await c.image
+        .model("gpt-image-2")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.tokens.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+

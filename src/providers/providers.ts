@@ -437,7 +437,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     baseUrl: "https://api.x.ai",
     endpoint: "/v1/chat/completions",
     defaultModel: "grok-3-fast",
-    envVar: "GROK_API_KEY",
+    envVar: "XAI_API_KEY",
     defaultMaxTokens: 4096,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
