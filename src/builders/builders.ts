@@ -8,11 +8,11 @@
 //
 
 import type { File, Message, Response, Tool } from "../types.ts";
-import type { ImageData, ImageResponse, Part } from "../image.ts";
+import type { ImageData, ImageResponse, MediaRef, Part } from "../image.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { BatchHandle } from "./batch.ts";
 
-export type { File, Message, Response, Tool, ImageData, ImageResponse, Part, MiddlewareFn };
+export type { File, Message, Response, Tool, ImageData, ImageResponse, MediaRef, Part, MiddlewareFn };
 export { BatchHandle };
 
 export interface ProviderConfig {
@@ -146,21 +146,33 @@ export class Text {
 export class Image {
  client: Client;
  _aspectRatio: string = "";
+ _background: string = "";
+ _count?: number;
  _parts: Part[] = [];
  _imageSize: string = "";
  _includeText: boolean = false;
+ _mask?: MediaRef;
  _middleware: MiddlewareFn[] = [];
  _model: string = "";
+ _outputFormat: string = "";
+ _quality: string = "";
+ _extraFields?: Record<string, unknown> | undefined;
 
   constructor(client: Client) { this.client = client; }
 
   aspectRatio(r: string): Image { const out = clone(this); out._aspectRatio = r; return out; }
+  background(s: string): Image { const out = clone(this); out._background = s; return out; }
+  count(n: number): Image { const out = clone(this); out._count = n; return out; }
   image(mime: string, data: Uint8Array): Image { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   imageSize(s: string): Image { const out = clone(this); out._imageSize = s; return out; }
   includeText(): Image { const out = clone(this); out._includeText = true; return out; }
+  mask(mime: string, data: Uint8Array): Image { const out = clone(this); out._mask = { mimeType: mime, bytes: data }; return out; }
   middleware(...fns: MiddlewareFn[]): Image { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Image { const out = clone(this); out._model = name; return out; }
+  outputFormat(s: string): Image { const out = clone(this); out._outputFormat = s; return out; }
+  quality(s: string): Image { const out = clone(this); out._quality = s; return out; }
   text(s: string): Image { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
+  extraFields(extras: Record<string, unknown>): Image { const out = clone(this); out._extraFields = { ...(this._extraFields ?? {}), ...extras }; return out; }
   async generate(msg: string): Promise<ImageResponse> {
     return imageGenerate(this, msg);
   }
