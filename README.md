@@ -158,14 +158,45 @@ await c
   .generate("Generate the person wearing the outfit.");
 ```
 
-Aspect ratios and sizes validate against a per-model whitelist before the HTTP request — `imageSize: "512"` on Pro throws `ValidationError` without paying for a 4xx round-trip.
+Aspect ratios and sizes validate against a per-model whitelist before the HTTP request — `imageSize("512")` on Pro throws `ValidationError` without paying for a 4xx round-trip. Empty whitelists mean "no client-side check; pass through" — providers like OpenAI accept arbitrary sizes within documented bounds, so the SDK trusts the API boundary instead of carrying a stale list.
 
-| Model                 | Aspect ratios                                                               | Sizes           |
-| --------------------- | --------------------------------------------------------------------------- | --------------- |
-| Nano Banana 2 (Flash) | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9, **1:4, 4:1, 1:8, 8:1** | 512, 1K, 2K, 4K |
-| Nano Banana Pro       | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9                         | 1K, 2K, 4K      |
+| Provider | Model                          | Aspect ratios                                                                   | Sizes                               |
+| -------- | ------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------- |
+| Google   | Nano Banana 2 (Flash)          | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9, **1:4, 4:1, 1:8, 8:1**     | 512, 1K, 2K, 4K                     |
+| Google   | Nano Banana Pro                | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9                             | 1K, 2K, 4K                          |
+| OpenAI   | gpt-image-2 / 1.5 / 1 / 1-mini | n/a (size only)                                                                 | any (e.g. `1024x1024`, `1536x1024`) |
+| xAI      | grok-imagine-image-quality     | 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 1:2, 2:1, 19.5:9, 9:19.5, 20:9, 9:20, auto | 1k, 2k                              |
 
-Up to 14 reference images per request.
+OpenAI gpt-image-\* models accept arbitrary sizes within documented bounds (max edge ≤3840, both edges multiples of 16, ratio ≤3:1, total pixels 655K–8.3M). They always return base64-encoded images, so `resp.images[0].bytes` works the same on both providers.
+
+Provider knobs are typed chain methods on the `Image` builder:
+
+| Method               | Provider support            | Wire field       |
+| -------------------- | --------------------------- | ---------------- |
+| `.quality(s)`        | OpenAI gpt-image-\*         | `quality`        |
+| `.outputFormat(s)`   | OpenAI gpt-image-\*         | `output_format`  |
+| `.background(s)`     | OpenAI gpt-image-\*         | `background`     |
+| `.count(n)`          | OpenAI + xAI Grok           | `n`              |
+| `.mask(mime, bytes)` | OpenAI gpt-image-\* (edits) | multipart `mask` |
+
+The chain validates per provider — calling `.quality(...)` on a Google or xAI builder rejects with `ValidationError` immediately, no HTTP round-trip. Knobs without typed methods (OpenAI: `output_compression`, `moderation`) remain reachable via `.extraFields(...)`, which is unvalidated and freeform.
+
+```ts
+import { openai } from "@aktagon/llmkit-ts/builders";
+
+const c = openai(process.env.OPENAI_API_KEY!);
+const resp = await c
+  .image()
+  .model("gpt-image-2")
+  .imageSize("1024x1024")
+  .quality("high")
+  .count(4)
+  .generate("A red circle on a white background");
+```
+
+Dispatch is automatic: chains without image parts hit OpenAI's `/v1/images/generations` (JSON); chains carrying one or more `.image(...)` parts hit `/v1/images/edits` (multipart/form-data with one `image[]` field per reference, in caller order). gpt-image-\* requires organization verification — see [platform.openai.com/docs/guides/your-data#organization-verification](https://platform.openai.com/docs/guides/your-data#organization-verification).
+
+Up to 14 reference images per Google request, 16 per OpenAI request.
 
 ### Upload — Path or Bytes
 
