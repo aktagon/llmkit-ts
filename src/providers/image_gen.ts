@@ -3,7 +3,7 @@
 
 import type { ProviderName } from "./providers.ts";
 
-export type ImageInputMode = "InlineParts" | "MultipartForm" | "JSONInlineRefs";
+export type ImageInputMode = "InlineParts" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict";
 export type ImageOutputMode = "Base64Inline" | "URLOrBase64";
 
 export interface ImageModelDef {
@@ -88,6 +88,33 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         modelId: "gpt-image-2",
         label: "GPT Image 2",
         aspectRatios: [],
+        imageSizes: [],
+      },
+    ],
+  },
+  vertex: {
+    inputMode: "JSONPredict",
+    outputMode: "Base64Inline",
+    maxInputCount: 1,
+    genEndpoint: "",
+    editEndpoint: "",
+    models: [
+      {
+        modelId: "imagen-3.0-fast-generate-001",
+        label: "Imagen 3 Fast",
+        aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
+        imageSizes: [],
+      },
+      {
+        modelId: "imagen-3.0-generate-002",
+        label: "Imagen 3",
+        aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
+        imageSizes: [],
+      },
+      {
+        modelId: "imagen-4.0-generate-preview-06-06",
+        label: "Imagen 4 Preview",
+        aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
       },
     ],
