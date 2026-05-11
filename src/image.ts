@@ -191,6 +191,19 @@ export async function generateImage(
         "requires at least one image part (edits branch only)",
       );
     }
+  } else if (imgCfg.inputMode === "JSONPredict") {
+    if (options.quality !== undefined)
+      throw new ValidationError("quality", `not supported by ${provider.name}`);
+    if (options.outputFormat !== undefined)
+      throw new ValidationError(
+        "output_format",
+        `not supported by ${provider.name}`,
+      );
+    if (options.background !== undefined)
+      throw new ValidationError(
+        "background",
+        `not supported by ${provider.name}`,
+      );
   }
 
   const baseEvent: Event = {
@@ -239,6 +252,18 @@ export async function generateImage(
           signal: options.signal,
         });
       }
+    } else if (imgCfg.inputMode === "JSONPredict") {
+      const body = buildVertexBody(parts, options);
+      const endpoint = (cfg.endpoint || "").replaceAll(
+        "{model}",
+        request.model,
+      );
+      httpResp = await fetch(baseUrl + endpoint, {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
     } else {
       // InlineParts (Google).
       let endpoint = (cfg.endpoint || "").replaceAll("{model}", request.model);
@@ -270,7 +295,9 @@ export async function generateImage(
         ? parseImageResponseDataArray(raw, "input_tokens", "output_tokens")
         : provider.name === "grok"
           ? parseImageResponseDataArray(raw, "", "")
-          : parseImageResponse(raw, cfg.usageInputPath, cfg.usageOutputPath);
+          : provider.name === "vertex"
+            ? parseVertexImageResponse(raw)
+            : parseImageResponse(raw, cfg.usageInputPath, cfg.usageOutputPath);
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.tokens,
@@ -409,6 +436,85 @@ function buildXAIEditBody(
     body.images = refs;
   }
   return body;
+}
+
+/**
+ * buildVertexBody assembles the Vertex AI Imagen :predict request body.
+ * Vertex uses an instances/parameters envelope: instance carries the
+ * per-call inputs (prompt, image ref for editing, mask for inpainting);
+ * parameters carries config (sampleCount, aspectRatio). Extra fields like
+ * negativePrompt and safetySetting spread into parameters via
+ * options.extraFields so callers can reach Imagen-specific knobs without
+ * typed chain methods.
+ */
+function buildVertexBody(
+  parts: Part[],
+  options: ImageOptions,
+): Record<string, unknown> {
+  const instance: Record<string, unknown> = {
+    prompt: joinTextParts(parts),
+  };
+  for (const p of parts) {
+    if ("image" in p) {
+      instance.image = { bytesBase64Encoded: bytesToBase64(p.image.bytes) };
+      break; // Vertex Imagen takes a single edit-target image
+    }
+  }
+  if (options.mask) {
+    instance.mask = {
+      image: { bytesBase64Encoded: bytesToBase64(options.mask.bytes) },
+    };
+  }
+
+  const parameters: Record<string, unknown> = {
+    sampleCount: options.count ?? 1,
+  };
+  if (options.aspectRatio) parameters.aspectRatio = options.aspectRatio;
+  if (options.extraFields) {
+    for (const [k, v] of Object.entries(options.extraFields)) parameters[k] = v;
+  }
+
+  return { instances: [instance], parameters };
+}
+
+/**
+ * parseVertexImageResponse decodes Vertex AI Imagen :predict responses.
+ * Shape: {predictions: [{bytesBase64Encoded, mimeType}]}. Vertex does not
+ * return token counts in the predict response, so usage stays zero.
+ */
+function parseVertexImageResponse(raw: unknown): ImageResponse {
+  const obj = (raw as { predictions?: unknown }).predictions;
+  const preds = Array.isArray(obj) ? obj : [];
+  const images: ImageData[] = [];
+  for (const item of preds) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as { bytesBase64Encoded?: unknown; mimeType?: unknown };
+    const b64 =
+      typeof entry.bytesBase64Encoded === "string"
+        ? entry.bytesBase64Encoded
+        : "";
+    if (!b64) continue;
+    const mime =
+      typeof entry.mimeType === "string" && entry.mimeType
+        ? entry.mimeType
+        : "image/png";
+    try {
+      images.push({ mimeType: mime, bytes: base64ToBytes(b64) });
+    } catch {
+      // skip malformed entries
+    }
+  }
+  return {
+    images,
+    text: "",
+    tokens: {
+      input: 0,
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 0,
+      reasoning: 0,
+    },
+  };
 }
 
 function joinTextParts(parts: Part[]): string {

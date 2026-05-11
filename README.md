@@ -166,6 +166,7 @@ Aspect ratios and sizes validate against a per-model whitelist before the HTTP r
 | Google   | Nano Banana Pro                | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9                             | 1K, 2K, 4K                          |
 | OpenAI   | gpt-image-2 / 1.5 / 1 / 1-mini | n/a (size only)                                                                 | any (e.g. `1024x1024`, `1536x1024`) |
 | xAI      | grok-imagine-image-quality     | 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 1:2, 2:1, 19.5:9, 9:19.5, 20:9, 9:20, auto | 1k, 2k                              |
+| Vertex   | imagen-3.0 / 4.0               | 1:1, 9:16, 16:9, 3:4, 4:3                                                       | fixed per model                     |
 
 OpenAI gpt-image-\* models accept arbitrary sizes within documented bounds (max edge ≤3840, both edges multiples of 16, ratio ≤3:1, total pixels 655K–8.3M). They always return base64-encoded images, so `resp.images[0].bytes` works the same on both providers.
 
@@ -197,6 +198,31 @@ const resp = await c
 Dispatch is automatic: chains without image parts hit OpenAI's `/v1/images/generations` (JSON); chains carrying one or more `.image(...)` parts hit `/v1/images/edits` (multipart/form-data with one `image[]` field per reference, in caller order). gpt-image-\* requires organization verification — see [platform.openai.com/docs/guides/your-data#organization-verification](https://platform.openai.com/docs/guides/your-data#organization-verification).
 
 Up to 14 reference images per Google request, 16 per OpenAI request.
+
+#### Vertex AI Imagen (Google Cloud)
+
+Vertex Imagen uses the `:predict` endpoint family and OAuth bearer auth instead of API keys. The SDK takes a bearer token (string); caller manages OAuth refresh externally (e.g. `gcloud auth print-access-token`, service-account JSON, or workload identity).
+
+```ts
+import { vertex } from "@aktagon/llmkit-ts/builders";
+
+// Caller substitutes {project_id} and {location} before passing the URL.
+const baseUrl =
+  "https://us-central1-aiplatform.googleapis.com" +
+  "/v1/projects/my-gcp-project/locations/us-central1/publishers/google/models";
+
+const c = vertex(process.env.VERTEX_BEARER_TOKEN!);
+c.provider.baseUrl = baseUrl;
+
+const resp = await c
+  .image()
+  .model("imagen-3.0-generate-002")
+  .aspectRatio("16:9")
+  .count(2)
+  .generate("A red circle");
+```
+
+Edit-mode (single image into `instances[0].image`) and inpainting (`.mask(mime, bytes)` into `instances[0].mask.image`) work the same way. Imagen-specific knobs like `negativePrompt` and `safetySetting` are reachable through `.extraFields(...)` — they spread into the request's `parameters` block. Vertex's `:predict` response does not carry token counts; `resp.tokens` stays zero.
 
 ### Upload — Path or Bytes
 
