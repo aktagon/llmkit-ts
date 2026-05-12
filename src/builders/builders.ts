@@ -48,6 +48,15 @@ export class Client {
     this.agent = new Agent(this);
     this.upload = new Upload(this);
   }
+
+
+
+
+
+  withBaseUrl(url: string): this {
+    this.provider.baseUrl = url;
+    return this;
+  }
 }
 
 export function newClient(name: string, apiKey: string): Client {

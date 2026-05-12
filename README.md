@@ -211,8 +211,7 @@ const baseUrl =
   "https://us-central1-aiplatform.googleapis.com" +
   "/v1/projects/my-gcp-project/locations/us-central1/publishers/google/models";
 
-const c = vertex(process.env.VERTEX_BEARER_TOKEN!);
-c.provider.baseUrl = baseUrl;
+const c = vertex(process.env.VERTEX_BEARER_TOKEN!).withBaseUrl(baseUrl);
 
 const resp = await c
   .image()
