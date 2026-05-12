@@ -48,6 +48,15 @@ export class Client {
     this.agent = new Agent(this);
     this.upload = new Upload(this);
   }
+
+  /** Override the provider's default base URL. Required for
+   *  providers whose default base URL is a template that the
+   *  caller must substitute (e.g. Vertex AI Imagen). Returns
+   *  the same Client for chaining. */
+  withBaseUrl(url: string): this {
+    this.provider.baseUrl = url;
+    return this;
+  }
 }
 
 export function newClient(name: string, apiKey: string): Client {
