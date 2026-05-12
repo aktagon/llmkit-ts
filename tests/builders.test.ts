@@ -227,6 +227,15 @@ describe("Surface — constructors", () => {
     }
     expect(clients).toHaveLength(29);
   });
+
+  test("withBaseUrl sets provider.baseUrl and returns the same Client", () => {
+    const override = "https://example.test/v1";
+    const c = vertex("test-token").withBaseUrl(override);
+    expect(c.provider.baseUrl).toBe(override);
+    // Chainability: withBaseUrl must return `this` so callers can write
+    //   const c = vertex(token).withBaseUrl(url) in one statement.
+    expect(c).toBeInstanceOf(Client);
+  });
 });
 
 // TestTerminals_Throw confirms every still-stubbed phase-2b terminal
