@@ -1111,9 +1111,7 @@ describe("Image.generate — Vertex Imagen (JSONPredict)", () => {
     try {
       const c = newClient(Providers.vertex, "test-token");
       c.provider.baseUrl = `http://localhost:${server.port}`;
-      const resp = await c.image
-        .model(vertexImagen3)
-        .generate("A red circle");
+      const resp = await c.image.model(vertexImagen3).generate("A red circle");
       expect(receivedPath).toBe(`/${vertexImagen3}:predict`);
       expect(receivedAuth).toBe("Bearer test-token");
       expect(receivedBody.instances).toHaveLength(1);
@@ -1199,10 +1197,7 @@ describe("Image.generate — Vertex Imagen (JSONPredict)", () => {
     try {
       const c = newClient(Providers.vertex, "test-token");
       c.provider.baseUrl = `http://localhost:${server.port}`;
-      const resp = await c.image
-        .model(vertexImagen3)
-        .count(4)
-        .generate("x");
+      const resp = await c.image.model(vertexImagen3).count(4).generate("x");
       expect(receivedBody.parameters.sampleCount).toBe(4);
       expect(resp.images).toHaveLength(4);
     } finally {
@@ -1223,10 +1218,7 @@ describe("Image.generate — Vertex Imagen (JSONPredict)", () => {
     try {
       const c = newClient(Providers.vertex, "test-token");
       c.provider.baseUrl = `http://localhost:${server.port}`;
-      await c.image
-        .model(vertexImagen3)
-        .aspectRatio("16:9")
-        .generate("x");
+      await c.image.model(vertexImagen3).aspectRatio("16:9").generate("x");
       expect(receivedBody.parameters.aspectRatio).toBe("16:9");
     } finally {
       server.stop(true);
@@ -1270,5 +1262,100 @@ describe("Image.generate — Vertex Imagen (JSONPredict)", () => {
     await expect(
       c.image.model(vertexImagen3).background("transparent").generate("x"),
     ).rejects.toBeInstanceOf(ValidationError);
+  });
+});
+
+describe("Image.generate — finishReason / finishMessage", () => {
+  test("Google: surfaces finishReason + finishMessage on blocked response", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                // No content.parts — model declined to produce.
+                finishReason: "IMAGE_OTHER",
+                finishMessage:
+                  "Could not generate image. Try rephrasing the prompt.",
+              },
+            ],
+            usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 0 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    });
+    try {
+      const c = newClient(Providers.google, "test-key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image.model(flashModel).generate("a refused prompt");
+      expect(resp.images.length).toBe(0);
+      expect(resp.finishReason).toBe("IMAGE_OTHER");
+      expect(resp.finishMessage).toBe(
+        "Could not generate image. Try rephrasing the prompt.",
+      );
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("Google: happy path leaves finishReason/finishMessage undefined when absent", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    { inlineData: { mimeType: "image/png", data: encoded } },
+                  ],
+                },
+              },
+            ],
+            usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 100 },
+          }),
+        ),
+    });
+    try {
+      const c = newClient(Providers.google, "test-key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image.model(flashModel).generate("a cat");
+      expect(resp.images.length).toBe(1);
+      expect(resp.finishReason).toBeUndefined();
+      expect(resp.finishMessage).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("Vertex: surfaces raiFilteredReason as finishReason", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(
+          JSON.stringify({
+            predictions: [
+              { raiFilteredReason: "Image filtered by safety system" },
+            ],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    });
+    try {
+      const c = newClient(
+        Providers.vertex,
+        "Bearer fake-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      );
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image.model(vertexImagen3).generate("blocked");
+      expect(resp.images.length).toBe(0);
+      expect(resp.finishReason).toBe("Image filtered by safety system");
+      expect(resp.finishMessage).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
   });
 });

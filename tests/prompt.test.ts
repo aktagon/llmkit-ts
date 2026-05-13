@@ -178,3 +178,76 @@ describe("prompt — reasoning tokens", () => {
     }
   });
 });
+
+describe("prompt — finishReason / finishMessage", () => {
+  test("Anthropic: surfaces stop_reason as finishReason", async () => {
+    const server = startMockServer(
+      () =>
+        new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: "truncated" }],
+            usage: { input_tokens: 4, output_tokens: 10 },
+            stop_reason: "max_tokens",
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    try {
+      const c = newClient(Providers.anthropic, "test-key");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.maxTokens(10).prompt("ping");
+      expect(resp.finishReason).toBe("max_tokens");
+      expect(resp.finishMessage).toBeUndefined();
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("OpenAI: surfaces choices[0].finish_reason", async () => {
+    const server = startMockServer(
+      () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 5, completion_tokens: 1 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    try {
+      const c = newClient(Providers.openai, "test-key");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.prompt("ping");
+      expect(resp.finishReason).toBe("stop");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("happy path leaves finishReason undefined when absent", async () => {
+    const server = startMockServer(
+      () =>
+        new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: "hi" }],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    try {
+      const c = newClient(Providers.anthropic, "test-key");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.prompt("ping");
+      expect(resp.finishReason).toBeUndefined();
+      expect(resp.finishMessage).toBeUndefined();
+    } finally {
+      server.stop();
+    }
+  });
+});

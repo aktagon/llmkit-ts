@@ -43,19 +43,28 @@ export class BatchHandle {
 // config (system, schema, files-via-Part). Mirrors Go's batchInputs:
 // `buildRequest` is reused so chain config (System, Schema, ...) lands
 // identically across single-prompt and batch paths.
+//
+// ADR-012 REQ-PROP-003: every chain field set on the Text builder must
+// propagate to every helper. Sampling options (max_tokens, temperature,
+// ...) and caching MUST reach the batch wire body — buildPromptArgs
+// returns them; this helper forwards them via BatchOptions (which
+// extends PromptOptions). Reading b._<field> directly here keeps the
+// propagation lint honest (it can't see the buildPromptArgs return
+// destructure).
 function batchInputs(
   b: Text,
   prompts: string[],
 ): { provider: Provider; requests: Request[]; options: BatchOptions } {
   const requests: Request[] = [];
   let providerOut: Provider | undefined;
+  let promptOpts: BatchOptions = {};
   for (const p of prompts) {
     const built = buildPromptArgs(b, p);
     requests.push(built.request);
     providerOut = built.provider;
+    promptOpts = built.options;
   }
   if (!providerOut) {
-    // Empty prompts list — still need a provider for the legacy call.
     providerOut = {
       name: b.client.provider.name as ProviderName,
       apiKey: b.client.provider.apiKey,
@@ -64,7 +73,21 @@ function batchInputs(
     if (b.client.provider.baseUrl)
       providerOut.baseUrl = b.client.provider.baseUrl;
   }
-  const options: BatchOptions = {};
+  const options: BatchOptions = { ...promptOpts };
+  if (b._maxTokens !== undefined) options.maxTokens = b._maxTokens;
+  if (b._temperature !== undefined) options.temperature = b._temperature;
+  if (b._topP !== undefined) options.topP = b._topP;
+  if (b._topK !== undefined) options.topK = b._topK;
+  if (b._frequencyPenalty !== undefined)
+    options.frequencyPenalty = b._frequencyPenalty;
+  if (b._presencePenalty !== undefined)
+    options.presencePenalty = b._presencePenalty;
+  if (b._seed !== undefined) options.seed = b._seed;
+  if (b._stopSequences.length > 0) options.stopSequences = b._stopSequences;
+  if (b._thinkingBudget !== undefined)
+    options.thinkingBudget = b._thinkingBudget;
+  if (b._reasoningEffort) options.reasoningEffort = b._reasoningEffort;
+  if (b._caching) options.caching = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
   return { provider: providerOut, requests, options };
 }

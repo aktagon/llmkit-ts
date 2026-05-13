@@ -74,6 +74,75 @@ describe("batch — Anthropic (InlineRequests)", () => {
       server.stop(true);
     }
   });
+
+  // ADR-012 REQ-PROP-003: every chain field set on the Text builder must
+  // propagate through Text.batch the same way it propagates through
+  // Text.prompt. Previously the typed-builder batch path silently
+  // dropped max_tokens / temperature / etc.
+  test("chain sampling options reach every per-request wire body", async () => {
+    let createBody: Record<string, unknown> | undefined;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const url = new URL(req.url);
+        if (req.method === "POST" && url.pathname === "/v1/messages/batches") {
+          createBody = (await req.json()) as Record<string, unknown>;
+          return new Response(
+            JSON.stringify({ id: "batch_opts", processing_status: "ended" }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (
+          req.method === "GET" &&
+          url.pathname === "/v1/messages/batches/batch_opts"
+        ) {
+          return new Response(
+            JSON.stringify({ id: "batch_opts", processing_status: "ended" }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        if (
+          req.method === "GET" &&
+          url.pathname === "/v1/messages/batches/batch_opts/results"
+        ) {
+          return new Response(
+            JSON.stringify({
+              custom_id: "req-0",
+              result: {
+                message: {
+                  content: [{ type: "text", text: "ok" }],
+                  usage: { input_tokens: 1, output_tokens: 1 },
+                },
+              },
+            }),
+            { headers: { "content-type": "application/x-ndjson" } },
+          );
+        }
+        return new Response("unexpected", { status: 500 });
+      },
+    });
+    try {
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.text
+        .model("claude-sonnet-4-6")
+        .system("be terse")
+        .maxTokens(64)
+        .temperature(0.3)
+        .topP(0.9)
+        .stopSequences("END")
+        .batch("ping");
+      const requests = createBody?.requests as Array<Record<string, unknown>>;
+      const params = requests[0]!.params as Record<string, unknown>;
+      expect(params.max_tokens).toBe(64);
+      expect(params.temperature).toBe(0.3);
+      expect(params.top_p).toBe(0.9);
+      expect(params.stop_sequences).toEqual(["END"]);
+      expect(params.system).toBe("be terse");
+    } finally {
+      server.stop(true);
+    }
+  });
 });
 
 describe("batch — OpenAI (FileReferenceInput)", () => {
