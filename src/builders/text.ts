@@ -144,6 +144,14 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
           : 0,
       },
     };
+    if (cfg.finishReasonPath) {
+      const reason = extractPath(raw, cfg.finishReasonPath);
+      if (reason) result.finishReason = reason;
+    }
+    if (cfg.finishMessagePath) {
+      const message = extractPath(raw, cfg.finishMessagePath);
+      if (message) result.finishMessage = message;
+    }
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.tokens,

@@ -145,7 +145,16 @@ export class Agent {
       if (calls.length === 0) {
         const text = extractPath(raw, cfg.responseTextPath);
         this.history.push({ role: "assistant", content: text });
-        return { text, tokens: totalUsage };
+        const result: PromptResponse = { text, tokens: totalUsage };
+        if (cfg.finishReasonPath) {
+          const reason = extractPath(raw, cfg.finishReasonPath);
+          if (reason) result.finishReason = reason;
+        }
+        if (cfg.finishMessagePath) {
+          const message = extractPath(raw, cfg.finishMessagePath);
+          if (message) result.finishMessage = message;
+        }
+        return result;
       }
 
       this.history.push({ role: "assistant", toolCalls: calls });
