@@ -33,6 +33,22 @@ export interface Usage {
 export interface Response {
   text: string;
   tokens: Usage;
+  /**
+   * Provider stop signal, passed through verbatim. Examples:
+   *   Google:    "STOP", "MAX_TOKENS", "SAFETY", "RECITATION"
+   *   OpenAI:    "stop", "length", "content_filter", "tool_calls"
+   *   Anthropic: "end_turn", "max_tokens", "stop_sequence", "tool_use"
+   *   xAI:       "stop", "length", "content_filter"
+   * Undefined when the provider response carries no signal or the parser
+   * does not yet read this provider's location.
+   */
+  finishReason?: string;
+  /**
+   * Provider-supplied human-readable explanation of the stop signal.
+   * Populated by Google when present; OpenAI / Anthropic / xAI do not
+   * carry an equivalent free-text field, so this stays undefined for them.
+   */
+  finishMessage?: string;
 }
 
 export interface File {
