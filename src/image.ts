@@ -57,6 +57,23 @@ export interface ImageResponse {
   images: ImageData[];
   text: string;
   tokens: Usage;
+
+
+
+
+
+
+
+
+
+  finishReason?: string;
+
+
+
+
+
+
+  finishMessage?: string;
 }
 
 export interface ImageOptions {
@@ -486,9 +503,23 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
   const obj = (raw as { predictions?: unknown }).predictions;
   const preds = Array.isArray(obj) ? obj : [];
   const images: ImageData[] = [];
+  let finishReason: string | undefined;
   for (const item of preds) {
     if (!item || typeof item !== "object") continue;
-    const entry = item as { bytesBase64Encoded?: unknown; mimeType?: unknown };
+    const entry = item as {
+      bytesBase64Encoded?: unknown;
+      mimeType?: unknown;
+      raiFilteredReason?: unknown;
+    };
+    if (
+      typeof entry.raiFilteredReason === "string" &&
+      entry.raiFilteredReason &&
+      !finishReason
+    ) {
+      //
+      //
+      finishReason = entry.raiFilteredReason;
+    }
     const b64 =
       typeof entry.bytesBase64Encoded === "string"
         ? entry.bytesBase64Encoded
@@ -504,7 +535,7 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
       //
     }
   }
-  return {
+  const out: ImageResponse = {
     images,
     text: "",
     tokens: {
@@ -515,6 +546,8 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
       reasoning: 0,
     },
   };
+  if (finishReason) out.finishReason = finishReason;
+  return out;
 }
 
 function joinTextParts(parts: Part[]): string {
@@ -589,8 +622,9 @@ function parseImageResponse(
   inputPath: string,
   outputPath: string,
 ): ImageResponse {
-  const { images, text } = extractGoogleImageParts(raw);
-  return {
+  const { images, text, finishReason, finishMessage } =
+    extractGoogleImageParts(raw);
+  const out: ImageResponse = {
     images,
     text,
     tokens: {
@@ -601,6 +635,9 @@ function parseImageResponse(
       reasoning: 0,
     },
   };
+  if (finishReason) out.finishReason = finishReason;
+  if (finishMessage) out.finishMessage = finishMessage;
+  return out;
 }
 
 
@@ -662,18 +699,31 @@ function parseImageResponseDataArray(
 function extractGoogleImageParts(raw: unknown): {
   images: ImageData[];
   text: string;
+  finishReason?: string;
+  finishMessage?: string;
 } {
   const images: ImageData[] = [];
   const textParts: string[] = [];
   const root = raw as {
-    candidates?: Array<{ content?: { parts?: unknown[] } }>;
+    candidates?: Array<{
+      content?: { parts?: unknown[] };
+      finishReason?: string;
+      finishMessage?: string;
+    }>;
   };
   const candidates = root?.candidates;
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return { images, text: "" };
   }
-  const parts = candidates[0]?.content?.parts;
-  if (!Array.isArray(parts)) return { images, text: "" };
+  const cand = candidates[0];
+  const finishReason =
+    typeof cand?.finishReason === "string" ? cand.finishReason : undefined;
+  const finishMessage =
+    typeof cand?.finishMessage === "string" ? cand.finishMessage : undefined;
+  const parts = cand?.content?.parts;
+  if (!Array.isArray(parts)) {
+    return { images, text: "", finishReason, finishMessage };
+  }
 
   for (const part of parts) {
     if (!part || typeof part !== "object") continue;
@@ -691,7 +741,7 @@ function extractGoogleImageParts(raw: unknown): {
       textParts.push(p.text);
     }
   }
-  return { images, text: textParts.join("") };
+  return { images, text: textParts.join(""), finishReason, finishMessage };
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
