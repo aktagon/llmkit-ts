@@ -877,6 +877,24 @@ describe("Phase 3 slice 2b — Text.stream wired", () => {
     }
   });
 
+  test("path-less provider leaves finishReason undefined even when frame would match", async () => {
+    const server = streamServer([
+      `data: {"choices":[{"delta":{"content":"Hi"},"finish_reason":"stop"}]}`,
+      `data: [DONE]`,
+    ]);
+    try {
+      const c = groq("k");
+      c.provider.baseUrl = server.url;
+      const stream = c.text.stream("hi");
+      for await (const _ of stream) {
+        /* drain */
+      }
+      expect(stream.response()?.finishReason).toBeUndefined();
+    } finally {
+      server.stop();
+    }
+  });
+
   test("Grok finish_reason surfaces (OpenAI-shaped wire)", async () => {
     const server = streamServer([
       `data: {"choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}`,
