@@ -800,6 +800,102 @@ describe("Phase 3 slice 2b — Text.stream wired", () => {
     }
   });
 
+  // ADR-013: stream-time finish-reason surfaces on TextStream.response().
+
+  const streamServer = (events: string[]) =>
+    startMockServer(() => {
+      const s = new ReadableStream({
+        start(controller) {
+          const enc = new TextEncoder();
+          for (const e of events) controller.enqueue(enc.encode(e + "\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(s, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+
+  test("OpenAI finish_reason surfaces on the trailing handle", async () => {
+    const server = streamServer([
+      `data: {"choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}`,
+      `data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`,
+      `data: [DONE]`,
+    ]);
+    try {
+      const c = openai("k");
+      c.provider.baseUrl = server.url;
+      const stream = c.text.stream("hi");
+      for await (const _ of stream) {
+        /* drain */
+      }
+      expect(stream.response()?.finishReason).toBe("stop");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("Anthropic stop_reason surfaces from the message_stop event body", async () => {
+    const server = streamServer([
+      `event: content_block_delta`,
+      `data: {"delta":{"text":"Hi"}}`,
+      ``,
+      `event: message_delta`,
+      `data: {"usage":{"output_tokens":1}}`,
+      ``,
+      `event: message_stop`,
+      `data: {"type":"message_stop","stop_reason":"end_turn"}`,
+    ]);
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      const stream = c.text.stream("hi");
+      for await (const _ of stream) {
+        /* drain */
+      }
+      expect(stream.response()?.finishReason).toBe("end_turn");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("Google last-wins ignores FINISH_REASON_UNSPECIFIED", async () => {
+    const server = streamServer([
+      `data: {"candidates":[{"content":{"parts":[{"text":"Hi"}]},"finishReason":"FINISH_REASON_UNSPECIFIED"}]}`,
+      `data: {"candidates":[{"content":{"parts":[{"text":""}]},"finishReason":"STOP"}]}`,
+    ]);
+    try {
+      const c = google("k");
+      c.provider.baseUrl = server.url;
+      const stream = c.text.stream("hi");
+      for await (const _ of stream) {
+        /* drain */
+      }
+      expect(stream.response()?.finishReason).toBe("STOP");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("Grok finish_reason surfaces (OpenAI-shaped wire)", async () => {
+    const server = streamServer([
+      `data: {"choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}`,
+      `data: {"choices":[{"delta":{},"finish_reason":"length"}]}`,
+      `data: [DONE]`,
+    ]);
+    try {
+      const c = grok("k");
+      c.provider.baseUrl = server.url;
+      const stream = c.text.stream("hi");
+      for await (const _ of stream) {
+        /* drain */
+      }
+      expect(stream.response()?.finishReason).toBe("length");
+    } finally {
+      server.stop();
+    }
+  });
+
   test("consumer break aborts the producer cleanly", async () => {
     // Mock server emits chunks slowly so we can break mid-stream.
     const server = startMockServer(() => {
