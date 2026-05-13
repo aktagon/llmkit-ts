@@ -33,6 +33,22 @@ export interface Usage {
 export interface Response {
   text: string;
   tokens: Usage;
+
+
+
+
+
+
+
+
+
+  finishReason?: string;
+
+
+
+
+
+  finishMessage?: string;
 }
 
 export interface File {

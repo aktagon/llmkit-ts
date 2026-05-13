@@ -6,18 +6,25 @@ import {
 } from "./providers/batch.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractPath, extractIntPath } from "./paths.ts";
-import { parseCacheUsage } from "./caching.ts";
+import { applyCaching, parseCacheUsage } from "./caching.ts";
 import { buildAuthHeaders, buildRequest, validateOptions } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import type {
   BatchHandle,
+  PromptOptions,
   Provider,
   Request as PromptRequest,
   Response as PromptResponse,
 } from "./types.ts";
 
-export interface BatchOptions {
+//
+//
+//
+//
+//
+//
+export interface BatchOptions extends Partial<PromptOptions> {
   pollIntervalMs?: number;
   middleware?: MiddlewareFn[];
 }
@@ -70,7 +77,7 @@ export async function submitBatch(
 
     let body: Uint8Array;
     if (bc.inputMode === "FileReferenceInput") {
-      const jsonl = buildBatchJsonl(requests, provider, cfg, bc);
+      const jsonl = await buildBatchJsonl(requests, provider, cfg, bc, options);
       const fileId = await uploadBatchFile(base, jsonl, bc, headers);
       const payload: Record<string, unknown> = {
         [bc.inputField]: fileId,
@@ -79,7 +86,13 @@ export async function submitBatch(
       };
       body = new TextEncoder().encode(JSON.stringify(payload));
     } else {
-      const payload = buildBatchBody(requests, provider, cfg, bc);
+      const payload = await buildBatchBody(
+        requests,
+        provider,
+        cfg,
+        bc,
+        options,
+      );
       body = new TextEncoder().encode(JSON.stringify(payload));
     }
 
@@ -180,40 +193,55 @@ async function fetchBatchResults(
   return parseBatchResults(handle.provider.name, body, bc);
 }
 
-function buildBatchBody(
+async function buildBatchBody(
   requests: PromptRequest[],
   provider: Provider,
   cfg: ProviderConfig,
   bc: BatchDef,
-): Record<string, unknown> {
-  const items = requests.map((req, i) => {
-    const reqBody = buildRequest(provider, req, cfg, {});
-    if (bc.itemBodyField) {
-      return { custom_id: `req-${i}`, [bc.itemBodyField]: reqBody };
+  options: BatchOptions,
+): Promise<Record<string, unknown>> {
+  const items: Record<string, unknown>[] = [];
+  for (let i = 0; i < requests.length; i++) {
+    const req = requests[i]!;
+    const reqBody = buildRequest(provider, req, cfg, options);
+    if (options.caching) {
+      await applyCaching(reqBody, provider, cfg, options);
     }
-    return reqBody;
-  });
+    if (bc.itemBodyField) {
+      items.push({ custom_id: `req-${i}`, [bc.itemBodyField]: reqBody });
+    } else {
+      items.push(reqBody);
+    }
+  }
   if (bc.requestWrapper) {
     return { [bc.requestWrapper]: items };
   }
   return { requests: items };
 }
 
-function buildBatchJsonl(
+async function buildBatchJsonl(
   requests: PromptRequest[],
   provider: Provider,
   cfg: ProviderConfig,
   bc: BatchDef,
-): Uint8Array {
-  const lines = requests.map((req, i) => {
-    const reqBody = buildRequest(provider, req, cfg, {});
-    return JSON.stringify({
-      custom_id: `req-${i}`,
-      method: "POST",
-      url: bc.endpointPath,
-      body: reqBody,
-    });
-  });
+  options: BatchOptions,
+): Promise<Uint8Array> {
+  const lines: string[] = [];
+  for (let i = 0; i < requests.length; i++) {
+    const req = requests[i]!;
+    const reqBody = buildRequest(provider, req, cfg, options);
+    if (options.caching) {
+      await applyCaching(reqBody, provider, cfg, options);
+    }
+    lines.push(
+      JSON.stringify({
+        custom_id: `req-${i}`,
+        method: "POST",
+        url: bc.endpointPath,
+        body: reqBody,
+      }),
+    );
+  }
   return new TextEncoder().encode(lines.join("\n") + "\n");
 }
 
@@ -269,7 +297,7 @@ function parseBatchResults(
       : parsed;
     if (!inner || typeof inner !== "object") continue;
     const cache = parseCacheUsage(inner, provider as keyof typeof PROVIDERS);
-    out.push({
+    const entry: PromptResponse = {
       text: extractPath(inner, cfg.responseTextPath),
       tokens: {
         input: extractIntPath(inner, cfg.usageInputPath),
@@ -280,7 +308,16 @@ function parseBatchResults(
           ? extractIntPath(inner, cfg.reasoningTokensPath)
           : 0,
       },
-    });
+    };
+    if (cfg.finishReasonPath) {
+      const reason = extractPath(inner, cfg.finishReasonPath);
+      if (reason) entry.finishReason = reason;
+    }
+    if (cfg.finishMessagePath) {
+      const message = extractPath(inner, cfg.finishMessagePath);
+      if (message) entry.finishMessage = message;
+    }
+    out.push(entry);
   }
   return out;
 }
