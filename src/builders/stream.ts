@@ -50,6 +50,20 @@ interface StreamUsage {
   output: number;
 }
 
+interface StreamOutcome {
+  usage: StreamUsage;
+  finishReason: string;
+}
+
+//
+//
+function parseStreamFinishPath(p: string): [string, string] {
+  if (!p) return ["", ""];
+  const idx = p.indexOf(":");
+  if (idx >= 0) return [p.slice(0, idx), p.slice(idx + 1)];
+  return ["", p];
+}
+
 async function runStream(
   provider: Provider,
   request: PromptRequest,
@@ -114,21 +128,27 @@ async function runStream(
     }
 
     const chunks: string[] = [];
-    const usage = await consumeSSE(httpResp.body, streamCfg, async (text) => {
-      chunks.push(text);
-      await onChunk(text);
-    });
+    const outcome = await consumeSSE(
+      httpResp.body,
+      streamCfg,
+      cfg.streamFinishReasonPath,
+      async (text) => {
+        chunks.push(text);
+        await onChunk(text);
+      },
+    );
 
     const result: PromptResponse = {
       text: chunks.join(""),
       tokens: {
-        input: usage.input,
-        output: usage.output,
+        input: outcome.usage.input,
+        output: outcome.usage.output,
         cacheWrite: 0,
         cacheRead: 0,
         reasoning: 0,
       },
     };
+    if (outcome.finishReason) result.finishReason = outcome.finishReason;
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.tokens,
@@ -148,9 +168,12 @@ async function runStream(
 async function consumeSSE(
   body: ReadableStream<Uint8Array>,
   cfg: StreamDef,
+  finishReasonPath: string,
   emit: (text: string) => void | Promise<void>,
-): Promise<StreamUsage> {
+): Promise<StreamOutcome> {
   const usage: StreamUsage = { input: 0, output: 0 };
+  const [finishEvent, finishJSONPath] = parseStreamFinishPath(finishReasonPath);
+  let finishReason = "";
   const reader = body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
@@ -168,7 +191,7 @@ async function consumeSSE(
     if (await processBuffer()) stopped = true;
   }
 
-  return usage;
+  return { usage, finishReason };
 
   async function processBuffer(): Promise<boolean> {
     let newlineIdx = buffer.indexOf("\n");
@@ -189,17 +212,40 @@ async function consumeSSE(
     if (!line.startsWith("data: ")) return false;
     const data = line.slice("data: ".length);
 
+    //
+    //
     if (cfg.doneSignal && data === cfg.doneSignal) return true;
-    if (cfg.usesEventTypes && cfg.doneEvent && currentEvent === cfg.doneEvent)
-      return true;
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(data);
     } catch {
+      //
+      //
+      if (cfg.usesEventTypes && cfg.doneEvent && currentEvent === cfg.doneEvent)
+        return true;
       return false;
     }
-    if (typeof parsed !== "object" || parsed === null) return false;
+    if (typeof parsed !== "object" || parsed === null) {
+      if (cfg.usesEventTypes && cfg.doneEvent && currentEvent === cfg.doneEvent)
+        return true;
+      return false;
+    }
+
+    //
+    //
+    //
+    if (finishJSONPath) {
+      if (finishEvent === "" || finishEvent === currentEvent) {
+        const v = extractPath(parsed, finishJSONPath);
+        if (v && v !== "FINISH_REASON_UNSPECIFIED") {
+          finishReason = v;
+        }
+      }
+    }
+
+    if (cfg.usesEventTypes && cfg.doneEvent && currentEvent === cfg.doneEvent)
+      return true;
 
     if (cfg.usesEventTypes) {
       if (currentEvent === cfg.contentEvent) {
