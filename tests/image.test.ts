@@ -1394,3 +1394,57 @@ describe("Image.generate — finishReason / finishMessage", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 });
+
+describe("Image.generate — safetySettings (Google InlineParts)", () => {
+  test("safetySettings written as top-level wire field", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    { inlineData: { mimeType: "image/png", data: encoded } },
+                  ],
+                },
+              },
+            ],
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      },
+    });
+    try {
+      const c = newClient(Providers.google, "key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.image
+        .model(flashModel)
+        .safetySettings([
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        ])
+        .generate("a cat");
+      expect(receivedBody.safetySettings).toEqual([
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("safetySettings rejected on OpenAI", async () => {
+    const c = newClient(Providers.openai, "key");
+    await expect(
+      c.image
+        .model("gpt-image-1")
+        .safetySettings([
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        ])
+        .generate("x"),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+});
