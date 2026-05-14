@@ -169,6 +169,7 @@ export class Image {
   /** @internal */ _outputFormat: string = "";
   /** @internal */ _quality: string = "";
   /** @internal */ _safetyFilter: string = "";
+  /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _extraFields?: Record<string, unknown> | undefined;
 
   constructor(client: Client) { this.client = client; }
@@ -185,6 +186,7 @@ export class Image {
   outputFormat(s: string): Image { const out = clone(this); out._outputFormat = s; return out; }
   quality(s: string): Image { const out = clone(this); out._quality = s; return out; }
   safetyFilter(s: string): Image { const out = clone(this); out._safetyFilter = s; return out; }
+  safetySettings(s: SafetySetting[]): Image { const out = clone(this); out._safetySettings = s; return out; }
   text(s: string): Image { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   extraFields(extras: Record<string, unknown>): Image { const out = clone(this); out._extraFields = { ...(this._extraFields ?? {}), ...extras }; return out; }
   async generate(msg: string): Promise<ImageResponse> {
