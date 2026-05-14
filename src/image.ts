@@ -17,7 +17,7 @@ import { extractIntPath } from "./paths.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
-import type { Provider, Usage } from "./types.ts";
+import type { Provider, SafetySetting, Usage } from "./types.ts";
 
 export interface MediaRef {
   mimeType: string;
@@ -101,6 +101,9 @@ export interface ImageOptions {
 
 
   safetyFilter?: string;
+
+
+  safetySettings?: SafetySetting[];
   middleware?: MiddlewareFn[];
   signal?: AbortSignal;
 }
@@ -194,6 +197,7 @@ export async function generateImage(
         "safety_filter",
         `not supported by ${provider.name}; use SafetySettings for text-gen`,
       );
+    //
   } else if (imgCfg.inputMode === "JSONInlineRefs") {
     if (options.quality !== undefined)
       throw new ValidationError("quality", `not supported by ${provider.name}`);
@@ -214,6 +218,11 @@ export async function generateImage(
         "safety_filter",
         `not supported by ${provider.name}`,
       );
+    if (options.safetySettings && options.safetySettings.length > 0)
+      throw new ValidationError(
+        "safety_settings",
+        `not supported by ${provider.name}`,
+      );
   } else if (imgCfg.inputMode === "MultipartForm") {
     if (options.mask !== undefined && imageCount === 0) {
       throw new ValidationError(
@@ -224,6 +233,11 @@ export async function generateImage(
     if (options.safetyFilter !== undefined)
       throw new ValidationError(
         "safety_filter",
+        `not supported by ${provider.name}`,
+      );
+    if (options.safetySettings && options.safetySettings.length > 0)
+      throw new ValidationError(
+        "safety_settings",
         `not supported by ${provider.name}`,
       );
   } else if (imgCfg.inputMode === "JSONPredict") {
@@ -240,6 +254,11 @@ export async function generateImage(
         `not supported by ${provider.name}`,
       );
     //
+    if (options.safetySettings && options.safetySettings.length > 0)
+      throw new ValidationError(
+        "safety_settings",
+        `not supported by ${provider.name}; use safetyFilter for Vertex Imagen`,
+      );
   }
 
   const baseEvent: Event = {
@@ -631,10 +650,17 @@ function buildImageBody(
     generationConfig.imageConfig = imgConfig;
   }
 
-  return {
+  const body: Record<string, unknown> = {
     contents: [{ parts: wire }],
     generationConfig,
   };
+  if (options.safetySettings && options.safetySettings.length > 0) {
+    body.safetySettings = options.safetySettings.map((s) => ({
+      category: s.category,
+      threshold: s.threshold,
+    }));
+  }
+  return body;
 }
 
 function parseImageResponse(
