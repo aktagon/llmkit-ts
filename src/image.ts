@@ -98,6 +98,9 @@ export interface ImageOptions {
 
 
   extraFields?: Record<string, unknown>;
+
+
+  safetyFilter?: string;
   middleware?: MiddlewareFn[];
   signal?: AbortSignal;
 }
@@ -186,6 +189,11 @@ export async function generateImage(
       throw new ValidationError("count", `not supported by ${provider.name}`);
     if (options.mask !== undefined)
       throw new ValidationError("mask", `not supported by ${provider.name}`);
+    if (options.safetyFilter !== undefined)
+      throw new ValidationError(
+        "safety_filter",
+        `not supported by ${provider.name}; use SafetySettings for text-gen`,
+      );
   } else if (imgCfg.inputMode === "JSONInlineRefs") {
     if (options.quality !== undefined)
       throw new ValidationError("quality", `not supported by ${provider.name}`);
@@ -201,6 +209,11 @@ export async function generateImage(
       );
     if (options.mask !== undefined)
       throw new ValidationError("mask", `not supported by ${provider.name}`);
+    if (options.safetyFilter !== undefined)
+      throw new ValidationError(
+        "safety_filter",
+        `not supported by ${provider.name}`,
+      );
   } else if (imgCfg.inputMode === "MultipartForm") {
     if (options.mask !== undefined && imageCount === 0) {
       throw new ValidationError(
@@ -208,6 +221,11 @@ export async function generateImage(
         "requires at least one image part (edits branch only)",
       );
     }
+    if (options.safetyFilter !== undefined)
+      throw new ValidationError(
+        "safety_filter",
+        `not supported by ${provider.name}`,
+      );
   } else if (imgCfg.inputMode === "JSONPredict") {
     if (options.quality !== undefined)
       throw new ValidationError("quality", `not supported by ${provider.name}`);
@@ -221,6 +239,7 @@ export async function generateImage(
         "background",
         `not supported by ${provider.name}`,
       );
+    //
   }
 
   const baseEvent: Event = {
@@ -487,6 +506,7 @@ function buildVertexBody(
     sampleCount: options.count ?? 1,
   };
   if (options.aspectRatio) parameters.aspectRatio = options.aspectRatio;
+  if (options.safetyFilter) parameters.safetySetting = options.safetyFilter;
   if (options.extraFields) {
     for (const [k, v] of Object.entries(options.extraFields)) parameters[k] = v;
   }

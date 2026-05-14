@@ -46,6 +46,7 @@ export async function imageGenerate(
   if (b._background) options.background = b._background;
   if (b._count !== undefined) options.count = b._count;
   if (b._mask) options.mask = b._mask;
+  if (b._safetyFilter) options.safetyFilter = b._safetyFilter;
   if (b._middleware.length > 0) options.middleware = b._middleware;
   if (b._extraFields && Object.keys(b._extraFields).length > 0) {
     options.extraFields = b._extraFields;

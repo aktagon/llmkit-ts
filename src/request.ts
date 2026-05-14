@@ -77,6 +77,17 @@ export function buildRequest(
     applyOptions(body, options, supportedMap, overridesMap);
   }
 
+  if (
+    cfg.safetySettingsWirePath &&
+    options.safetySettings &&
+    options.safetySettings.length > 0
+  ) {
+    body[cfg.safetySettingsWirePath] = options.safetySettings.map((s) => ({
+      category: s.category,
+      threshold: s.threshold,
+    }));
+  }
+
   return body;
 }
 

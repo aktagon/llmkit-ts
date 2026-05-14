@@ -7,12 +7,12 @@
 //
 //
 
-import type { File, Message, Response, Tool } from "../types.ts";
+import type { File, Message, Response, SafetySetting, Tool } from "../types.ts";
 import type { ImageData, ImageResponse, MediaRef, Part } from "../image.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { BatchHandle } from "./batch.ts";
 
-export type { File, Message, Response, Tool, ImageData, ImageResponse, MediaRef, Part, MiddlewareFn };
+export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, MiddlewareFn };
 export { BatchHandle };
 
 export interface ProviderConfig {
@@ -107,6 +107,7 @@ export class Text {
  _model: string = "";
  _presencePenalty?: number;
  _reasoningEffort: string = "";
+ _safetySettings: SafetySetting[] = [];
  _schema: string = "";
  _seed?: number;
  _stopSequences: string[] = [];
@@ -128,6 +129,7 @@ export class Text {
   model(name: string): Text { const out = clone(this); out._model = name; return out; }
   presencePenalty(v: number): Text { const out = clone(this); out._presencePenalty = v; return out; }
   reasoningEffort(level: string): Text { const out = clone(this); out._reasoningEffort = level; return out; }
+  safetySettings(s: SafetySetting[]): Text { const out = clone(this); out._safetySettings = s; return out; }
   schema(s: string): Text { const out = clone(this); out._schema = s; return out; }
   seed(n: number): Text { const out = clone(this); out._seed = n; return out; }
   stopSequences(...seqs: string[]): Text { const out = clone(this); out._stopSequences = seqs; return out; }
@@ -166,6 +168,7 @@ export class Image {
  _model: string = "";
  _outputFormat: string = "";
  _quality: string = "";
+ _safetyFilter: string = "";
  _extraFields?: Record<string, unknown> | undefined;
 
   constructor(client: Client) { this.client = client; }
@@ -181,6 +184,7 @@ export class Image {
   model(name: string): Image { const out = clone(this); out._model = name; return out; }
   outputFormat(s: string): Image { const out = clone(this); out._outputFormat = s; return out; }
   quality(s: string): Image { const out = clone(this); out._quality = s; return out; }
+  safetyFilter(s: string): Image { const out = clone(this); out._safetyFilter = s; return out; }
   text(s: string): Image { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   extraFields(extras: Record<string, unknown>): Image { const out = clone(this); out._extraFields = { ...(this._extraFields ?? {}), ...extras }; return out; }
   async generate(msg: string): Promise<ImageResponse> {
@@ -200,6 +204,7 @@ export class Agent {
  _model: string = "";
  _presencePenalty?: number;
  _reasoningEffort: string = "";
+ _safetySettings: SafetySetting[] = [];
  _seed?: number;
  _stopSequences: string[] = [];
  _system: string = "";
@@ -220,6 +225,7 @@ export class Agent {
   model(name: string): Agent { const out = clone(this); out._model = name; out._state = undefined; return out; }
   presencePenalty(v: number): Agent { const out = clone(this); out._presencePenalty = v; out._state = undefined; return out; }
   reasoningEffort(level: string): Agent { const out = clone(this); out._reasoningEffort = level; out._state = undefined; return out; }
+  safetySettings(s: SafetySetting[]): Agent { const out = clone(this); out._safetySettings = s; out._state = undefined; return out; }
   seed(n: number): Agent { const out = clone(this); out._seed = n; out._state = undefined; return out; }
   stopSequences(...seqs: string[]): Agent { const out = clone(this); out._stopSequences = seqs; out._state = undefined; return out; }
   system(s: string): Agent { const out = clone(this); out._system = s; out._state = undefined; return out; }
