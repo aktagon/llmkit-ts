@@ -89,6 +89,7 @@ function batchInputs(
   if (b._reasoningEffort) options.reasoningEffort = b._reasoningEffort;
   if (b._caching) options.caching = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
+  if (b._safetySettings.length > 0) options.safetySettings = b._safetySettings;
   return { provider: providerOut, requests, options };
 }
 
