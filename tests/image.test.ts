@@ -1358,4 +1358,39 @@ describe("Image.generate — finishReason / finishMessage", () => {
       server.stop(true);
     }
   });
+
+  test("safetyFilter maps to parameters.safetySetting", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(
+          JSON.stringify(vertexImageResponse(encoded, 1, "image/png")),
+        );
+      },
+    });
+    try {
+      const c = newClient(
+        Providers.vertex,
+        "Bearer fake-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      );
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.image
+        .model(vertexImagen3)
+        .safetyFilter("block_few")
+        .generate("x");
+      expect(receivedBody.parameters.safetySetting).toBe("block_few");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("safetyFilter rejected on non-Vertex provider", async () => {
+    const c = newClient(Providers.google, "key");
+    await expect(
+      c.image.model(flashModel).safetyFilter("block_few").generate("x"),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
 });

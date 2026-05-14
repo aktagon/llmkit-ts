@@ -40,6 +40,7 @@ import type {
   File,
   Message,
   Response as PromptResponse,
+  SafetySetting,
   Tool,
   ImageData,
   ImageResponse,
@@ -62,6 +63,10 @@ describe("Surface — chains", () => {
     expect(c.agent).toBeInstanceOf(Agent);
     expect(c.upload).toBeInstanceOf(Upload);
 
+    const ss: SafetySetting = {
+      category: "HARM_CATEGORY_HARASSMENT",
+      threshold: "BLOCK_NONE",
+    };
     const text = c.text
       .caching()
       .file("file-id")
@@ -73,6 +78,7 @@ describe("Surface — chains", () => {
       .model("text-model")
       .presencePenalty(0.2)
       .reasoningEffort("high")
+      .safetySettings([ss])
       .schema(`{"type":"object"}`)
       .seed(1234)
       .stopSequences("END", "STOP")
@@ -99,6 +105,7 @@ describe("Surface — chains", () => {
       image: { mimeType: "image/png", bytes: new Uint8Array([0xff]) },
     });
     expect(text._parts[1]).toEqual({ text: "hello" });
+    expect(text._safetySettings).toEqual([ss]);
   });
 
   test("Image", () => {
@@ -128,6 +135,10 @@ describe("Surface — chains", () => {
       schema: { type: "object" },
       run: () => "42",
     };
+    const agSs: SafetySetting = {
+      category: "HARM_CATEGORY_HATE_SPEECH",
+      threshold: "BLOCK_MEDIUM_AND_ABOVE",
+    };
     const ag = c.agent
       .caching()
       .frequencyPenalty(0.1)
@@ -137,6 +148,7 @@ describe("Surface — chains", () => {
       .model("a")
       .presencePenalty(0.2)
       .reasoningEffort("medium")
+      .safetySettings([agSs])
       .seed(7)
       .stopSequences("Q:")
       .system("sys")
@@ -154,6 +166,7 @@ describe("Surface — chains", () => {
     expect(ag._system).toBe("sys");
     expect(ag._temperature).toBe(0.5);
     expect(ag._tools).toEqual([tool]);
+    expect(ag._safetySettings).toEqual([agSs]);
   });
 
   test("Upload", () => {
