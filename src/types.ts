@@ -63,6 +63,33 @@ export interface BatchHandle {
   provider: Provider;
 }
 
+/** Per-category content safety filter for Gemini providers. */
+export interface SafetySetting {
+  category: string;
+  threshold: string;
+}
+
+// Harm category constants
+export const HARM_CATEGORY_HARASSMENT = "HARM_CATEGORY_HARASSMENT";
+export const HARM_CATEGORY_HATE_SPEECH = "HARM_CATEGORY_HATE_SPEECH";
+export const HARM_CATEGORY_SEXUALLY_EXPLICIT =
+  "HARM_CATEGORY_SEXUALLY_EXPLICIT";
+export const HARM_CATEGORY_DANGEROUS_CONTENT =
+  "HARM_CATEGORY_DANGEROUS_CONTENT";
+export const HARM_CATEGORY_CIVIC_INTEGRITY = "HARM_CATEGORY_CIVIC_INTEGRITY";
+
+// Harm block threshold constants
+export const HARM_BLOCK_THRESHOLD_NONE = "BLOCK_NONE";
+export const HARM_BLOCK_THRESHOLD_LOW_AND_ABOVE = "BLOCK_LOW_AND_ABOVE";
+export const HARM_BLOCK_THRESHOLD_MEDIUM_AND_ABOVE = "BLOCK_MEDIUM_AND_ABOVE";
+export const HARM_BLOCK_THRESHOLD_HIGH_ONLY = "BLOCK_ONLY_HIGH";
+
+// Vertex Imagen safety filter constants
+export const IMAGE_SAFETY_FILTER_BLOCK_FEW = "block_few";
+export const IMAGE_SAFETY_FILTER_BLOCK_SOME = "block_some";
+export const IMAGE_SAFETY_FILTER_BLOCK_MOST = "block_most";
+export const IMAGE_SAFETY_FILTER_BLOCK_ONLY_HIGH = "block_only_high";
+
 export interface PromptOptions {
   signal?: AbortSignal;
   temperature?: number;
@@ -78,6 +105,7 @@ export interface PromptOptions {
   caching?: boolean;
   cacheTTL?: number; // seconds
   middleware?: MiddlewareFn[];
+  safetySettings?: SafetySetting[];
 }
 
 export interface Tool {

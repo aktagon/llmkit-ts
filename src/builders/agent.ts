@@ -55,6 +55,7 @@ function initAgent(b: Agent): AgentState {
     options.maxToolIterations = b._maxToolIterations;
   if (b._caching) options.caching = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
+  if (b._safetySettings.length > 0) options.safetySettings = b._safetySettings;
 
   const agent = new LegacyAgent(provider, options);
   if (b._system) agent.setSystem(b._system);
