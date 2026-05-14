@@ -223,6 +223,52 @@ const resp = await c
 
 Edit-mode (single image into `instances[0].image`) and inpainting (`.mask(mime, bytes)` into `instances[0].mask.image`) work the same way. Imagen-specific knobs like `negativePrompt` and `safetySetting` are reachable through `.extraFields(...)` — they spread into the request's `parameters` block. Vertex's `:predict` response does not carry token counts; `resp.tokens` stays zero.
 
+### Safety Settings
+
+Control content filtering for Gemini providers. `safetySettings` applies to text
+generation, streaming, agents, and Gemini image generation. `safetyFilter` applies
+to Vertex Imagen only.
+
+```ts
+import {
+  google,
+  vertex,
+  HARM_CATEGORY_DANGEROUS_CONTENT,
+  HARM_CATEGORY_HARASSMENT,
+  HARM_BLOCK_THRESHOLD_NONE,
+  HARM_BLOCK_THRESHOLD_HIGH_ONLY,
+  IMAGE_SAFETY_FILTER_BLOCK_FEW,
+} from "@aktagon/llmkit-ts/builders";
+
+// Gemini text or agent
+const c = google(process.env.GOOGLE_API_KEY!);
+const resp = await c
+  .text()
+  .safetySettings([
+    {
+      category: HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HARM_BLOCK_THRESHOLD_NONE,
+    },
+    {
+      category: HARM_CATEGORY_HARASSMENT,
+      threshold: HARM_BLOCK_THRESHOLD_HIGH_ONLY,
+    },
+  ])
+  .prompt("Write a story");
+
+// Vertex Imagen
+const vc = vertex(process.env.VERTEX_BEARER_TOKEN!);
+const img = await vc
+  .image()
+  .model("imagen-3.0-generate-002")
+  .safetyFilter(IMAGE_SAFETY_FILTER_BLOCK_FEW)
+  .generate("A landscape");
+```
+
+`safetySettings` on Vertex Imagen and `safetyFilter` on non-Imagen providers throw
+a `ValidationError`. The `HARM_CATEGORY_*`, `HARM_BLOCK_THRESHOLD_*`, and
+`IMAGE_SAFETY_FILTER_*` constants cover all documented values; raw strings also work.
+
 ### Upload — Path or Bytes
 
 ```ts
