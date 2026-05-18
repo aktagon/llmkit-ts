@@ -154,6 +154,7 @@ export class Agent {
           const message = extractPath(raw, cfg.finishMessagePath);
           if (message) result.finishMessage = message;
         }
+        if (this.options.raw) result.raw = raw;
         return result;
       }
 

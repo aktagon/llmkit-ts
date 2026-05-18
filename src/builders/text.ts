@@ -89,6 +89,7 @@ export function buildPromptArgs(
   if (b._caching) options.caching = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
   if (b._safetySettings.length > 0) options.safetySettings = b._safetySettings;
+  if (b._raw) options.raw = true;
 
   return { provider, request, options };
 }
@@ -153,6 +154,7 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
       const message = extractPath(raw, cfg.finishMessagePath);
       if (message) result.finishMessage = message;
     }
+    if (b._raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.tokens,
