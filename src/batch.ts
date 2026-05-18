@@ -158,7 +158,14 @@ export async function waitBatch(
   while (true) {
     const status = await fetchJson(pollUrl, headers);
     if (extractPath(status, lc.pollingStatusPath) === lc.pollingDoneValue) {
-      return fetchBatchResults(handle, base, bc, headers, status);
+      return fetchBatchResults(
+        handle,
+        base,
+        bc,
+        headers,
+        status,
+        !!options.raw,
+      );
     }
     await sleep(interval);
   }
@@ -170,6 +177,7 @@ async function fetchBatchResults(
   bc: BatchDef,
   headers: Record<string, string>,
   finalStatus: unknown,
+  raw: boolean,
 ): Promise<PromptResponse[]> {
   const lc = bc.lifecycle as BatchLifecycle;
   let body: string;
@@ -190,7 +198,7 @@ async function fetchBatchResults(
       false,
     );
   }
-  return parseBatchResults(handle.provider.name, body, bc);
+  return parseBatchResults(handle.provider.name, body, bc, raw);
 }
 
 async function buildBatchBody(
@@ -280,6 +288,7 @@ function parseBatchResults(
   provider: string,
   data: string,
   bc: BatchDef,
+  raw: boolean,
 ): PromptResponse[] {
   const cfg = PROVIDERS[provider as keyof typeof PROVIDERS];
   const out: PromptResponse[] = [];
@@ -317,6 +326,7 @@ function parseBatchResults(
       const message = extractPath(inner, cfg.finishMessagePath);
       if (message) entry.finishMessage = message;
     }
+    if (raw) entry.raw = inner;
     out.push(entry);
   }
   return out;

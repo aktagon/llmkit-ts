@@ -52,6 +52,7 @@ export async function imageGenerate(
   if (b._extraFields && Object.keys(b._extraFields).length > 0) {
     options.extraFields = b._extraFields;
   }
+  if (b._raw) options.raw = true;
 
   return await runImageGeneration(provider, request, options);
 }

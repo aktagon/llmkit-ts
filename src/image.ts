@@ -74,6 +74,11 @@ export interface ImageResponse {
 
 
   finishMessage?: string;
+
+
+
+
+  raw?: unknown;
 }
 
 export interface ImageOptions {
@@ -106,6 +111,11 @@ export interface ImageOptions {
   safetySettings?: SafetySetting[];
   middleware?: MiddlewareFn[];
   signal?: AbortSignal;
+
+
+
+
+  raw?: boolean;
 }
 
 export async function generateImage(
@@ -353,6 +363,7 @@ export async function generateImage(
           : provider.name === "vertex"
             ? parseVertexImageResponse(raw)
             : parseImageResponse(raw, cfg.usageInputPath, cfg.usageOutputPath);
+    if (options.raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.tokens,

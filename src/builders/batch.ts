@@ -26,15 +26,19 @@ export class BatchHandle {
   id: string;
   provider: Provider;
 
-  constructor(id: string, provider: Provider) {
+
+  raw: boolean;
+
+  constructor(id: string, provider: Provider, raw: boolean = false) {
     this.id = id;
     this.provider = provider;
+    this.raw = raw;
   }
 
   async wait(options: BatchOptions = {}): Promise<Response[]> {
     return await runWaitBatch(
       { id: this.id, provider: this.provider },
-      options,
+      { ...options, raw: options.raw ?? this.raw },
     );
   }
 }
@@ -90,6 +94,7 @@ function batchInputs(
   if (b._caching) options.caching = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
   if (b._safetySettings.length > 0) options.safetySettings = b._safetySettings;
+  if (b._raw) options.raw = true;
   return { provider: providerOut, requests, options };
 }
 
@@ -107,5 +112,5 @@ export async function textSubmitBatch(
 ): Promise<BatchHandle> {
   const { provider, requests, options } = batchInputs(b, prompts);
   const legacy = await runSubmitBatch(provider, requests, options);
-  return new BatchHandle(legacy.id, legacy.provider);
+  return new BatchHandle(legacy.id, legacy.provider, !!b._raw);
 }

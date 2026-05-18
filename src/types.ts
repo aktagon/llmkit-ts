@@ -49,6 +49,14 @@ export interface Response {
 
 
   finishMessage?: string;
+
+
+
+
+
+
+
+  raw?: unknown;
 }
 
 export interface File {
@@ -106,6 +114,11 @@ export interface PromptOptions {
   cacheTTL?: number; // seconds
   middleware?: MiddlewareFn[];
   safetySettings?: SafetySetting[];
+
+
+
+
+  raw?: boolean;
 }
 
 export interface Tool {
