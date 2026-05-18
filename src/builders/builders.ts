@@ -106,6 +106,7 @@ export class Text {
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _model: string = "";
   /** @internal */ _presencePenalty?: number;
+  /** @internal */ _raw: boolean = false;
   /** @internal */ _reasoningEffort: string = "";
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _schema: string = "";
@@ -128,6 +129,7 @@ export class Text {
   middleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Text { const out = clone(this); out._model = name; return out; }
   presencePenalty(v: number): Text { const out = clone(this); out._presencePenalty = v; return out; }
+  raw(): Text { const out = clone(this); out._raw = true; return out; }
   reasoningEffort(level: string): Text { const out = clone(this); out._reasoningEffort = level; return out; }
   safetySettings(s: SafetySetting[]): Text { const out = clone(this); out._safetySettings = s; return out; }
   schema(s: string): Text { const out = clone(this); out._schema = s; return out; }
@@ -168,6 +170,7 @@ export class Image {
   /** @internal */ _model: string = "";
   /** @internal */ _outputFormat: string = "";
   /** @internal */ _quality: string = "";
+  /** @internal */ _raw: boolean = false;
   /** @internal */ _safetyFilter: string = "";
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _extraFields?: Record<string, unknown> | undefined;
@@ -185,6 +188,7 @@ export class Image {
   model(name: string): Image { const out = clone(this); out._model = name; return out; }
   outputFormat(s: string): Image { const out = clone(this); out._outputFormat = s; return out; }
   quality(s: string): Image { const out = clone(this); out._quality = s; return out; }
+  raw(): Image { const out = clone(this); out._raw = true; return out; }
   safetyFilter(s: string): Image { const out = clone(this); out._safetyFilter = s; return out; }
   safetySettings(s: SafetySetting[]): Image { const out = clone(this); out._safetySettings = s; return out; }
   text(s: string): Image { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
@@ -205,6 +209,7 @@ export class Agent {
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _model: string = "";
   /** @internal */ _presencePenalty?: number;
+  /** @internal */ _raw: boolean = false;
   /** @internal */ _reasoningEffort: string = "";
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _seed?: number;
@@ -226,6 +231,7 @@ export class Agent {
   middleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
   model(name: string): Agent { const out = clone(this); out._model = name; out._state = undefined; return out; }
   presencePenalty(v: number): Agent { const out = clone(this); out._presencePenalty = v; out._state = undefined; return out; }
+  raw(): Agent { const out = clone(this); out._raw = true; out._state = undefined; return out; }
   reasoningEffort(level: string): Agent { const out = clone(this); out._reasoningEffort = level; out._state = undefined; return out; }
   safetySettings(s: SafetySetting[]): Agent { const out = clone(this); out._safetySettings = s; out._state = undefined; return out; }
   seed(n: number): Agent { const out = clone(this); out._seed = n; out._state = undefined; return out; }
