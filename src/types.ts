@@ -49,6 +49,14 @@ export interface Response {
    * carry an equivalent free-text field, so this stays undefined for them.
    */
   finishMessage?: string;
+  /**
+   * Parsed provider response body, populated only when the caller opted
+   * in via the builder's `.raw()` chain method (ADR-014). Type-erased
+   * (`unknown`) — provider-specific fields (Anthropic citations, OpenAI
+   * logprobs, ...) live here; consumers cast to a provider-shape type
+   * once they know which provider they're talking to.
+   */
+  raw?: unknown;
 }
 
 export interface File {
@@ -106,6 +114,11 @@ export interface PromptOptions {
   cacheTTL?: number; // seconds
   middleware?: MiddlewareFn[];
   safetySettings?: SafetySetting[];
+  /**
+   * Opt-in: populate Response.raw with the parsed provider response body
+   * (ADR-014). Plumbed by the typed-builder's `.raw()` chain method.
+   */
+  raw?: boolean;
 }
 
 export interface Tool {
