@@ -1107,3 +1107,65 @@ describe("A2 — bounded stream queue", () => {
     }
   });
 });
+
+// === ADR-014 — Raw response escape hatch ===
+
+describe("ADR-014 — Text.raw()", () => {
+  test("populates Response.raw with parsed body when .raw() is in the chain", async () => {
+    const body = {
+      id: "msg_1",
+      content: [{ type: "text", text: "ok" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      // Provider-specific field that the universal Response does not carry.
+      // The escape hatch is the only way to reach it.
+      stop_reason: "end_turn",
+    };
+    const server = startMockServer(
+      () =>
+        new Response(JSON.stringify(body), {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.raw().prompt("hi");
+      expect(resp.raw).toBeDefined();
+      expect((resp.raw as { stop_reason: string }).stop_reason).toBe(
+        "end_turn",
+      );
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("leaves Response.raw undefined when .raw() is absent", async () => {
+    const body = {
+      content: [{ type: "text", text: "ok" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    };
+    const server = startMockServer(
+      () =>
+        new Response(JSON.stringify(body), {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.prompt("hi");
+      expect(resp.raw).toBeUndefined();
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("Image.raw() and Agent.raw() chain methods are callable", () => {
+    // Chain-method coverage — the wire-level effect is exercised in
+    // Text.raw() tests above; Image.generate and Agent.prompt route
+    // through the same plumbing pattern (b._raw -> options.raw -> result.raw).
+    const c = google("k");
+    expect(c.image.model("gemini-2.5-flash-image-preview").raw()).toBeDefined();
+    expect(c.agent.system("x").raw()).toBeDefined();
+  });
+});
