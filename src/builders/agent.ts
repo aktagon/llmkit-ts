@@ -56,6 +56,7 @@ function initAgent(b: Agent): AgentState {
   if (b._caching) options.caching = true;
   if (b._middleware.length > 0) options.middleware = b._middleware;
   if (b._safetySettings.length > 0) options.safetySettings = b._safetySettings;
+  if (b._raw) options.raw = true;
 
   const agent = new LegacyAgent(provider, options);
   if (b._system) agent.setSystem(b._system);
