@@ -1,6 +1,5 @@
 // Code generated — DO NOT EDIT.
 
-import type { ImageData } from "./image.ts";
 import type { Provider, Usage } from "./types.ts";
 
 
@@ -46,6 +45,21 @@ export interface File {
 
 
   name?: string;
+}
+
+
+
+
+export interface ImageData {
+
+
+
+  mimeType: string;
+
+
+
+
+  bytes: Uint8Array;
 }
 
 
