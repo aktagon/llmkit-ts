@@ -34,12 +34,16 @@ import { uploadRun } from "./upload.ts";
 import type { AgentState } from "./agent.ts";
 import type { TextStream } from "./stream.ts";
 
+import { Models, Providers } from "./catalogue.ts";
+
 export class Client {
   provider: ProviderConfig;
   text: Text;
   image: Image;
   agent: Agent;
   upload: Upload;
+  models: Models;
+  providers: Providers;
 
   constructor(name: string, apiKey: string) {
     this.provider = { name, apiKey };
@@ -47,6 +51,8 @@ export class Client {
     this.image = new Image(this);
     this.agent = new Agent(this);
     this.upload = new Upload(this);
+    this.models = new Models(this);
+    this.providers = new Providers(this);
   }
 
   /** Override the provider's default base URL. Required for
