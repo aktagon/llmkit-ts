@@ -30,10 +30,8 @@ import type { MediaRef } from "./structs.ts";
  */
 export type Part = { text: string } | { image: MediaRef };
 
-export interface ImageData {
-  mimeType: string;
-  bytes: Uint8Array;
-}
+export type { ImageData } from "./structs.ts";
+import type { ImageData } from "./structs.ts";
 
 /**
  * ImageRequest accepts input in one of two mutually-exclusive forms:
