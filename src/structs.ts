@@ -86,6 +86,21 @@ export interface ImageResponse {
 
 
 
+export interface Message {
+
+
+
+  role: string;
+
+
+
+
+  content: string;
+}
+
+
+
+
 export interface Response {
 
 
