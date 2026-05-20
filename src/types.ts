@@ -3,6 +3,12 @@
 import type { ProviderName } from "./providers/providers.ts";
 import type { MiddlewareFn } from "./providers/middleware.ts";
 
+//
+//
+//
+//
+export type { BatchHandle, Response } from "./structs.ts";
+
 export interface Provider {
   name: ProviderName;
   apiKey: string;
@@ -30,45 +36,11 @@ export interface Usage {
   reasoning: number;
 }
 
-export interface Response {
-  text: string;
-  tokens: Usage;
-
-
-
-
-
-
-
-
-
-  finishReason?: string;
-
-
-
-
-
-  finishMessage?: string;
-
-
-
-
-
-
-
-  raw?: unknown;
-}
-
 export interface File {
   id: string;
   uri: string;
   name: string;
   mimeType: string;
-}
-
-export interface BatchHandle {
-  id: string;
-  provider: Provider;
 }
 
 

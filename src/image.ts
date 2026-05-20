@@ -53,33 +53,12 @@ export interface ImageRequest {
   parts?: Part[];
 }
 
-export interface ImageResponse {
-  images: ImageData[];
-  text: string;
-  tokens: Usage;
-
-
-
-
-
-
-
-
-
-  finishReason?: string;
-
-
-
-
-
-
-  finishMessage?: string;
-
-
-
-
-  raw?: unknown;
-}
+//
+//
+//
+//
+import type { ImageResponse } from "./structs.ts";
+export type { ImageResponse };
 
 export interface ImageOptions {
   aspectRatio?: string;
@@ -366,7 +345,7 @@ export async function generateImage(
     if (options.raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
-      usage: result.tokens,
+      usage: result.usage,
       duration: performance.now() - start,
     });
     return result;
@@ -588,7 +567,7 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
   const out: ImageResponse = {
     images,
     text: "",
-    tokens: {
+    usage: {
       input: 0,
       output: 0,
       cacheWrite: 0,
@@ -684,7 +663,7 @@ function parseImageResponse(
   const out: ImageResponse = {
     images,
     text,
-    tokens: {
+    usage: {
       input: extractIntPath(raw, inputPath),
       output: extractIntPath(raw, outputPath),
       cacheWrite: 0,
@@ -743,7 +722,7 @@ function parseImageResponseDataArray(
   return {
     images,
     text: revised.join("\n"),
-    tokens: {
+    usage: {
       input: inputTokenField ? (usage[inputTokenField] ?? 0) : 0,
       output: outputTokenField ? (usage[outputTokenField] ?? 0) : 0,
       cacheWrite: 0,

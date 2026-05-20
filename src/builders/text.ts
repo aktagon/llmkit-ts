@@ -136,7 +136,7 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
     const cache = parseCacheUsage(raw, provider.name);
     const result: Response = {
       text: extractPath(raw, cfg.responseTextPath),
-      tokens: {
+      usage: {
         input: extractIntPath(raw, cfg.usageInputPath),
         output: extractIntPath(raw, cfg.usageOutputPath),
         cacheWrite: cache.write,
@@ -157,7 +157,7 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
     if (b._raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
-      usage: result.tokens,
+      usage: result.usage,
       duration: performance.now() - start,
     });
     return result;

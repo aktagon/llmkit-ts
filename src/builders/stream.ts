@@ -140,7 +140,7 @@ async function runStream(
 
     const result: PromptResponse = {
       text: chunks.join(""),
-      tokens: {
+      usage: {
         input: outcome.usage.input,
         output: outcome.usage.output,
         cacheWrite: 0,
@@ -151,7 +151,7 @@ async function runStream(
     if (outcome.finishReason) result.finishReason = outcome.finishReason;
     firePost(options.middleware, {
       ...baseEvent,
-      usage: result.tokens,
+      usage: result.usage,
       duration: performance.now() - start,
     });
     return result;
