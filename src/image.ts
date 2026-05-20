@@ -19,10 +19,8 @@ import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import type { Provider, SafetySetting, Usage } from "./types.ts";
 
-export interface MediaRef {
-  mimeType: string;
-  bytes: Uint8Array;
-}
+export type { MediaRef } from "./structs.ts";
+import type { MediaRef } from "./structs.ts";
 
 /**
  * Universal multimodal input atom. Discriminated union: a Part is either
