@@ -17,6 +17,33 @@ export interface Provider {
   baseUrl?: string;
 }
 
+/**
+ * Capability names one of the SDK's modelled capabilities. The set mirrors
+ *
+ *
+ * provider wire data.
+ */
+export type Capability =
+  | "chat_completion"
+  | "image_generation"
+  | "tool_calling"
+  | "file_upload"
+  | "batching"
+  | "caching"
+  | "reasoning"
+  | "catalogue";
+
+export const Capabilities = {
+  ChatCompletion: "chat_completion",
+  ImageGeneration: "image_generation",
+  ToolCalling: "tool_calling",
+  FileUpload: "file_upload",
+  Batching: "batching",
+  Caching: "caching",
+  Reasoning: "reasoning",
+  Catalogue: "catalogue",
+} as const satisfies Record<string, Capability>;
+
 export interface Request {
   system?: string;
   user?: string;
