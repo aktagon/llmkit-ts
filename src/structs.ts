@@ -84,6 +84,21 @@ export interface ImageResponse {
 }
 
 /**
+ * MediaRef is an inline media payload (mime type + raw bytes). Reused by every Part variant that carries non-text content, and by image-generation knobs like Mask that pass through a single binary blob.
+ */
+export interface MediaRef {
+  /**
+   * mimeType is the IANA media type of the bytes payload (image/png, image/jpeg, audio/wav, ...). Drives both the wire encoding (base64 mime prefix on data URIs) and provider routing on multimodal endpoints.
+   */
+  mimeType: string;
+
+  /**
+   * bytes is the raw (not base64-encoded) media payload. The transform layer base64-encodes at wire time per provider; callers always pass raw bytes.
+   */
+  bytes: Uint8Array;
+}
+
+/**
  * Message is a single turn in a multi-turn conversation. Role identifies the speaker; content carries the turn's text. Multimodal content (a Part list) is deferred to a later slice; today content is the raw string.
  */
 export interface Message {
