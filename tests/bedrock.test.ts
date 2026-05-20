@@ -78,8 +78,8 @@ describe("Bedrock — Converse + SigV4", () => {
       c.provider.baseUrl = server.url;
       const resp = await c.text.system("x").prompt("y");
       expect(resp.text).toBe("answer");
-      expect(resp.tokens.input).toBe(7);
-      expect(resp.tokens.output).toBe(3);
+      expect(resp.usage.input).toBe(7);
+      expect(resp.usage.output).toBe(3);
       const cap = captured[0]!;
       // Converse body shape
       expect(cap.body.system).toEqual([{ text: "x" }]);
@@ -155,8 +155,8 @@ describe("Bedrock — Converse + SigV4", () => {
         })
         .prompt("weather?");
       expect(resp.text).toBe("It's cold.");
-      expect(resp.tokens.input).toBe(17);
-      expect(resp.tokens.output).toBe(8);
+      expect(resp.usage.input).toBe(17);
+      expect(resp.usage.output).toBe(8);
       expect(received).toEqual({ city: "Helsinki" });
       // Second call must include toolUse + toolResult content blocks
       const msgs2 = captured[1]?.body.messages as Array<

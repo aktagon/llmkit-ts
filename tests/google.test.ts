@@ -50,8 +50,8 @@ describe("Google — SystemPlacement.SiblingObject", () => {
       c.provider.baseUrl = server.url;
       const resp = await c.text.system("Be terse.").prompt("hi");
       expect(resp.text).toBe("hi from gemini");
-      expect(resp.tokens.input).toBe(8);
-      expect(resp.tokens.output).toBe(4);
+      expect(resp.usage.input).toBe(8);
+      expect(resp.usage.output).toBe(4);
       const cap = captured[0]!;
       expect(cap.url).toContain(":generateContent");
       expect(cap.url).toContain("gemini-2.5-flash");
@@ -120,8 +120,8 @@ describe("Google — SystemPlacement.SiblingObject", () => {
         .prompt("look up 42");
       expect(resp.text).toBe("result is foo");
       expect(received).toEqual({ id: 42 });
-      expect(resp.tokens.input).toBe(12);
-      expect(resp.tokens.output).toBe(8);
+      expect(resp.usage.input).toBe(12);
+      expect(resp.usage.output).toBe(8);
       // Second call must include functionCall + functionResponse parts.
       const contents2 = captured[1]?.body.contents as Array<
         Record<string, unknown>
@@ -175,7 +175,7 @@ describe("Google — ResourceCaching", () => {
         .caching()
         .prompt("Q");
       expect(resp.text).toBe("cached answer");
-      expect(resp.tokens.cacheRead).toBe(1024);
+      expect(resp.usage.cacheRead).toBe(1024);
       // 1st call: cache create
       const c0 = captured[0]!;
       expect(c0.url).toContain("/v1beta/cachedContents");

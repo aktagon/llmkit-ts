@@ -140,7 +140,7 @@ async function runStream(
 
     const result: PromptResponse = {
       text: chunks.join(""),
-      tokens: {
+      usage: {
         input: outcome.usage.input,
         output: outcome.usage.output,
         cacheWrite: 0,
@@ -151,7 +151,7 @@ async function runStream(
     if (outcome.finishReason) result.finishReason = outcome.finishReason;
     firePost(options.middleware, {
       ...baseEvent,
-      usage: result.tokens,
+      usage: result.usage,
       duration: performance.now() - start,
     });
     return result;
@@ -282,7 +282,7 @@ async function consumeSSE(
  *   const stream = c.text.system("...").stream("hi");
  *   for await (const chunk of stream) process.stdout.write(chunk);
  *   const resp = stream.response();
- *   console.log(resp?.tokens);
+ *   console.log(resp?.usage);
  */
 export class TextStream implements AsyncIterable<string> {
   #provider: Provider;

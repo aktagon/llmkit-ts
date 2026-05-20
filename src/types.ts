@@ -3,6 +3,12 @@
 import type { ProviderName } from "./providers/providers.ts";
 import type { MiddlewareFn } from "./providers/middleware.ts";
 
+// Re-exports of codegen-emitted containers (ADR-018, API-PDS-002).
+// Canonical declarations live at ./structs.ts; these lines keep every
+// internal import { Foo } from "./types.ts" working without touching
+// every call site.
+export type { BatchHandle, Response } from "./structs.ts";
+
 export interface Provider {
   name: ProviderName;
   apiKey: string;
@@ -30,45 +36,11 @@ export interface Usage {
   reasoning: number;
 }
 
-export interface Response {
-  text: string;
-  tokens: Usage;
-  /**
-   * Provider stop signal, passed through verbatim. Examples:
-   *   Google:    "STOP", "MAX_TOKENS", "SAFETY", "RECITATION"
-   *   OpenAI:    "stop", "length", "content_filter", "tool_calls"
-   *   Anthropic: "end_turn", "max_tokens", "stop_sequence", "tool_use"
-   *   xAI:       "stop", "length", "content_filter"
-   * Undefined when the provider response carries no signal or the parser
-   * does not yet read this provider's location.
-   */
-  finishReason?: string;
-  /**
-   * Provider-supplied human-readable explanation of the stop signal.
-   * Populated by Google when present; OpenAI / Anthropic / xAI do not
-   * carry an equivalent free-text field, so this stays undefined for them.
-   */
-  finishMessage?: string;
-  /**
-   * Parsed provider response body, populated only when the caller opted
-   * in via the builder's `.raw()` chain method (ADR-014). Type-erased
-   * (`unknown`) — provider-specific fields (Anthropic citations, OpenAI
-   * logprobs, ...) live here; consumers cast to a provider-shape type
-   * once they know which provider they're talking to.
-   */
-  raw?: unknown;
-}
-
 export interface File {
   id: string;
   uri: string;
   name: string;
   mimeType: string;
-}
-
-export interface BatchHandle {
-  id: string;
-  provider: Provider;
 }
 
 /** Per-category content safety filter for Gemini providers. */

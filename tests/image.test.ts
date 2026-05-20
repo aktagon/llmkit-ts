@@ -77,8 +77,8 @@ describe("Image.generate — Google Flash", () => {
       expect(resp.images.length).toBe(1);
       expect(resp.images[0]!.mimeType).toBe("image/png");
       expect(Array.from(resp.images[0]!.bytes)).toEqual(Array.from(fakePNG));
-      expect(resp.tokens.input).toBe(12);
-      expect(resp.tokens.output).toBe(1290);
+      expect(resp.usage.input).toBe(12);
+      expect(resp.usage.output).toBe(1290);
       expect(resp.text).toBe("");
     } finally {
       server.stop(true);
@@ -378,8 +378,8 @@ describe("Image.generate — OpenAI", () => {
 
       expect(resp.images.length).toBe(1);
       expect(Array.from(resp.images[0]!.bytes)).toEqual(Array.from(fakePNG));
-      expect(resp.tokens.input).toBe(7);
-      expect(resp.tokens.output).toBe(1500);
+      expect(resp.usage.input).toBe(7);
+      expect(resp.usage.output).toBe(1500);
     } finally {
       server.stop(true);
     }
@@ -644,8 +644,8 @@ describe("Image.generate — xAI Grok", () => {
       expect(resp.images.length).toBe(1);
       expect(Array.from(resp.images[0]!.bytes)).toEqual(Array.from(fakePNG));
       expect(resp.images[0]!.mimeType).toBe("image/png");
-      expect(resp.tokens.input).toBe(0);
-      expect(resp.tokens.output).toBe(0);
+      expect(resp.usage.input).toBe(0);
+      expect(resp.usage.output).toBe(0);
     } finally {
       server.stop(true);
     }
@@ -1122,8 +1122,8 @@ describe("Image.generate — Vertex Imagen (JSONPredict)", () => {
       expect(Array.from(resp.images[0]!.bytes)).toEqual(Array.from(fakePNG));
       expect(resp.images[0]!.mimeType).toBe("image/png");
       // Vertex predict does not return token counts.
-      expect(resp.tokens.input).toBe(0);
-      expect(resp.tokens.output).toBe(0);
+      expect(resp.usage.input).toBe(0);
+      expect(resp.usage.output).toBe(0);
     } finally {
       server.stop(true);
     }

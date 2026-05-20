@@ -48,8 +48,8 @@ describe("Agent — Anthropic", () => {
         .system("you are a friendly assistant")
         .prompt("hi");
       expect(resp.text).toBe("hello back");
-      expect(resp.tokens.input).toBe(4);
-      expect(resp.tokens.output).toBe(2);
+      expect(resp.usage.input).toBe(4);
+      expect(resp.usage.output).toBe(2);
       expect(captured).toHaveLength(1);
       expect(captured[0]?.body.system).toBe("you are a friendly assistant");
       const msgs = captured[0]?.body.messages as Array<Record<string, unknown>>;
@@ -98,8 +98,8 @@ describe("Agent — Anthropic", () => {
         })
         .prompt("weather in Helsinki?");
       expect(resp.text).toBe("It's -3C.");
-      expect(resp.tokens.input).toBe(30);
-      expect(resp.tokens.output).toBe(11);
+      expect(resp.usage.input).toBe(30);
+      expect(resp.usage.output).toBe(11);
       expect(toolArgs).toEqual({ city: "Helsinki" });
       // Second request must include the prior tool_use and tool_result.
       const msgs2 = captured[1]?.body.messages as Array<
@@ -165,8 +165,8 @@ describe("Agent — OpenAI", () => {
         })
         .prompt("echo yo");
       expect(resp.text).toBe("yo!");
-      expect(resp.tokens.input).toBe(23);
-      expect(resp.tokens.output).toBe(6);
+      expect(resp.usage.input).toBe(23);
+      expect(resp.usage.output).toBe(6);
       const msgs2 = captured[1]?.body.messages as Array<
         Record<string, unknown>
       >;

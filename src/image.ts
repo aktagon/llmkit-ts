@@ -53,33 +53,12 @@ export interface ImageRequest {
   parts?: Part[];
 }
 
-export interface ImageResponse {
-  images: ImageData[];
-  text: string;
-  tokens: Usage;
-  /**
-   * Provider stop signal, passed through verbatim. Examples:
-   *   Google: "STOP" (ok), "IMAGE_OTHER", "SAFETY", "MAX_TOKENS", "RECITATION"
-   *   OpenAI Images API: no equivalent field (always undefined)
-   *   xAI Grok: no equivalent field (always undefined)
-   *   Vertex Imagen: RAI filter reason when content is blocked
-   * Undefined when the provider response carries no signal or the parser
-   * does not yet read this provider's location.
-   */
-  finishReason?: string;
-  /**
-   * Provider-supplied human-readable explanation of the stop signal.
-   * Gemini populates this for non-success finishReasons (e.g.
-   * "Try rephrasing the prompt"). Use as the user-facing message when
-   * `images.length === 0`; do not assume presence on success.
-   */
-  finishMessage?: string;
-  /**
-   * Parsed provider response body, populated only when the caller opted
-   * in via the builder's `.raw()` chain method (ADR-014). Type-erased.
-   */
-  raw?: unknown;
-}
+// ImageResponse is declared in ts/src/structs.ts (ADR-018, API-PDS-002).
+// Imported for in-file use AND re-exported so existing
+// `import { ImageResponse } from "./image.ts"` callsites keep working
+// without touching every importer.
+import type { ImageResponse } from "./structs.ts";
+export type { ImageResponse };
 
 export interface ImageOptions {
   aspectRatio?: string;
@@ -366,7 +345,7 @@ export async function generateImage(
     if (options.raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
-      usage: result.tokens,
+      usage: result.usage,
       duration: performance.now() - start,
     });
     return result;
@@ -588,7 +567,7 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
   const out: ImageResponse = {
     images,
     text: "",
-    tokens: {
+    usage: {
       input: 0,
       output: 0,
       cacheWrite: 0,
@@ -684,7 +663,7 @@ function parseImageResponse(
   const out: ImageResponse = {
     images,
     text,
-    tokens: {
+    usage: {
       input: extractIntPath(raw, inputPath),
       output: extractIntPath(raw, outputPath),
       cacheWrite: 0,
@@ -743,7 +722,7 @@ function parseImageResponseDataArray(
   return {
     images,
     text: revised.join("\n"),
-    tokens: {
+    usage: {
       input: inputTokenField ? (usage[inputTokenField] ?? 0) : 0,
       output: outputTokenField ? (usage[outputTokenField] ?? 0) : 0,
       cacheWrite: 0,

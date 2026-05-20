@@ -61,9 +61,9 @@ describe("batch — Anthropic (InlineRequests)", () => {
       c.provider.baseUrl = `http://localhost:${server.port}`;
       const responses = await c.text.batch("ping1", "ping2");
       expect(responses.map((r) => r.text)).toEqual(["alpha", "beta"]);
-      expect(responses[0]!.tokens.input).toBe(1);
-      expect(responses[0]!.tokens.output).toBe(2);
-      expect(responses[1]!.tokens.output).toBe(4);
+      expect(responses[0]!.usage.input).toBe(1);
+      expect(responses[0]!.usage.output).toBe(2);
+      expect(responses[1]!.usage.output).toBe(4);
 
       // request body has the `requests:[{custom_id, params}]` wrapper.
       const requests = createBody?.requests as Array<Record<string, unknown>>;
@@ -210,8 +210,8 @@ describe("batch — OpenAI (FileReferenceInput)", () => {
       const responses = await handle.wait({ pollIntervalMs: 5 });
       expect(responses).toHaveLength(1);
       expect(responses[0]!.text).toBe("alpha");
-      expect(responses[0]!.tokens.input).toBe(5);
-      expect(responses[0]!.tokens.output).toBe(6);
+      expect(responses[0]!.usage.input).toBe(5);
+      expect(responses[0]!.usage.output).toBe(6);
       expect(receivedJsonl).toContain('"custom_id":"req-0"');
       expect(receivedJsonl).toContain('"url":"/v1/chat/completions"');
     } finally {

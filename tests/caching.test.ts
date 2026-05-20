@@ -53,8 +53,8 @@ describe("caching — Anthropic ExplicitCaching", () => {
           cache_control: { type: "ephemeral" },
         },
       ]);
-      expect(resp.tokens.cacheWrite).toBe(100);
-      expect(resp.tokens.cacheRead).toBe(50);
+      expect(resp.usage.cacheWrite).toBe(100);
+      expect(resp.usage.cacheRead).toBe(50);
     } finally {
       server.stop();
     }
@@ -80,8 +80,8 @@ describe("caching — Anthropic ExplicitCaching", () => {
       c.provider.baseUrl = server.url;
       const resp = await c.text.system("sys").prompt("hi");
       expect(capturedBody?.system).toBe("sys");
-      expect(resp.tokens.cacheRead).toBe(7);
-      expect(resp.tokens.cacheWrite).toBe(0);
+      expect(resp.usage.cacheRead).toBe(7);
+      expect(resp.usage.cacheWrite).toBe(0);
     } finally {
       server.stop();
     }
@@ -111,8 +111,8 @@ describe("caching — OpenAI AutomaticCaching", () => {
       // OpenAI is automatic — no cache_control wrapping anywhere.
       const messages = capturedBody?.messages as Array<Record<string, unknown>>;
       expect(messages[0]?.content).toBe("sys");
-      expect(resp.tokens.cacheRead).toBe(12);
-      expect(resp.tokens.cacheWrite).toBe(0);
+      expect(resp.usage.cacheRead).toBe(12);
+      expect(resp.usage.cacheWrite).toBe(0);
     } finally {
       server.stop();
     }

@@ -272,7 +272,7 @@ describe("Surface — type aliases", () => {
     const _mw: MiddlewareFn = noopMiddleware;
     const _resp: PromptResponse = {
       text: "ok",
-      tokens: {
+      usage: {
         input: 0,
         output: 0,
         cacheWrite: 0,
@@ -283,7 +283,7 @@ describe("Surface — type aliases", () => {
     const _img: ImageResponse = {
       images: [],
       text: "",
-      tokens: {
+      usage: {
         input: 0,
         output: 0,
         cacheWrite: 0,
@@ -805,8 +805,8 @@ describe("Phase 3 slice 2b — Text.stream wired", () => {
       const resp = stream.response();
       expect(resp).not.toBeNull();
       expect(resp!.text).toBe("Hello world");
-      expect(resp!.tokens.input).toBe(1);
-      expect(resp!.tokens.output).toBe(3);
+      expect(resp!.usage.input).toBe(1);
+      expect(resp!.usage.output).toBe(3);
       expect(stream.error()).toBeNull();
     } finally {
       server.stop();

@@ -43,8 +43,8 @@ describe("prompt — Anthropic", () => {
       const resp = await c.text.system("Reply with pong").prompt("ping");
 
       expect(resp.text).toBe("pong");
-      expect(resp.tokens.input).toBe(5);
-      expect(resp.tokens.output).toBe(1);
+      expect(resp.usage.input).toBe(5);
+      expect(resp.usage.output).toBe(1);
 
       // Anthropic auth: x-api-key header, no Bearer prefix
       expect(receivedHeaders?.get("x-api-key")).toBe("test-key");
@@ -113,8 +113,8 @@ describe("prompt — OpenAI", () => {
       const resp = await c.text.system("Reply with pong").prompt("ping");
 
       expect(resp.text).toBe("pong");
-      expect(resp.tokens.input).toBe(18);
-      expect(resp.tokens.output).toBe(1);
+      expect(resp.usage.input).toBe(18);
+      expect(resp.usage.output).toBe(1);
 
       expect(receivedHeaders?.get("authorization")).toBe("Bearer test-key");
 
@@ -149,9 +149,9 @@ describe("prompt — reasoning tokens", () => {
       const c = newClient(Providers.openai, "sk-test");
       c.provider.baseUrl = server.url;
       const response = await c.text.prompt("think");
-      expect(response.tokens.reasoning).toBe(17);
-      expect(response.tokens.input).toBe(40);
-      expect(response.tokens.output).toBe(25);
+      expect(response.usage.reasoning).toBe(17);
+      expect(response.usage.input).toBe(40);
+      expect(response.usage.output).toBe(25);
     } finally {
       server.stop();
     }
@@ -172,7 +172,7 @@ describe("prompt — reasoning tokens", () => {
       const c = newClient(Providers.anthropic, "sk-test");
       c.provider.baseUrl = server.url;
       const response = await c.text.prompt("hi");
-      expect(response.tokens.reasoning).toBe(0);
+      expect(response.usage.reasoning).toBe(0);
     } finally {
       server.stop();
     }

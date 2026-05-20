@@ -17,7 +17,7 @@ describe("image integration \u2014 google gemini-3-pro-image-preview", () => {
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
@@ -35,7 +35,7 @@ describe("image integration \u2014 google gemini-3.1-flash-image-preview", () =>
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
@@ -67,7 +67,7 @@ describe("image integration \u2014 openai gpt-image-1", () => {
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
@@ -83,7 +83,7 @@ describe("image integration \u2014 openai gpt-image-1-mini", () => {
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
@@ -99,7 +99,7 @@ describe("image integration \u2014 openai gpt-image-1.5", () => {
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
@@ -115,7 +115,7 @@ describe("image integration \u2014 openai gpt-image-2", () => {
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
@@ -132,7 +132,7 @@ describe("image integration \u2014 vertex imagen-3.0-fast-generate-001", () => {
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
@@ -149,7 +149,7 @@ describe("image integration \u2014 vertex imagen-3.0-generate-002", () => {
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
@@ -166,7 +166,7 @@ describe("image integration \u2014 vertex imagen-4.0-generate-preview-06-06", ()
         .generate("A simple red circle on a white background.");
       expect(resp.images.length).toBeGreaterThan(0);
       expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
-      expect(resp.tokens.output).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
     },
     60_000,
   );
