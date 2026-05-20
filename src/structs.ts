@@ -86,6 +86,21 @@ export interface ImageResponse {
 
 
 
+export interface MediaRef {
+
+
+
+  mimeType: string;
+
+
+
+
+  bytes: Uint8Array;
+}
+
+
+
+
 export interface Message {
 
 
