@@ -119,7 +119,7 @@ export async function submitBatch(
       ...baseEvent,
       duration: performance.now() - start,
     });
-    return { id, provider };
+    return { id, provider, raw: !!options.raw };
   } catch (err) {
     firePost(options.middleware, {
       ...baseEvent,
@@ -158,13 +158,15 @@ export async function waitBatch(
   while (true) {
     const status = await fetchJson(pollUrl, headers);
     if (extractPath(status, lc.pollingStatusPath) === lc.pollingDoneValue) {
+      //
+      //
       return fetchBatchResults(
         handle,
         base,
         bc,
         headers,
         status,
-        !!options.raw,
+        !!options.raw || !!handle.raw,
       );
     }
     await sleep(interval);
@@ -308,7 +310,7 @@ function parseBatchResults(
     const cache = parseCacheUsage(inner, provider as keyof typeof PROVIDERS);
     const entry: PromptResponse = {
       text: extractPath(inner, cfg.responseTextPath),
-      tokens: {
+      usage: {
         input: extractIntPath(inner, cfg.usageInputPath),
         output: extractIntPath(inner, cfg.usageOutputPath),
         cacheWrite: cache.write,

@@ -30,16 +30,17 @@ The package ships compiled ESM in `dist/` (works in plain Node ESM, Workers, Den
 import { anthropic } from "@aktagon/llmkit-ts/builders";
 
 const c = anthropic(process.env.ANTHROPIC_API_KEY!);
-const resp = await c
-  .text()
+const resp = await c.text
   .system("You are concise.")
   .prompt("Why is the sky blue?");
 
 console.log(resp.text);
-console.log(resp.usage.input, resp.usage.output);
+console.log(resp.tokens.input, resp.tokens.output);
 ```
 
-The typed builder is the only public surface as of v1.0.0. One mental model — `client.<capability>().<chain>.<terminal>` — across every capability.
+`c.text`, `c.image`, `c.agent`, and `c.upload` are fields on the `Client` — access them without parentheses. Chain methods (`.system(...)`, `.temperature(...)`) clone the builder and return the clone, so a forked chain shares no state with its parent. The typed builder is the only public surface as of v1.0.0. One mental model — `client.<capability>.<chain>.<terminal>` — across every capability.
+
+Runnable examples for each capability live in [`examples/`](./examples); `tests/examples.test.ts` exercises every documented call shape against a mock HTTP server, so the snippets in this README cannot drift from the actual API surface.
 
 ## Providers
 
@@ -68,19 +69,18 @@ Per-provider factory functions: `ai21`, `anthropic`, `azure`, `bedrock`, `cerebr
 ### Text — one-shot prompt
 
 ```ts
-const resp = await c
-  .text()
+const resp = await c.text
   .system("You are helpful")
   .temperature(0.7)
   .maxTokens(200)
   .prompt("What is 2+2?");
 
 console.log(resp.text); // "4"
-console.log(resp.usage.input); // prompt tokens
-console.log(resp.usage.output); // completion tokens
-console.log(resp.usage.cacheRead); // tokens served from cache
-console.log(resp.usage.cacheWrite); // tokens written to cache (Anthropic explicit)
-console.log(resp.usage.reasoning); // internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
+console.log(resp.tokens.input); // prompt tokens
+console.log(resp.tokens.output); // completion tokens
+console.log(resp.tokens.cacheRead); // tokens served from cache
+console.log(resp.tokens.cacheWrite); // tokens written to cache (Anthropic explicit)
+console.log(resp.tokens.reasoning); // internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
 ```
 
 Capability-scoped fields (`cacheRead`, `cacheWrite`, `reasoning`) are zero when the provider doesn't report them separately.
@@ -88,11 +88,11 @@ Capability-scoped fields (`cacheRead`, `cacheWrite`, `reasoning`) are zero when 
 ### Stream — chunks + trailing handle
 
 ```ts
-const stream = c.text().system("Be brief").stream("Tell me a joke");
+const stream = c.text.system("Be brief").stream("Tell me a joke");
 for await (const chunk of stream) {
   process.stdout.write(chunk);
 }
-console.log("\n", stream.response()?.usage);
+console.log("\n", stream.response()?.tokens);
 ```
 
 `TextStream` implements `AsyncIterable<string>`. After iteration completes, `stream.response()` returns the final `Response` (with token counts) and `stream.error()` returns any terminal error. Handles both Anthropic-style typed events and OpenAI-style data-only frames internally.
@@ -115,8 +115,7 @@ const add: Tool = {
   run: ({ a, b }) => String(Number(a) + Number(b)),
 };
 
-const bot = c
-  .agent()
+const bot = c.agent
   .system("You are a calculator.")
   .tool(add)
   .maxToolIterations(5);
@@ -135,21 +134,19 @@ Tool dispatch covers Anthropic `tool_use`, OpenAI `tool_calls`, Google `function
 import { google } from "@aktagon/llmkit-ts/builders";
 
 const c = google(process.env.GOOGLE_API_KEY!);
-const img = await c
-  .image()
+const img = await c.image
   .model("gemini-3.1-flash-image-preview")
   .aspectRatio("16:9")
   .imageSize("2K")
   .generate("A nano banana dish, studio lighting");
 
-await Bun.write("out.png", img.images[0].data);
+await Bun.write("out.png", img.images[0]!.bytes);
 ```
 
 For compositional editing, chain `.text(...)` and `.image(mime, bytes)` to interleave references with descriptions. The terminal `msg` is appended as a final text Part:
 
 ```ts
-await c
-  .image()
+await c.image
   .model("gemini-3.1-flash-image-preview")
   .text("Person:")
   .image("image/png", personBytes)
@@ -186,8 +183,7 @@ The chain validates per provider — calling `.quality(...)` on a Google or xAI 
 import { openai } from "@aktagon/llmkit-ts/builders";
 
 const c = openai(process.env.OPENAI_API_KEY!);
-const resp = await c
-  .image()
+const resp = await c.image
   .model("gpt-image-2")
   .imageSize("1024x1024")
   .quality("high")
@@ -213,8 +209,7 @@ const baseUrl =
 
 const c = vertex(process.env.VERTEX_BEARER_TOKEN!).withBaseUrl(baseUrl);
 
-const resp = await c
-  .image()
+const resp = await c.image
   .model("imagen-3.0-generate-002")
   .aspectRatio("16:9")
   .count(2)
@@ -242,8 +237,7 @@ import {
 
 // Gemini text or agent
 const c = google(process.env.GOOGLE_API_KEY!);
-const resp = await c
-  .text()
+const resp = await c.text
   .safetySettings([
     {
       category: HARM_CATEGORY_DANGEROUS_CONTENT,
@@ -258,8 +252,7 @@ const resp = await c
 
 // Vertex Imagen
 const vc = vertex(process.env.VERTEX_BEARER_TOKEN!);
-const img = await vc
-  .image()
+const img = await vc.image
   .model("imagen-3.0-generate-002")
   .safetyFilter(IMAGE_SAFETY_FILTER_BLOCK_FEW)
   .generate("A landscape");
@@ -277,11 +270,10 @@ import { openai } from "@aktagon/llmkit-ts/builders";
 const c = openai(process.env.OPENAI_API_KEY!);
 
 // from a path (Node/Bun only)
-const file = await c.upload().path("./data.pdf").run();
+const file = await c.upload.path("./data.pdf").run();
 
 // from bytes (works everywhere)
-const file2 = await c
-  .upload()
+const file2 = await c.upload
   .bytes(buf) // Uint8Array
   .filename("report.pdf")
   .mimeType("application/pdf")
@@ -293,32 +285,31 @@ The `.path()` branch dynamically loads `node:fs/promises` and is unavailable in 
 ### Batches
 
 ```ts
-const results = await c
-  .text()
+const results = await c.text
   .system("Be brief")
-  .batch([
+  .batch(
     "Translate hello to French",
     "Translate hello to Spanish",
     "Translate hello to German",
-  ]);
+  );
 results.forEach((r) => console.log(r.text));
 ```
 
-`.batch(prompts)` is `.submitBatch(prompts)` + `handle.wait()`. Use `.submitBatch(prompts)` to get a `BatchHandle` you can persist, then call `handle.wait()` later. Both inline (Anthropic) and file-reference (OpenAI two-hop) flows are handled internally.
+`.batch(...prompts)` is `.submitBatch(...prompts)` + `handle.wait()`. Use `.submitBatch(...prompts)` to get a `BatchHandle` you can persist, then call `handle.wait()` later. Both inline (Anthropic) and file-reference (OpenAI two-hop) flows are handled internally.
 
 ### Caching
 
 ```ts
 // Anthropic — explicit cache_control wrap of the system prompt:
-await c.text().system(longSysPrompt).caching().prompt("...");
+await c.text.system(longSysPrompt).caching().prompt("...");
 
 // OpenAI — automatic server-side caching (caching() is a hint; reads
-// surface in resp.usage.cacheRead regardless):
-await c.text().system(longSysPrompt).caching().prompt("...");
+// surface in resp.tokens.cacheRead regardless):
+await c.text.system(longSysPrompt).caching().prompt("...");
 
 // Google — pre-flight POST creates a cachedContents resource, then the
 // main call references it. Google requires ~1k+ tokens of system prompt:
-await c.text().system(bigSysPrompt).caching().prompt("...");
+await c.text.system(bigSysPrompt).caching().prompt("...");
 ```
 
 The mode is provider-specific and inferred from the provider config. The default TTL comes from `src/providers/caching.ts` (Google: 3600s).
@@ -327,18 +318,18 @@ The mode is provider-specific and inferred from the provider config. The default
 
 Across every `*Text` / `*Agent` builder:
 
-| Concept           | Method                | Notes                                                                                     |
-| ----------------- | --------------------- | ----------------------------------------------------------------------------------------- |
-| System prompt     | `.system(s)`          |                                                                                           |
-| Model override    | `.model(name)`        |                                                                                           |
-| Sampling          | `.temperature(t)`     |                                                                                           |
-| Token cap         | `.maxTokens(n)`       |                                                                                           |
-| Caching           | `.caching()`          |                                                                                           |
-| Conversation hist | `.history(msgs)`      |                                                                                           |
-| Structured output | `.schema(json)`       | OpenAI strict mode requires `additionalProperties: false` and `required` on object types. |
-| Middleware hooks  | `.middleware(fns)`    | See below.                                                                                |
-| Reasoning effort  | `.reasoningEffort(l)` | OpenAI o-series, Gemini 2.5+                                                              |
-| Thinking budget   | `.thinkingBudget(n)`  | Anthropic, Gemini                                                                         |
+| Concept           | Method                | Notes                                                                                                                                           |
+| ----------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| System prompt     | `.system(s)`          |                                                                                                                                                 |
+| Model override    | `.model(name)`        |                                                                                                                                                 |
+| Sampling          | `.temperature(t)`     |                                                                                                                                                 |
+| Token cap         | `.maxTokens(n)`       |                                                                                                                                                 |
+| Caching           | `.caching()`          |                                                                                                                                                 |
+| Conversation hist | `.history(...msgs)`   | `*Text` only. `*Agent` accumulates history across `.prompt(...)` calls on the same instance, so an explicit setter would shadow that semantics. |
+| Structured output | `.schema(json)`       | OpenAI strict mode requires `additionalProperties: false` and `required` on object types.                                                       |
+| Middleware hooks  | `.middleware(...fns)` | See below.                                                                                                                                      |
+| Reasoning effort  | `.reasoningEffort(l)` | OpenAI o-series, Gemini 2.5+                                                                                                                    |
+| Thinking budget   | `.thinkingBudget(n)`  | Anthropic, Gemini                                                                                                                               |
 
 Sampling hyperparameters (`.topP`, `.topK`, `.seed`, `.frequencyPenalty`, `.presencePenalty`, `.stopSequences`) are validated per provider; unsupported options throw `ValidationError` rather than silently dropping.
 
@@ -371,10 +362,7 @@ const budgetGate =
     return null;
   };
 
-await c
-  .text()
-  .middleware([budgetGate(5.0, spent), logUsage])
-  .prompt("...");
+await c.text.middleware(budgetGate(5.0, spent), logUsage).prompt("...");
 ```
 
 A pre-phase veto throws `MiddlewareVetoError` so it can be discriminated from transport or provider errors. Middlewares fire in registration order; the first non-null pre-phase return aborts.
