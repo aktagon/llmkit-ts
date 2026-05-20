@@ -26,6 +26,31 @@ export interface BatchHandle {
 
 
 
+export interface File {
+
+
+
+  id?: string;
+
+
+
+
+  uri?: string;
+
+
+
+
+  mimeType?: string;
+
+
+
+
+  name?: string;
+}
+
+
+
+
 export interface ImageResponse {
 
 
