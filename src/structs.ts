@@ -84,6 +84,21 @@ export interface ImageResponse {
 }
 
 /**
+ * Message is a single turn in a multi-turn conversation. Role identifies the speaker; content carries the turn's text. Multimodal content (a Part list) is deferred to a later slice; today content is the raw string.
+ */
+export interface Message {
+  /**
+   * role is the speaker identifier. Conventionally "user" or "assistant"; provider transforms may map to other roles (Bedrock's "USER"/"ASSISTANT", Google's "user"/"model").
+   */
+  role: string;
+
+  /**
+   * content is the turn's text. Multimodal content (a list of Parts) is deferred to a follow-up slice; today this is the concatenated text of the turn.
+   */
+  content: string;
+}
+
+/**
  * Response is the universal response container returned by text-generation terminals (Text.Prompt, Agent.Prompt). Five fields; all five are core (no per-capability augmentation).
  */
 export interface Response {
