@@ -77,6 +77,8 @@ export function fireworks(apiKey: string): Client { return new Client("fireworks
 export function google(apiKey: string): Client { return new Client("google", apiKey); }
 export function grok(apiKey: string): Client { return new Client("grok", apiKey); }
 export function groq(apiKey: string): Client { return new Client("groq", apiKey); }
+export function jan(apiKey: string): Client { return new Client("jan", apiKey); }
+export function llamacpp(apiKey: string): Client { return new Client("llamacpp", apiKey); }
 export function lmstudio(apiKey: string): Client { return new Client("lmstudio", apiKey); }
 export function minimax(apiKey: string): Client { return new Client("minimax", apiKey); }
 export function mistral(apiKey: string): Client { return new Client("mistral", apiKey); }

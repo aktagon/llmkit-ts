@@ -444,6 +444,58 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
       jsonKey: "top_p",
     },
   ],
+  jan: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+    {
+      key: OptionKeys.SEED,
+      jsonKey: "seed",
+    },
+    {
+      key: OptionKeys.STOP_SEQUENCES,
+      jsonKey: "stop",
+    },
+    {
+      key: OptionKeys.TEMPERATURE,
+      jsonKey: "temperature",
+    },
+    {
+      key: OptionKeys.TOP_K,
+      jsonKey: "top_k",
+    },
+    {
+      key: OptionKeys.TOP_P,
+      jsonKey: "top_p",
+    },
+  ],
+  llamacpp: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+    {
+      key: OptionKeys.SEED,
+      jsonKey: "seed",
+    },
+    {
+      key: OptionKeys.STOP_SEQUENCES,
+      jsonKey: "stop",
+    },
+    {
+      key: OptionKeys.TEMPERATURE,
+      jsonKey: "temperature",
+    },
+    {
+      key: OptionKeys.TOP_K,
+      jsonKey: "top_k",
+    },
+    {
+      key: OptionKeys.TOP_P,
+      jsonKey: "top_p",
+    },
+  ],
   lmstudio: [
     {
       key: OptionKeys.MAX_TOKENS,
@@ -828,6 +880,10 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   grok: [
   ],
   groq: [
+  ],
+  jan: [
+  ],
+  llamacpp: [
   ],
   lmstudio: [
   ],
