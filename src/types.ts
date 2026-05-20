@@ -7,7 +7,7 @@ import type { MiddlewareFn } from "./providers/middleware.ts";
 //
 //
 //
-export type { BatchHandle, Response } from "./structs.ts";
+export type { BatchHandle, File, Response } from "./structs.ts";
 
 export interface Provider {
   name: ProviderName;
@@ -34,13 +34,6 @@ export interface Usage {
   cacheWrite: number;
   cacheRead: number;
   reasoning: number;
-}
-
-export interface File {
-  id: string;
-  uri: string;
-  name: string;
-  mimeType: string;
 }
 
 
