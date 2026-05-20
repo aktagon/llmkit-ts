@@ -2,23 +2,19 @@
 
 import type { ProviderName } from "./providers/providers.ts";
 import type { MiddlewareFn } from "./providers/middleware.ts";
+import type { Message } from "./structs.ts";
 
 // Re-exports of codegen-emitted containers (ADR-018, API-PDS-002).
 // Canonical declarations live at ./structs.ts; these lines keep every
 // internal import { Foo } from "./types.ts" working without touching
 // every call site.
-export type { BatchHandle, File, Response } from "./structs.ts";
+export type { BatchHandle, File, Message, Response } from "./structs.ts";
 
 export interface Provider {
   name: ProviderName;
   apiKey: string;
   model?: string;
   baseUrl?: string;
-}
-
-export interface Message {
-  role: "user" | "assistant";
-  content: string;
 }
 
 export interface Request {
