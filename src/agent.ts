@@ -145,7 +145,7 @@ export class Agent {
       if (calls.length === 0) {
         const text = extractPath(raw, cfg.responseTextPath);
         this.history.push({ role: "assistant", content: text });
-        const result: PromptResponse = { text, tokens: totalUsage };
+        const result: PromptResponse = { text, usage: totalUsage };
         if (cfg.finishReasonPath) {
           const reason = extractPath(raw, cfg.finishReasonPath);
           if (reason) result.finishReason = reason;
