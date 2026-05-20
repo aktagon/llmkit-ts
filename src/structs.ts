@@ -1,6 +1,6 @@
 // Code generated — DO NOT EDIT.
 
-import type { Provider, Usage } from "./types.ts";
+import type { Capability, Provider, Usage } from "./types.ts";
 
 
 
@@ -100,6 +100,21 @@ export interface ImageResponse {
 
 
 
+export interface LiveResult {
+
+
+
+  models: ModelInfo[];
+
+
+
+
+  errors: Record<string, string>;
+}
+
+
+
+
 export interface MediaRef {
 
 
@@ -125,6 +140,56 @@ export interface Message {
 
 
   content: string;
+}
+
+
+
+
+export interface ModelInfo {
+
+
+
+  id: string;
+
+
+
+
+  provider: Provider;
+
+
+
+
+  capabilities: Capability[];
+
+
+
+
+  displayName?: string;
+
+
+
+
+  description?: string;
+
+
+
+
+  contextWindow?: number;
+
+
+
+
+  maxOutput?: number;
+
+
+
+
+  created?: number;
+
+
+
+
+  raw?: unknown;
 }
 
 
