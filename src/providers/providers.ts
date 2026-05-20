@@ -690,7 +690,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
   },
   moonshot: {
     name: "moonshot",
-    baseUrl: "https://api.moonshot.cn",
+    baseUrl: "https://api.moonshot.ai",
     endpoint: "/v1/chat/completions",
     defaultModel: "moonshot-v1-8k",
     envVar: "MOONSHOT_API_KEY",
