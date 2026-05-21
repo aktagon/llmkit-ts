@@ -1,37 +1,12 @@
 import { describe, test, expect } from "bun:test";
 import {
   Client,
-  newClient,
-  ai21,
   anthropic,
-  azure,
-  bedrock,
-  cerebras,
-  cohere,
-  deepseek,
-  doubao,
-  ernie,
-  fireworks,
   google,
   grok,
   groq,
-  jan,
-  llamacpp,
-  lmstudio,
-  minimax,
-  mistral,
-  moonshot,
-  ollama,
   openai,
-  openrouter,
-  perplexity,
-  qwen,
-  sambanova,
-  together,
   vertex,
-  vllm,
-  yi,
-  zhipu,
   Text,
   Image,
   Agent,
@@ -201,50 +176,10 @@ describe("Surface — immutable", () => {
   });
 });
 
-// TestSurface_Constructors exercises every per-provider factory and
-// the generic newClient escape hatch.
+// Per-provider constructor smoke moved to the generated
+// builders_constructors.test.ts — keeps the list and the ontology in
+// lockstep.
 describe("Surface — constructors", () => {
-  test("every provider factory + newClient", () => {
-    const clients: Client[] = [
-      newClient("custom", "k"),
-      ai21("k"),
-      anthropic("k"),
-      azure("k"),
-      bedrock("k"),
-      cerebras("k"),
-      cohere("k"),
-      deepseek("k"),
-      doubao("k"),
-      ernie("k"),
-      fireworks("k"),
-      google("k"),
-      grok("k"),
-      groq("k"),
-      jan("k"),
-      llamacpp("k"),
-      lmstudio("k"),
-      minimax("k"),
-      mistral("k"),
-      moonshot("k"),
-      ollama("k"),
-      openai("k"),
-      openrouter("k"),
-      perplexity("k"),
-      qwen("k"),
-      sambanova("k"),
-      together("k"),
-      vertex("k"),
-      vllm("k"),
-      yi("k"),
-      zhipu("k"),
-    ];
-    for (const c of clients) {
-      expect(c).toBeInstanceOf(Client);
-      expect(c.provider.apiKey).toBe("k");
-    }
-    expect(clients).toHaveLength(31);
-  });
-
   test("withBaseUrl sets provider.baseUrl and returns the same Client", () => {
     const override = "https://example.test/v1";
     const c = vertex("test-token").withBaseUrl(override);
