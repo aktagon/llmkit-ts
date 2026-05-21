@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { anthropic, openai, cerebras } from "../src/builders/builders.ts";
 import { Capabilities } from "../src/types.ts";
-import { ErrModelsNotSupported } from "../src/models.ts";
+import {
+  ErrModelsNotSupported,
+  ErrModelsScope,
+  ErrModelsUnavailable,
+} from "../src/models.ts";
 
 describe("Models.list (compiled-in)", () => {
   test("returns the compiled-in catalogue", () => {
@@ -80,6 +84,94 @@ describe("ScopedModels.list error sentinel", () => {
       throw new Error("expected throw");
     } catch (err) {
       expect(err).toBeInstanceOf(ErrModelsNotSupported);
+    }
+  });
+});
+
+describe("ScopedModels Phase 3 stubs + raw flag", () => {
+  test("list throws ErrModelsUnavailable for endpoint-bearing provider", async () => {
+    const { ErrModelsUnavailable } = await import("../src/models.ts");
+    const c = anthropic("test-key");
+    try {
+      await c.models.provider({ name: "anthropic", apiKey: "k" }).list();
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ErrModelsUnavailable);
+    }
+  });
+
+  test("get throws ErrModelsUnavailable for Phase 3 stub", async () => {
+    const { ErrModelsUnavailable } = await import("../src/models.ts");
+    const c = anthropic("test-key");
+    try {
+      await c.models
+        .provider({ name: "anthropic", apiKey: "k" })
+        .get("claude-opus-4-7");
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ErrModelsUnavailable);
+    }
+  });
+
+  test("raw() flips the chain flag without mutating parent", () => {
+    const c = anthropic("test-key");
+    const scoped = c.models.provider({ name: "anthropic", apiKey: "k" });
+    const forked = scoped.raw();
+    expect(scoped.rawFlag).toBe(false);
+    expect(forked.rawFlag).toBe(true);
+  });
+});
+
+describe("Error sentinel default messages", () => {
+  test("each sentinel carries a default message", () => {
+    expect(new ErrModelsNotSupported().message).toContain("models endpoint");
+    expect(new ErrModelsUnavailable().message).toContain("unavailable");
+    expect(new ErrModelsScope().message).toContain("scope");
+  });
+});
+
+describe("Models.live aggregation", () => {
+  test("captures unavailable into LiveResult.errors", async () => {
+    const c = anthropic("test-key");
+    const res = await c.models.live();
+    expect(res.models.length).toBe(0);
+    expect(res.errors["anthropic"]).toBeDefined();
+    expect(res.errors["anthropic"]).toContain("unavailable");
+  });
+
+  test("aggregates + sorts + filters when scoped list resolves", async () => {
+    // Phase 3 stub returns ErrModelsUnavailable; monkey-patch the
+    // ScopedModels prototype so live() sees fulfilled values and we
+    // exercise the merge/sort/filter closures in catalogueRunLive.
+    const { ScopedModels } = await import("../src/builders/catalogue.ts");
+    const original = ScopedModels.prototype.list;
+    ScopedModels.prototype.list = async function (this: {
+      target: { name: string };
+    }) {
+      // Return two records out of (provider, id) order to exercise the sort.
+      return [
+        {
+          id: "z-model",
+          provider: { name: this.target.name, apiKey: "" },
+          capabilities: [Capabilities.ChatCompletion],
+        },
+        {
+          id: "a-model",
+          provider: { name: this.target.name, apiKey: "" },
+          capabilities: [Capabilities.ImageGeneration],
+        },
+      ];
+    };
+    try {
+      const c = anthropic("test-key");
+      const res = await c.models
+        .withCapability(Capabilities.ImageGeneration)
+        .live();
+      expect(res.errors).toEqual({});
+      expect(res.models.length).toBe(1);
+      expect(res.models[0]!.id).toBe("a-model");
+    } finally {
+      ScopedModels.prototype.list = original;
     }
   });
 });
