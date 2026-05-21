@@ -131,12 +131,15 @@ describe("Error sentinel default messages", () => {
 });
 
 describe("Models.live aggregation", () => {
-  test("captures unavailable into LiveResult.errors", async () => {
+  test("captures unavailable into LiveResult.errors as typed ProviderError", async () => {
+    // ADR-019 Amendment 1: errors carry { kind, message }, not raw string.
     const c = anthropic("test-key");
     const res = await c.models.live();
     expect(res.models.length).toBe(0);
-    expect(res.errors["anthropic"]).toBeDefined();
-    expect(res.errors["anthropic"]).toContain("unavailable");
+    const err = res.errors["anthropic"];
+    expect(err).toBeDefined();
+    expect(err!.kind).toBe("unavailable");
+    expect(err!.message).toContain("unavailable");
   });
 
   test("aggregates + sorts + filters when scoped list resolves", async () => {
@@ -144,20 +147,24 @@ describe("Models.live aggregation", () => {
     // ScopedModels prototype so live() sees fulfilled values and we
     // exercise the merge/sort/filter closures in catalogueRunLive.
     const { ScopedModels } = await import("../src/builders/catalogue.ts");
+    const { Providers: ProviderRegistry } =
+      await import("../src/providers/providers.ts");
     const original = ScopedModels.prototype.list;
     ScopedModels.prototype.list = async function (this: {
       target: { name: string };
     }) {
+      const name = this.target
+        .name as (typeof ProviderRegistry)[keyof typeof ProviderRegistry];
       // Return two records out of (provider, id) order to exercise the sort.
       return [
         {
           id: "z-model",
-          provider: { name: this.target.name, apiKey: "" },
+          provider: { name, apiKey: "" },
           capabilities: [Capabilities.ChatCompletion],
         },
         {
           id: "a-model",
-          provider: { name: this.target.name, apiKey: "" },
+          provider: { name, apiKey: "" },
           capabilities: [Capabilities.ImageGeneration],
         },
       ];
