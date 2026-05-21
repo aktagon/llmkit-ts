@@ -2,7 +2,7 @@
 //
 
 import type { Capability, Provider } from "./types.ts";
-import type { LiveResult, ModelInfo } from "./structs.ts";
+import type { LiveResult, ModelInfo, ProviderError } from "./structs.ts";
 import { compiledInModels, catalogueByProvider } from "./catalogue.ts";
 import type { Models, ScopedModels } from "./builders/catalogue.ts";
 
@@ -32,6 +32,16 @@ export class ErrModelsScope extends Error {
 
 
 
+
+export function classifyCatalogueError(err: unknown): string {
+  if (err instanceof ErrModelsNotSupported) return "not_supported";
+  if (err instanceof ErrModelsScope) return "scope";
+  return "unavailable";
+}
+
+
+
+
 export function catalogueFilter(c: Capability | undefined): ModelInfo[] {
   if (!c) return [...compiledInModels];
   return compiledInModels.filter((m) => m.capabilities.includes(c));
@@ -48,7 +58,7 @@ export function catalogueLookup(id: string): ModelInfo | undefined {
 export async function catalogueRunLive(models: Models): Promise<LiveResult> {
   const configured = models.client.providers.list();
   const all: ModelInfo[] = [];
-  const errors: Record<string, string> = {};
+  const errors: Record<string, ProviderError> = {};
 
   const results = await Promise.allSettled(
     configured.map(async (p) => {
@@ -66,8 +76,10 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
     if (r.status === "fulfilled") {
       all.push(...r.value);
     } else {
-      errors[p.name] =
+      //
+      const message =
         r.reason instanceof Error ? r.reason.message : String(r.reason);
+      errors[p.name] = { kind: classifyCatalogueError(r.reason), message };
     }
   }
 
