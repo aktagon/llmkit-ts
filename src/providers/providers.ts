@@ -964,7 +964,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
   },
   qwen: {
     name: "qwen",
-    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode",
+    baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode",
     endpoint: "/v1/chat/completions",
     defaultModel: "qwen-plus",
     envVar: "DASHSCOPE_API_KEY",
