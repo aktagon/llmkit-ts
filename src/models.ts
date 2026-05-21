@@ -2,7 +2,7 @@
 // in builders/catalogue.ts delegate their terminal methods here.
 
 import type { Capability, Provider } from "./types.ts";
-import type { LiveResult, ModelInfo } from "./structs.ts";
+import type { LiveResult, ModelInfo, ProviderError } from "./structs.ts";
 import { compiledInModels, catalogueByProvider } from "./catalogue.ts";
 import type { Models, ScopedModels } from "./builders/catalogue.ts";
 
@@ -29,6 +29,16 @@ export class ErrModelsScope extends Error {
   }
 }
 
+/** Map a caught error to the wire-format discriminant carried in
+ *  ProviderError.kind (ADR-019 Amendment 1). Unknown errors fall back
+ *  to "unavailable" — safer than "scope" since scope implies a
+ *  documented retry path. */
+export function classifyCatalogueError(err: unknown): string {
+  if (err instanceof ErrModelsNotSupported) return "not_supported";
+  if (err instanceof ErrModelsScope) return "scope";
+  return "unavailable";
+}
+
 /** Walk the compiled-in slice and return records whose capabilities array
  *  contains c. Returns a fresh array so callers cannot mutate the
  *  module-level constant. */
@@ -48,7 +58,7 @@ export function catalogueLookup(id: string): ModelInfo | undefined {
 export async function catalogueRunLive(models: Models): Promise<LiveResult> {
   const configured = models.client.providers.list();
   const all: ModelInfo[] = [];
-  const errors: Record<string, string> = {};
+  const errors: Record<string, ProviderError> = {};
 
   const results = await Promise.allSettled(
     configured.map(async (p) => {
@@ -66,8 +76,10 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
     if (r.status === "fulfilled") {
       all.push(...r.value);
     } else {
-      errors[p.name] =
+      // ADR-019 Amendment 1: structured discriminant + message.
+      const message =
         r.reason instanceof Error ? r.reason.message : String(r.reason);
+      errors[p.name] = { kind: classifyCatalogueError(r.reason), message };
     }
   }
 
