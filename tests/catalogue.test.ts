@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { anthropic, openai, cerebras } from "../src/builders/builders.ts";
+import { anthropic, openai, cohere } from "../src/builders/builders.ts";
 import { Capabilities } from "../src/types.ts";
 import {
   ErrModelsNotSupported,
@@ -63,7 +63,7 @@ describe("Providers.list", () => {
   });
 
   test("returns empty when the provider has no models endpoint", () => {
-    const c = cerebras("test-key");
+    const c = cohere("test-key");
     expect(c.providers.list().length).toBe(0);
   });
 });
@@ -78,9 +78,9 @@ describe("Providers.supported", () => {
 
 describe("ScopedModels.list error sentinel", () => {
   test("throws ErrModelsNotSupported for endpoint-less providers", async () => {
-    const c = cerebras("test-key");
+    const c = cohere("test-key");
     try {
-      await c.models.provider({ name: "cerebras", apiKey: "test" }).list();
+      await c.models.provider({ name: "cohere", apiKey: "test" }).list();
       throw new Error("expected throw");
     } catch (err) {
       expect(err).toBeInstanceOf(ErrModelsNotSupported);

@@ -78,6 +78,16 @@ export interface CatalogueConfig {
 
 export const catalogueByProvider: Record<string, CatalogueConfig> = {
   "anthropic": { endpoint: "/v1/models", pagination: "CursorByLastID", parserKind: "ParseAnthropicModels", specUrl: "https://github.com/anthropics/anthropic-sdk-typescript/blob/main/api.md", specFormat: "OpenAPI3" },
+  "cerebras": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels" },
+  "deepseek": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels" },
+  "fireworks": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels" },
   "google": { endpoint: "/v1beta/models", pagination: "CursorOpaqueToken", parserKind: "ParseGoogleModels", specUrl: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta", specFormat: "GoogleDiscovery" },
+  "grok": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels" },
+  "groq": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels" },
+  "mistral": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels", specUrl: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/openapi.yaml", specFormat: "OpenAPI3" },
+  "moonshot": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels" },
   "openai": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels", specUrl: "https://github.com/openai/openai-openapi/blob/master/openapi.yaml", specFormat: "OpenAPI3" },
+  "openrouter": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels", specUrl: "https://openrouter.ai/openapi.json", specFormat: "OpenAPI3" },
+  "qwen": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels" },
+  "together": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels", specUrl: "https://raw.githubusercontent.com/togethercomputer/openapi/main/openapi.yaml", specFormat: "OpenAPI3" },
 };

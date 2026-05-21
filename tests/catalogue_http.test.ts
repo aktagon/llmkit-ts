@@ -7,12 +7,7 @@
 // tests cover scope-vs-unavailable classification.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  anthropic,
-  openai,
-  google,
-  cerebras,
-} from "../src/builders/builders.ts";
+import { anthropic, openai, google, cohere } from "../src/builders/builders.ts";
 import {
   ErrModelsNotSupported,
   ErrModelsScope,
@@ -235,9 +230,9 @@ describe("ScopedModels.list HTTP — error sentinel mapping", () => {
 
   test("endpoint-less provider keeps ErrModelsNotSupported (no HTTP issued)", async () => {
     const { calls } = installFetchStub(() => ({ status: 200, body: "{}" }));
-    const c = cerebras("test-key");
+    const c = cohere("test-key");
     try {
-      await c.models.provider({ name: "cerebras", apiKey: "k" }).list();
+      await c.models.provider({ name: "cohere", apiKey: "k" }).list();
       throw new Error("expected throw");
     } catch (err) {
       expect(err).toBeInstanceOf(ErrModelsNotSupported);
