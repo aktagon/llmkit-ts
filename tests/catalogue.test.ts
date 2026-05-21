@@ -5,6 +5,9 @@ import {
   ErrModelsNotSupported,
   ErrModelsScope,
   ErrModelsUnavailable,
+  classifyCatalogueError,
+  catalogueFilter,
+  catalogueLookup,
 } from "../src/models.ts";
 
 describe("Models.list (compiled-in)", () => {
@@ -145,5 +148,76 @@ describe("Models.live aggregation", () => {
     } finally {
       ScopedModels.prototype.list = original;
     }
+  });
+});
+
+describe("Models.live sort covers diff-provider branch", () => {
+  test("records from two providers sort by provider name first", async () => {
+    const { ScopedModels } = await import("../src/builders/catalogue.ts");
+    const original = ScopedModels.prototype.list;
+    // Return records with mismatched provider names so the sort
+    // comparator hits the a.provider.name !== b.provider.name branch.
+    ScopedModels.prototype.list = async function () {
+      return [
+        {
+          id: "x",
+          provider: { name: "openai", apiKey: "" },
+          capabilities: [Capabilities.ChatCompletion],
+        },
+        {
+          id: "y",
+          provider: { name: "anthropic", apiKey: "" },
+          capabilities: [Capabilities.ChatCompletion],
+        },
+      ];
+    };
+    try {
+      const c = anthropic("test-key");
+      const res = await c.models.live();
+      expect(res.errors).toEqual({});
+      // anthropic sorts before openai.
+      expect(res.models.map((m) => m.provider.name)).toEqual([
+        "anthropic",
+        "openai",
+      ]);
+    } finally {
+      ScopedModels.prototype.list = original;
+    }
+  });
+});
+
+describe("Pure helpers exposed by models.ts", () => {
+  test("classifyCatalogueError maps each sentinel to its discriminant", () => {
+    expect(classifyCatalogueError(new ErrModelsNotSupported())).toBe(
+      "not_supported",
+    );
+    expect(classifyCatalogueError(new ErrModelsScope())).toBe("scope");
+    expect(classifyCatalogueError(new ErrModelsUnavailable())).toBe(
+      "unavailable",
+    );
+    expect(classifyCatalogueError(new Error("anything else"))).toBe(
+      "unavailable",
+    );
+  });
+
+  test("catalogueFilter returns a fresh array (no capability filter)", () => {
+    const a = catalogueFilter(undefined);
+    const b = catalogueFilter(undefined);
+    expect(a).not.toBe(b);
+    expect(a.length).toBeGreaterThan(0);
+  });
+
+  test("catalogueFilter narrows by capability", () => {
+    const all = catalogueFilter(undefined);
+    const imageOnly = catalogueFilter(Capabilities.ImageGeneration);
+    expect(imageOnly.length).toBeLessThan(all.length);
+    for (const m of imageOnly) {
+      expect(m.capabilities).toContain(Capabilities.ImageGeneration);
+    }
+  });
+
+  test("catalogueLookup hits + misses", () => {
+    expect(catalogueLookup("claude-opus-4-7")?.id).toBe("claude-opus-4-7");
+    expect(catalogueLookup("nonexistent-xyz")).toBeUndefined();
   });
 });

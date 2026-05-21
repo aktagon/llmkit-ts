@@ -15,6 +15,8 @@ import {
   google,
   grok,
   groq,
+  jan,
+  llamacpp,
   lmstudio,
   minimax,
   mistral,
@@ -218,6 +220,8 @@ describe("Surface — constructors", () => {
       google("k"),
       grok("k"),
       groq("k"),
+      jan("k"),
+      llamacpp("k"),
       lmstudio("k"),
       minimax("k"),
       mistral("k"),
@@ -238,7 +242,7 @@ describe("Surface — constructors", () => {
       expect(c).toBeInstanceOf(Client);
       expect(c.provider.apiKey).toBe("k");
     }
-    expect(clients).toHaveLength(29);
+    expect(clients).toHaveLength(31);
   });
 
   test("withBaseUrl sets provider.baseUrl and returns the same Client", () => {
