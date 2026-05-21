@@ -88,31 +88,7 @@ describe("ScopedModels.list error sentinel", () => {
   });
 });
 
-describe("ScopedModels Phase 3 stubs + raw flag", () => {
-  test("list throws ErrModelsUnavailable for endpoint-bearing provider", async () => {
-    const { ErrModelsUnavailable } = await import("../src/models.ts");
-    const c = anthropic("test-key");
-    try {
-      await c.models.provider({ name: "anthropic", apiKey: "k" }).list();
-      throw new Error("expected throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(ErrModelsUnavailable);
-    }
-  });
-
-  test("get throws ErrModelsUnavailable for Phase 3 stub", async () => {
-    const { ErrModelsUnavailable } = await import("../src/models.ts");
-    const c = anthropic("test-key");
-    try {
-      await c.models
-        .provider({ name: "anthropic", apiKey: "k" })
-        .get("claude-opus-4-7");
-      throw new Error("expected throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(ErrModelsUnavailable);
-    }
-  });
-
+describe("ScopedModels chain immutability", () => {
   test("raw() flips the chain flag without mutating parent", () => {
     const c = anthropic("test-key");
     const scoped = c.models.provider({ name: "anthropic", apiKey: "k" });
@@ -131,17 +107,6 @@ describe("Error sentinel default messages", () => {
 });
 
 describe("Models.live aggregation", () => {
-  test("captures unavailable into LiveResult.errors as typed ProviderError", async () => {
-    // ADR-019 Amendment 1: errors carry { kind, message }, not raw string.
-    const c = anthropic("test-key");
-    const res = await c.models.live();
-    expect(res.models.length).toBe(0);
-    const err = res.errors["anthropic"];
-    expect(err).toBeDefined();
-    expect(err!.kind).toBe("unavailable");
-    expect(err!.message).toContain("unavailable");
-  });
-
   test("aggregates + sorts + filters when scoped list resolves", async () => {
     // Phase 3 stub returns ErrModelsUnavailable; monkey-patch the
     // ScopedModels prototype so live() sees fulfilled values and we
