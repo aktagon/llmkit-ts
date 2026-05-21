@@ -3,8 +3,26 @@
 
 import type { Capability, Provider } from "./types.ts";
 import type { LiveResult, ModelInfo, ProviderError } from "./structs.ts";
-import { compiledInModels, catalogueByProvider } from "./catalogue.ts";
+import {
+  compiledInModels,
+  catalogueByProvider,
+  ontologyCapabilities,
+} from "./catalogue.ts";
 import type { Models, ScopedModels } from "./builders/catalogue.ts";
+import {
+  PROVIDERS,
+  type ProviderConfig,
+  type ProviderName,
+} from "./providers/providers.ts";
+import { buildAuthHeaders } from "./request.ts";
+import { firePre, firePost } from "./middleware.ts";
+import {
+  parseAnthropicModelsResponse,
+  parseGoogleModelsResponse,
+  parseOpenAICohortModelsResponse,
+  type ParsedModelRecord,
+  type ParsedModelsPage,
+} from "./providers/models_parsers.ts";
 
 //
 //
@@ -28,6 +46,8 @@ export class ErrModelsScope extends Error {
     this.name = "ErrModelsScope";
   }
 }
+
+const scopeBodyPattern = /scope|permission/i;
 
 
 
@@ -62,8 +82,6 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
 
   const results = await Promise.allSettled(
     configured.map(async (p) => {
-      //
-      //
       const { ScopedModels } = await import("./builders/catalogue.ts");
       const scoped = new ScopedModels(models.client, p, models.capFilter);
       return scoped.list();
@@ -97,22 +115,233 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
 }
 
 
+
+
+
 export async function catalogueRunList(
   scoped: ScopedModels,
 ): Promise<ModelInfo[]> {
-  if (!catalogueByProvider[scoped.target.name]) {
-    throw new ErrModelsNotSupported();
+  const cfg = catalogueByProvider[scoped.target.name];
+  if (!cfg) throw new ErrModelsNotSupported();
+  const pcfg = PROVIDERS[scoped.target.name as ProviderName];
+  if (!pcfg) throw new ErrModelsNotSupported();
+
+  const baseEvent = {
+    op: "models_list" as const,
+    phase: "pre" as const,
+    provider: scoped.target.name,
+    model: "",
+  };
+  const start = performance.now();
+  const veto = firePre(undefined, baseEvent);
+  if (veto) throw veto;
+
+  let cursor = "";
+  const records: ParsedModelRecord[] = [];
+  let caught: unknown = null;
+  try {
+    for (;;) {
+      const reqUrl = appendCursor(
+        buildCatalogueUrl(scoped.target, pcfg, cfg.endpoint),
+        cfg.pagination,
+        cursor,
+      );
+      const page = await fetchCataloguePage(
+        reqUrl,
+        scoped.target,
+        pcfg,
+        cfg.parserKind,
+      );
+      records.push(...page.records);
+      if (!page.nextCursor) break;
+      cursor = page.nextCursor;
+    }
+  } catch (err) {
+    caught = err;
   }
-  throw new ErrModelsUnavailable();
+
+  firePost(undefined, {
+    ...baseEvent,
+    phase: "post" as const,
+    duration: performance.now() - start,
+  });
+
+  if (caught) throw caught;
+  return enrich(scoped, records);
 }
+
+
+
+
 
 
 export async function catalogueRunGet(
   scoped: ScopedModels,
-  _id: string,
+  id: string,
 ): Promise<ModelInfo> {
-  if (!catalogueByProvider[scoped.target.name]) {
+  const cfg = catalogueByProvider[scoped.target.name];
+  if (!cfg) throw new ErrModelsNotSupported();
+  if (
+    cfg.parserKind === "ParseVertexModels" ||
+    cfg.parserKind === "ParseBedrockModels"
+  ) {
     throw new ErrModelsNotSupported();
   }
-  throw new ErrModelsUnavailable();
+  const pcfg = PROVIDERS[scoped.target.name as ProviderName];
+  if (!pcfg) throw new ErrModelsNotSupported();
+
+  const baseEvent = {
+    op: "models_list" as const,
+    phase: "pre" as const,
+    provider: scoped.target.name,
+    model: id,
+  };
+  const veto = firePre(undefined, baseEvent);
+  if (veto) throw veto;
+  let caught: unknown = null;
+  let record: ParsedModelRecord | undefined;
+  try {
+    const url = buildCatalogueUrl(scoped.target, pcfg, `${cfg.endpoint}/${id}`);
+    const headers = {
+      "content-type": "application/json",
+      ...buildAuthHeaders(scoped.target, pcfg),
+    };
+    const httpResp = await fetch(url, { method: "GET", headers });
+    const text = await httpResp.text();
+    if (!httpResp.ok) {
+      throw mapCatalogueHttpErr(httpResp.status, text);
+    }
+    record = parseSingleRecord(cfg.parserKind, text);
+  } catch (err) {
+    caught = err;
+  }
+  firePost(undefined, { ...baseEvent, phase: "post" as const });
+  if (caught) throw caught;
+  return enrich(scoped, [record!])[0]!;
+}
+
+//
+
+async function fetchCataloguePage(
+  reqUrl: string,
+  provider: Provider,
+  pcfg: ProviderConfig,
+  parserKind: string,
+): Promise<ParsedModelsPage> {
+  const headers = {
+    "content-type": "application/json",
+    ...buildAuthHeaders(provider, pcfg),
+  };
+  const httpResp = await fetch(reqUrl, { method: "GET", headers });
+  const text = await httpResp.text();
+  if (!httpResp.ok) {
+    throw mapCatalogueHttpErr(httpResp.status, text);
+  }
+  return dispatchParser(parserKind, text);
+}
+
+function dispatchParser(kind: string, body: string): ParsedModelsPage {
+  switch (kind) {
+    case "ParseAnthropicModels":
+      return parseAnthropicModelsResponse(body);
+    case "ParseGoogleModels":
+      return parseGoogleModelsResponse(body);
+    case "ParseOpenAICohortModels":
+      return parseOpenAICohortModelsResponse(body);
+    default:
+      throw new ErrModelsNotSupported();
+  }
+}
+
+function parseSingleRecord(kind: string, body: string): ParsedModelRecord {
+  //
+  //
+  switch (kind) {
+    case "ParseAnthropicModels": {
+      const page = parseAnthropicModelsResponse(`{"data":[${body}]}`);
+      const r = page.records[0];
+      if (!r) throw new ErrModelsUnavailable("parse anthropic single record");
+      return r;
+    }
+    case "ParseGoogleModels": {
+      const page = parseGoogleModelsResponse(`{"models":[${body}]}`);
+      const r = page.records[0];
+      if (!r) throw new ErrModelsUnavailable("parse google single record");
+      return r;
+    }
+    case "ParseOpenAICohortModels": {
+      const page = parseOpenAICohortModelsResponse(`{"data":[${body}]}`);
+      const r = page.records[0];
+      if (!r) throw new ErrModelsUnavailable("parse openai single record");
+      return r;
+    }
+    default:
+      throw new ErrModelsNotSupported();
+  }
+}
+
+function appendCursor(
+  rawUrl: string,
+  pagination: string,
+  cursor: string,
+): string {
+  if (!cursor) return rawUrl;
+  const sep = rawUrl.includes("?") ? "&" : "?";
+  switch (pagination) {
+    case "CursorByLastID":
+      return `${rawUrl}${sep}after_id=${encodeURIComponent(cursor)}`;
+    case "CursorOpaqueToken":
+      return `${rawUrl}${sep}pageToken=${encodeURIComponent(cursor)}`;
+    default:
+      return rawUrl;
+  }
+}
+
+function buildCatalogueUrl(
+  provider: Provider,
+  pcfg: ProviderConfig,
+  endpoint: string,
+): string {
+  const base = provider.baseUrl || pcfg.baseUrl;
+  let url = base + endpoint;
+  if (pcfg.authScheme === "QueryParamKey" && pcfg.authQueryParam) {
+    const sep = url.includes("?") ? "&" : "?";
+    url = `${url}${sep}${pcfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
+  }
+  return url;
+}
+
+function mapCatalogueHttpErr(status: number, body: string): Error {
+  if (status === 403 && scopeBodyPattern.test(body)) {
+    return new ErrModelsScope(
+      `llmkit: api key lacks scope for models endpoint (status ${status})`,
+    );
+  }
+  return new ErrModelsUnavailable(
+    `llmkit: provider models endpoint unavailable (status ${status})`,
+  );
+}
+
+function enrich(
+  scoped: ScopedModels,
+  records: ParsedModelRecord[],
+): ModelInfo[] {
+  const providerName = scoped.target.name;
+  const ontologyForProvider = ontologyCapabilities[providerName] ?? {};
+  return records.map((rec) => {
+    const info: ModelInfo = {
+      id: rec.id,
+      provider: { name: providerName, apiKey: "" },
+      capabilities: ontologyForProvider[rec.id] ?? [],
+      displayName: rec.displayName ?? "",
+      description: rec.description ?? "",
+      contextWindow: rec.contextWindow ?? 0,
+      maxOutput: rec.maxOutput ?? 0,
+      created: rec.created ?? 0,
+    };
+    if (scoped.rawFlag) {
+      info.raw = rec.raw;
+    }
+    return info;
+  });
 }
