@@ -71,12 +71,13 @@ export const ontologyCapabilities: Record<string, Record<string, Capability[]>> 
 export interface CatalogueConfig {
   endpoint: string;
   pagination: string;
+  parserKind: string;
   specUrl?: string;
   specFormat?: string;
 }
 
 export const catalogueByProvider: Record<string, CatalogueConfig> = {
-  "anthropic": { endpoint: "/v1/models", pagination: "CursorByLastID", specUrl: "https://github.com/anthropics/anthropic-sdk-typescript/blob/main/api.md", specFormat: "OpenAPI3" },
-  "google": { endpoint: "/v1beta/models", pagination: "CursorOpaqueToken", specUrl: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta", specFormat: "GoogleDiscovery" },
-  "openai": { endpoint: "/v1/models", pagination: "PaginationNone", specUrl: "https://github.com/openai/openai-openapi/blob/master/openapi.yaml", specFormat: "OpenAPI3" },
+  "anthropic": { endpoint: "/v1/models", pagination: "CursorByLastID", parserKind: "ParseAnthropicModels", specUrl: "https://github.com/anthropics/anthropic-sdk-typescript/blob/main/api.md", specFormat: "OpenAPI3" },
+  "google": { endpoint: "/v1beta/models", pagination: "CursorOpaqueToken", parserKind: "ParseGoogleModels", specUrl: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta", specFormat: "GoogleDiscovery" },
+  "openai": { endpoint: "/v1/models", pagination: "PaginationNone", parserKind: "ParseOpenAICohortModels", specUrl: "https://github.com/openai/openai-openapi/blob/master/openapi.yaml", specFormat: "OpenAPI3" },
 };
