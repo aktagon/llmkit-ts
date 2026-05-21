@@ -50,9 +50,13 @@ export function parseAnthropicModelsResponse(body: string): ParsedModelsPage {
 
 
 
+
+
 export function parseOpenAICohortModelsResponse(body: string): ParsedModelsPage {
-  const envelope = JSON.parse(body) as { data?: Array<Record<string, unknown>> };
-  const data = envelope.data ?? [];
+  const parsed = JSON.parse(body);
+  const data = Array.isArray(parsed)
+    ? (parsed as Array<Record<string, unknown>>)
+    : ((parsed as { data?: Array<Record<string, unknown>> }).data ?? []);
   const records: ParsedModelRecord[] = data.map((wire) => ({
     id: String(wire.id ?? ""),
     created: wire.created as number | undefined,
