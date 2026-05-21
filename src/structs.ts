@@ -109,7 +109,7 @@ export interface LiveResult {
 
 
 
-  errors: Record<string, string>;
+  errors: Record<string, ProviderError>;
 }
 
 
@@ -190,6 +190,21 @@ export interface ModelInfo {
 
 
   raw?: unknown;
+}
+
+
+
+
+export interface ProviderError {
+
+
+
+  kind: string;
+
+
+
+
+  message: string;
 }
 
 
