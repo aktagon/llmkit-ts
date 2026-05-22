@@ -5,7 +5,7 @@
  *
  * Note `c.agent` is a stateful field — repeated `bot.prompt(...)` calls
  * on the same builder accumulate conversation history. Chain methods
- * (`.system(...)`, `.tool(...)`) clone and reset state, so a forked
+ * (`.system(...)`, `.addTool(...)`) clone and reset state, so a forked
  * builder gets a fresh conversation. `bot.reset()` clears history
  * without dropping chained config.
  */
@@ -29,7 +29,7 @@ export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");
   const bot = client.agent
     .system("You are a calculator. Use the add tool.")
-    .tool(add)
+    .addTool(add)
     .maxToolIterations(5);
   const resp = await bot.prompt("What is 2 + 3?");
   console.log(resp.text);
