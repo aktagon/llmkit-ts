@@ -140,6 +140,16 @@ export interface Message {
 
 
   content: string;
+
+
+
+
+  toolCalls: ToolCall[];
+
+
+
+
+  toolResult: ToolResult | null;
 }
 
 
@@ -235,4 +245,39 @@ export interface Response {
 
 
   raw?: unknown;
+}
+
+
+
+
+export interface ToolCall {
+
+
+
+  id: string;
+
+
+
+
+  name: string;
+
+
+
+
+  input?: unknown;
+}
+
+
+
+
+export interface ToolResult {
+
+
+
+  toolUseId: string;
+
+
+
+
+  content: string;
 }

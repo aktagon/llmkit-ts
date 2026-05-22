@@ -21,23 +21,28 @@ import type {
   Tool,
   Usage,
 } from "./types.ts";
+import type { ToolCall, ToolResult } from "./structs.ts";
 
-interface ToolCall {
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-
-interface ToolResultMsg {
-  toolUseId: string;
-  content: string;
+//
+//
+//
+//
+function toolCallInput(call: ToolCall): Record<string, unknown> {
+  if (
+    call.input &&
+    typeof call.input === "object" &&
+    !Array.isArray(call.input)
+  ) {
+    return call.input as Record<string, unknown>;
+  }
+  return {};
 }
 
 interface InternalMessage {
   role: "user" | "assistant" | "tool_result";
   content?: string;
   toolCalls?: ToolCall[];
-  toolResult?: ToolResultMsg;
+  toolResult?: ToolResult;
 }
 
 const DEFAULT_MAX_TOOL_ITERATIONS = 10;
@@ -67,6 +72,36 @@ export class Agent {
 
   addTool(tool: Tool): void {
     this.tools.push(tool);
+  }
+
+  //
+  //
+  //
+  //
+  //
+  //
+  historyView(): readonly InternalMessage[] {
+    return [...this.history];
+  }
+
+  //
+  //
+  //
+  //
+  //
+  seedHistory(messages: readonly import("./structs.ts").Message[]): void {
+    this.history.length = 0;
+    for (const m of messages) {
+      const role =
+        m.role === "tool"
+          ? "tool_result"
+          : (m.role as "user" | "assistant" | "tool_result");
+      const entry: InternalMessage = { role };
+      if (m.content) entry.content = m.content;
+      if (m.toolCalls && m.toolCalls.length > 0) entry.toolCalls = m.toolCalls;
+      if (m.toolResult) entry.toolResult = m.toolResult;
+      this.history.push(entry);
+    }
   }
 
   async chat(message: string): Promise<PromptResponse> {
@@ -160,6 +195,7 @@ export class Agent {
 
       this.history.push({ role: "assistant", toolCalls: calls });
       for (const call of calls) {
+        const callArgs = toolCallInput(call);
         const tool = this.tools.find((t) => t.name === call.name);
         const toolEvent: Event = {
           op: "tool_call",
@@ -167,7 +203,7 @@ export class Agent {
           provider: this.provider.name,
           model,
           tool: call.name,
-          args: call.input,
+          args: callArgs,
         };
         const toolVeto = firePre(mw, toolEvent);
         if (toolVeto) throw toolVeto;
@@ -179,7 +215,7 @@ export class Agent {
           content = `error: unknown tool "${call.name}"`;
         } else {
           try {
-            content = await tool.run(call.input);
+            content = await tool.run(callArgs);
           } catch (err) {
             runErr = err instanceof Error ? err : new Error(String(err));
             content = `error: ${runErr.message}`;
@@ -281,7 +317,7 @@ export class Agent {
         msgs.push({
           role: cfg.roleMappings.assistant ?? "assistant",
           content: m.toolCalls.map((c) => ({
-            toolUse: { toolUseId: c.id, name: c.name, input: c.input },
+            toolUse: { toolUseId: c.id, name: c.name, input: toolCallInput(c) },
           })),
         });
       } else {
@@ -315,7 +351,7 @@ export class Agent {
         contents.push({
           role: cfg.roleMappings.assistant ?? "model",
           parts: m.toolCalls.map((c) => ({
-            functionCall: { name: c.name, args: c.input },
+            functionCall: { name: c.name, args: toolCallInput(c) },
           })),
         });
       } else {
@@ -394,7 +430,7 @@ function toolCallMsg(
         type: "tool_use",
         id: c.id,
         name: c.name,
-        input: c.input,
+        input: toolCallInput(c),
       })),
     };
   }
@@ -405,14 +441,14 @@ function toolCallMsg(
       type: "function",
       function: {
         name: c.name,
-        arguments: JSON.stringify(c.input),
+        arguments: JSON.stringify(toolCallInput(c)),
       },
     })),
   };
 }
 
 function toolResultMsg(
-  result: ToolResultMsg,
+  result: ToolResult,
   cfg: ProviderConfig,
 ): Record<string, unknown> {
   if (cfg.systemPlacement === "TopLevelField") {
