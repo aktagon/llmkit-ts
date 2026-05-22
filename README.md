@@ -405,6 +405,40 @@ const c = openai("anything").withBaseUrl("http://localhost:8080/v1");
 
 Works for any OpenAI-compatible server (vLLM, LM Studio, Ollama, corporate gateways).
 
+## Wire-format stability
+
+`*Agent` history persists across process boundaries through two paired
+functions:
+
+```typescript
+const data = bot.save(); // string
+// ...later, fresh process...
+const bot = c.agent.system("...").tool(t).load(data);
+// throws UnsupportedWireVersionError on mismatch
+```
+
+Or the free-function form for admin tooling:
+
+```typescript
+import { saveHistory, loadHistory } from "@aktagon/llmkit";
+
+const data = saveHistory(msgs);
+const msgs = loadHistory(data);
+```
+
+The output is a JSON document with a `_v` integer envelope plus a
+`messages` array. The version is tracked through
+`WIRE_SCHEMA_VERSION`; the in-memory `Message` schema may evolve
+additively under one version (new optional fields work on older
+readers), but a renamed, removed, or retyped field requires a `_v`
+bump and a migrator.
+
+`saveHistory` / `loadHistory` are the ONLY guaranteed-stable
+serialization path. Direct `JSON.stringify` on a `Message` produces
+valid JSON but lacks the `_v` envelope, and `loadHistory` rejects it
+with `MissingWireVersionError`. Use the contract path for anything
+that crosses a process boundary or a release.
+
 ## Architecture
 
 - **Generated** (`src/providers/*.ts`, `src/builders/builders.ts`) — per-provider config + the typed-builder API surface. Pure data and class skeletons, no business logic.
