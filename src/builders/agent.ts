@@ -19,6 +19,7 @@
 
 import { Agent as LegacyAgent } from "../agent.ts";
 import type { ProviderName } from "../providers/providers.ts";
+import type { Message, ToolCall, ToolResult } from "../structs.ts";
 import type { AgentOptions, Provider, Response } from "../types.ts";
 import type { Agent } from "./builders.ts";
 
@@ -61,6 +62,15 @@ function initAgent(b: Agent): AgentState {
   const agent = new LegacyAgent(provider, options);
   if (b._system) agent.setSystem(b._system);
   for (const t of b._tools) agent.addTool(t);
+  // ADR-020 HIST-007: seed the legacy agent's internal history from
+  // the chain's typed Message list. The internal `tool_result` role
+  // discriminator is restored from the public `tool` role; field
+  // copies are shallow (the inner ToolCall/ToolResult instances are
+  // shared with the chain — per shallow-immutability the chain is
+  // already a clone-of-clone-stem, so no aliasing concern).
+  if (b._history.length > 0) {
+    agent.seedHistory(b._history);
+  }
   return new AgentState(agent);
 }
 
@@ -79,4 +89,36 @@ export async function agentPrompt(b: Agent, msg: string): Promise<Response> {
 // builder's own _tools slice.
 export function agentReset(b: Agent): void {
   b._state = undefined;
+}
+
+// ADR-020 HIST-004: bot.messages projects the agent's internal
+// history into the public Message shape. Returns an empty readonly
+// array before the first .prompt() call. The outer container is a
+// fresh array (no aliasing); each Message.toolCalls is a fresh
+// shallow copy. The inner ToolCall instances are shared with the
+// agent's runtime state by ADR-020's shallow-immutability rule —
+// treat the returned messages as read-only.
+export function agentMessages(b: Agent): readonly Message[] {
+  if (!b._state) return [];
+  const out: Message[] = [];
+  for (const m of b._state.agent.historyView()) {
+    const role = m.role === "tool_result" ? "tool" : m.role;
+    const toolCalls: ToolCall[] = [];
+    for (const tc of m.toolCalls ?? []) {
+      toolCalls.push({ id: tc.id, name: tc.name, input: tc.input });
+    }
+    const msg: Message = {
+      role,
+      content: m.content ?? "",
+      toolCalls,
+      toolResult: m.toolResult
+        ? ({
+            toolUseId: m.toolResult.toolUseId,
+            content: m.toolResult.content,
+          } as ToolResult)
+        : null,
+    };
+    out.push(msg);
+  }
+  return out;
 }
