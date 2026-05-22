@@ -29,7 +29,7 @@ export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");
   const bot = client.agent
     .system("You are a calculator. Use the add tool.")
-    .tool(add)
+    .addTool(add)
     .maxToolIterations(5);
   const resp = await bot.prompt("What is 2 + 3?");
   console.log(resp.text);
