@@ -105,13 +105,13 @@ export function zhipu(apiKey: string): Client { return new Client("zhipu", apiKe
 
 export class Text {
   /** @internal */ client: Client;
+  /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _caching: boolean = false;
   /** @internal */ _files: File[] = [];
   /** @internal */ _frequencyPenalty?: number;
   /** @internal */ _history: Message[] = [];
   /** @internal */ _parts: Part[] = [];
   /** @internal */ _maxTokens?: number;
-  /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _model: string = "";
   /** @internal */ _presencePenalty?: number;
   /** @internal */ _raw: boolean = false;
@@ -128,13 +128,13 @@ export class Text {
 
   constructor(client: Client) { this.client = client; }
 
+  addMiddleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   caching(): Text { const out = clone(this); out._caching = true; return out; }
   file(id: string): Text { const out = clone(this); out._files = [...out._files, { id, uri: "", name: "", mimeType: "" }]; return out; }  // ordered
   frequencyPenalty(v: number): Text { const out = clone(this); out._frequencyPenalty = v; return out; }
   history(...msgs: Message[]): Text { const out = clone(this); out._history = msgs; return out; }
   image(mime: string, data: Uint8Array): Text { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   maxTokens(n: number): Text { const out = clone(this); out._maxTokens = n; return out; }
-  middleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Text { const out = clone(this); out._model = name; return out; }
   presencePenalty(v: number): Text { const out = clone(this); out._presencePenalty = v; return out; }
   raw(): Text { const out = clone(this); out._raw = true; return out; }
@@ -167,6 +167,7 @@ export class Text {
 
 export class Image {
   /** @internal */ client: Client;
+  /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _aspectRatio: string = "";
   /** @internal */ _background: string = "";
   /** @internal */ _count?: number;
@@ -174,7 +175,6 @@ export class Image {
   /** @internal */ _imageSize: string = "";
   /** @internal */ _includeText: boolean = false;
   /** @internal */ _mask?: MediaRef;
-  /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _model: string = "";
   /** @internal */ _outputFormat: string = "";
   /** @internal */ _quality: string = "";
@@ -185,6 +185,7 @@ export class Image {
 
   constructor(client: Client) { this.client = client; }
 
+  addMiddleware(...fns: MiddlewareFn[]): Image { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   aspectRatio(r: string): Image { const out = clone(this); out._aspectRatio = r; return out; }
   background(s: string): Image { const out = clone(this); out._background = s; return out; }
   count(n: number): Image { const out = clone(this); out._count = n; return out; }
@@ -192,7 +193,6 @@ export class Image {
   imageSize(s: string): Image { const out = clone(this); out._imageSize = s; return out; }
   includeText(): Image { const out = clone(this); out._includeText = true; return out; }
   mask(mime: string, data: Uint8Array): Image { const out = clone(this); out._mask = { mimeType: mime, bytes: data }; return out; }
-  middleware(...fns: MiddlewareFn[]): Image { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Image { const out = clone(this); out._model = name; return out; }
   outputFormat(s: string): Image { const out = clone(this); out._outputFormat = s; return out; }
   quality(s: string): Image { const out = clone(this); out._quality = s; return out; }
@@ -210,11 +210,12 @@ export class Image {
 
 export class Agent {
   /** @internal */ client: Client;
+  /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _tools: Tool[] = [];
   /** @internal */ _caching: boolean = false;
   /** @internal */ _frequencyPenalty?: number;
   /** @internal */ _maxTokens?: number;
   /** @internal */ _maxToolIterations?: number;
-  /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _model: string = "";
   /** @internal */ _presencePenalty?: number;
   /** @internal */ _raw: boolean = false;
@@ -225,18 +226,18 @@ export class Agent {
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
   /** @internal */ _thinkingBudget?: number;
-  /** @internal */ _tools: Tool[] = [];
   /** @internal */ _topK?: number;
   /** @internal */ _topP?: number;
   /** @internal */ _state?: AgentState;
 
   constructor(client: Client) { this.client = client; }
 
+  addMiddleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
+  addTool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
   frequencyPenalty(v: number): Agent { const out = clone(this); out._frequencyPenalty = v; out._state = undefined; return out; }
   maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
   maxToolIterations(n: number): Agent { const out = clone(this); out._maxToolIterations = n; out._state = undefined; return out; }
-  middleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
   model(name: string): Agent { const out = clone(this); out._model = name; out._state = undefined; return out; }
   presencePenalty(v: number): Agent { const out = clone(this); out._presencePenalty = v; out._state = undefined; return out; }
   raw(): Agent { const out = clone(this); out._raw = true; out._state = undefined; return out; }
@@ -247,7 +248,6 @@ export class Agent {
   system(s: string): Agent { const out = clone(this); out._system = s; out._state = undefined; return out; }
   temperature(t: number): Agent { const out = clone(this); out._temperature = t; out._state = undefined; return out; }
   thinkingBudget(n: number): Agent { const out = clone(this); out._thinkingBudget = n; out._state = undefined; return out; }
-  tool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
   topK(n: number): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
   topP(v: number): Agent { const out = clone(this); out._topP = v; out._state = undefined; return out; }
   async prompt(msg: string): Promise<Response> {
@@ -262,17 +262,17 @@ export class Agent {
 
 export class Upload {
   /** @internal */ client: Client;
+  /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _bytes: Uint8Array = new Uint8Array(0);
   /** @internal */ _filename: string = "";
-  /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _mimeType: string = "";
   /** @internal */ _path: string = "";
 
   constructor(client: Client) { this.client = client; }
 
+  addMiddleware(...fns: MiddlewareFn[]): Upload { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   bytes(data: Uint8Array): Upload { const out = clone(this); out._bytes = data; return out; }
   filename(name: string): Upload { const out = clone(this); out._filename = name; return out; }
-  middleware(...fns: MiddlewareFn[]): Upload { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   mimeType(mime: string): Upload { const out = clone(this); out._mimeType = mime; return out; }
   path(p: string): Upload { const out = clone(this); out._path = p; return out; }
   async run(): Promise<File> {
