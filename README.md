@@ -314,22 +314,48 @@ await c.text.system(bigSysPrompt).caching().prompt("...");
 
 The mode is provider-specific and inferred from the provider config. The default TTL comes from `src/providers/caching.ts` (Google: 3600s).
 
+### Model catalogue
+
+`c.models` and `c.providers` (ADR-019) cover model discovery in three modes. Runnable counterpart at [`examples/catalogue.ts`](./examples/catalogue.ts).
+
+```ts
+import { Capabilities } from "@aktagon/llmkit-ts";
+import type { Provider } from "@aktagon/llmkit-ts";
+
+// 1. Compiled-in catalogue — synchronous, no HTTP.
+const all = c.models.list();
+const info = c.models.get("claude-opus-4-7"); // ModelInfo | undefined
+const chat = c.models.withCapability(Capabilities.ChatCompletion).list();
+
+// 2. Providers namespace.
+c.providers.list(); // configured (credentials + /v1/models endpoint)
+c.providers.supported(); // every provider the SDK was built with
+
+// 3. Live + scoped HTTP.
+const live = await c.models.live(); // LiveResult — fan-out
+const p: Provider = { name: "anthropic", apiKey: "sk-..." };
+const scoped = await c.models.provider(p).list(); // single-provider list
+const raw = await c.models.provider(p).raw().list(); // ModelInfo.raw populated
+```
+
+`live()` calls every configured provider's `/v1/models` in parallel and aggregates results into `LiveResult.models` + a per-provider `LiveResult.errors` map (partial success is the normal case). `provider(p).raw().list()` opts into populating `ModelInfo.raw` with the provider-native record — useful when you need fields the universal `ModelInfo` does not carry (Anthropic's capability matrix, Google's `supportedGenerationMethods`, etc.).
+
 ## Options
 
 Across every `*Text` / `*Agent` builder:
 
-| Concept           | Method                | Notes                                                                                                                                           |
-| ----------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| System prompt     | `.system(s)`          |                                                                                                                                                 |
-| Model override    | `.model(name)`        |                                                                                                                                                 |
-| Sampling          | `.temperature(t)`     |                                                                                                                                                 |
-| Token cap         | `.maxTokens(n)`       |                                                                                                                                                 |
-| Caching           | `.caching()`          |                                                                                                                                                 |
-| Conversation hist | `.history(...msgs)`   | `*Text` only. `*Agent` accumulates history across `.prompt(...)` calls on the same instance, so an explicit setter would shadow that semantics. |
-| Structured output | `.schema(json)`       | OpenAI strict mode requires `additionalProperties: false` and `required` on object types.                                                       |
+| Concept           | Method                   | Notes                                                                                                                                           |
+| ----------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| System prompt     | `.system(s)`             |                                                                                                                                                 |
+| Model override    | `.model(name)`           |                                                                                                                                                 |
+| Sampling          | `.temperature(t)`        |                                                                                                                                                 |
+| Token cap         | `.maxTokens(n)`          |                                                                                                                                                 |
+| Caching           | `.caching()`             |                                                                                                                                                 |
+| Conversation hist | `.history(...msgs)`      | `*Text` only. `*Agent` accumulates history across `.prompt(...)` calls on the same instance, so an explicit setter would shadow that semantics. |
+| Structured output | `.schema(json)`          | OpenAI strict mode requires `additionalProperties: false` and `required` on object types.                                                       |
 | Middleware hooks  | `.addMiddleware(...fns)` | See below.                                                                                                                                      |
-| Reasoning effort  | `.reasoningEffort(l)` | OpenAI o-series, Gemini 2.5+                                                                                                                    |
-| Thinking budget   | `.thinkingBudget(n)`  | Anthropic, Gemini                                                                                                                               |
+| Reasoning effort  | `.reasoningEffort(l)`    | OpenAI o-series, Gemini 2.5+                                                                                                                    |
+| Thinking budget   | `.thinkingBudget(n)`     | Anthropic, Gemini                                                                                                                               |
 
 Sampling hyperparameters (`.topP`, `.topK`, `.seed`, `.frequencyPenalty`, `.presencePenalty`, `.stopSequences`) are validated per provider; unsupported options throw `ValidationError` rather than silently dropping.
 

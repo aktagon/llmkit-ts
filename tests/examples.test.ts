@@ -22,6 +22,7 @@ import { main as streamingMain } from "../examples/streaming.ts";
 import { main as imageMain } from "../examples/image.ts";
 import { main as uploadMain } from "../examples/upload.ts";
 import { main as middlewareMain } from "../examples/middleware.ts";
+import { main as catalogueMain } from "../examples/catalogue.ts";
 
 // ---------- mock servers ----------------------------------------------------
 
@@ -94,6 +95,21 @@ function googleImageResponse() {
     usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 10 },
   };
 }
+
+const anthropicModels = {
+  data: [
+    {
+      type: "model",
+      id: "claude-opus-4-7",
+      display_name: "Claude Opus 4.7",
+      created_at: "2026-04-14T00:00:00Z",
+      max_input_tokens: 1000000,
+      max_tokens: 128000,
+    },
+  ],
+  has_more: false,
+  last_id: "claude-opus-4-7",
+};
 
 const anthropicSse = [
   "event: content_block_delta",
@@ -191,6 +207,35 @@ describe("examples — runnable snippets stay aligned with the API", () => {
       await middlewareMain(c);
     } finally {
       server.stop();
+    }
+  });
+
+  test("catalogue runs", async () => {
+    // The catalogue's scoped/raw HTTP path resolves the URL from the
+    // *user-supplied* Provider, not the Client's pinned baseUrl, so
+    // startJsonServer + baseUrl pinning isn't sufficient. Intercept
+    // fetch globally (mirrors tests/catalogue_http.test.ts).
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (!url.includes("/v1/models")) {
+        throw new Error(`unexpected catalogue url: ${url}`);
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(anthropicModels), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    try {
+      await catalogueMain(anthropic("k"));
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });
