@@ -25,7 +25,7 @@ function clone<T extends object>(b: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(b)), b) as T;
 }
 
-import { agentPrompt, agentReset } from "./agent.ts";
+import { agentMessages, agentPrompt, agentReset } from "./agent.ts";
 import { textBatch, textSubmitBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
 import { textStream } from "./stream.ts";
@@ -214,6 +214,7 @@ export class Agent {
   /** @internal */ _tools: Tool[] = [];
   /** @internal */ _caching: boolean = false;
   /** @internal */ _frequencyPenalty?: number;
+  /** @internal */ _history: Message[] = [];
   /** @internal */ _maxTokens?: number;
   /** @internal */ _maxToolIterations?: number;
   /** @internal */ _model: string = "";
@@ -236,6 +237,7 @@ export class Agent {
   addTool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
   frequencyPenalty(v: number): Agent { const out = clone(this); out._frequencyPenalty = v; out._state = undefined; return out; }
+  history(...msgs: Message[]): Agent { const out = clone(this); out._history = msgs; out._state = undefined; return out; }
   maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
   maxToolIterations(n: number): Agent { const out = clone(this); out._maxToolIterations = n; out._state = undefined; return out; }
   model(name: string): Agent { const out = clone(this); out._model = name; out._state = undefined; return out; }
@@ -250,6 +252,7 @@ export class Agent {
   thinkingBudget(n: number): Agent { const out = clone(this); out._thinkingBudget = n; out._state = undefined; return out; }
   topK(n: number): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
   topP(v: number): Agent { const out = clone(this); out._topP = v; out._state = undefined; return out; }
+  get messages(): readonly Message[] { return agentMessages(this); }
   async prompt(msg: string): Promise<Response> {
     return agentPrompt(this, msg);
   }

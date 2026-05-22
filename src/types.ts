@@ -8,7 +8,14 @@ import type { Message } from "./structs.ts";
 // Canonical declarations live at ./structs.ts; these lines keep every
 // internal import { Foo } from "./types.ts" working without touching
 // every call site.
-export type { BatchHandle, File, Message, Response } from "./structs.ts";
+export type {
+  BatchHandle,
+  File,
+  Message,
+  Response,
+  ToolCall,
+  ToolResult,
+} from "./structs.ts";
 
 export interface Provider {
   name: ProviderName;

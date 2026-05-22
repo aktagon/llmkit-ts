@@ -65,7 +65,13 @@ export function buildPromptArgs(
   if (b._system) request.system = b._system;
   if (b._history.length > 0) {
     const messages = [...b._history];
-    if (user) messages.push({ role: "user", content: user });
+    if (user)
+      messages.push({
+        role: "user",
+        content: user,
+        toolCalls: [],
+        toolResult: null,
+      });
     request.messages = messages;
   } else if (user) {
     request.user = user;
