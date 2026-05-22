@@ -51,7 +51,7 @@ describe("Surface — chains", () => {
       .history({ role: "user", content: "earlier" })
       .image("image/png", new Uint8Array([0xff]))
       .maxTokens(42)
-      .middleware(noopMiddleware)
+      .addMiddleware(noopMiddleware)
       .model("text-model")
       .presencePenalty(0.2)
       .reasoningEffort("high")
@@ -92,7 +92,7 @@ describe("Surface — chains", () => {
       .image("image/png", new Uint8Array([0xff]))
       .imageSize("2K")
       .includeText()
-      .middleware(noopMiddleware)
+      .addMiddleware(noopMiddleware)
       .model("img-model")
       .text("compose");
 
@@ -121,7 +121,7 @@ describe("Surface — chains", () => {
       .frequencyPenalty(0.1)
       .maxTokens(1)
       .maxToolIterations(3)
-      .middleware(noopMiddleware)
+      .addMiddleware(noopMiddleware)
       .model("a")
       .presencePenalty(0.2)
       .reasoningEffort("medium")
@@ -131,7 +131,7 @@ describe("Surface — chains", () => {
       .system("sys")
       .temperature(0.5)
       .thinkingBudget(512)
-      .tool(tool)
+      .addTool(tool)
       .topK(20)
       .topP(0.85);
 
@@ -151,7 +151,7 @@ describe("Surface — chains", () => {
     const up = c.upload
       .bytes(new Uint8Array([104, 105]))
       .filename("f")
-      .middleware(noopMiddleware)
+      .addMiddleware(noopMiddleware)
       .mimeType("text/plain")
       .path("/tmp/x");
 
@@ -160,6 +160,37 @@ describe("Surface — chains", () => {
     expect(up._middleware).toHaveLength(1);
     expect(up._mimeType).toBe("text/plain");
     expect(up._path).toBe("/tmp/x");
+  });
+});
+
+// Appender semantics (ADR-021): two addTool/addMiddleware calls
+// accumulate, not replace. Regression guard against any future
+// "simplification" of chain bodies to assignment.
+describe("Appender semantics", () => {
+  test("addTool accumulates", () => {
+    const c = google("k");
+    const t1: Tool = {
+      name: "first",
+      description: "d",
+      schema: {},
+      run: () => "",
+    };
+    const t2: Tool = {
+      name: "second",
+      description: "d",
+      schema: {},
+      run: () => "",
+    };
+    const ag = c.agent.system("S").addTool(t1).addTool(t2);
+    expect(ag._tools).toEqual([t1, t2]);
+  });
+
+  test("addMiddleware accumulates", () => {
+    const c = google("k");
+    const bot = c.text
+      .addMiddleware(noopMiddleware)
+      .addMiddleware(noopMiddleware);
+    expect(bot._middleware).toHaveLength(2);
   });
 });
 

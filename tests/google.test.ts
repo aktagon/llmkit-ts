@@ -108,7 +108,7 @@ describe("Google — SystemPlacement.SiblingObject", () => {
       const c = newClient(Providers.google, "g-key");
       c.provider.baseUrl = server.url;
       const resp = await c.agent
-        .tool({
+        .addTool({
           name: "lookup",
           description: "lookup id",
           schema: { type: "object" },

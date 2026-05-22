@@ -144,7 +144,7 @@ describe("Bedrock — Converse + SigV4", () => {
       const c = newClient(Providers.bedrock, "AKID-agent");
       c.provider.baseUrl = server.url;
       const resp = await c.agent
-        .tool({
+        .addTool({
           name: "weather",
           description: "Get weather",
           schema: { type: "object" },

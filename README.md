@@ -117,14 +117,14 @@ const add: Tool = {
 
 const bot = c.agent
   .system("You are a calculator.")
-  .tool(add)
+  .addTool(add)
   .maxToolIterations(5);
 
 const resp = await bot.prompt("What is 2+3?");
 console.log(resp.text);
 ```
 
-`*Agent` is **stateful** — repeated `bot.prompt(...)` calls accumulate history. Chain methods (`.system(...)`, `.tool(...)`) clone and reset state, so a forked builder gets a fresh conversation. `bot.reset()` clears state without dropping chained config.
+`*Agent` is **stateful** — repeated `bot.prompt(...)` calls accumulate history. Chain methods (`.system(...)`, `.addTool(...)`) clone and reset state, so a forked builder gets a fresh conversation. `bot.reset()` clears state without dropping chained config.
 
 Tool dispatch covers Anthropic `tool_use`, OpenAI `tool_calls`, Google `functionCall`, and Bedrock Converse `toolUse`. Tool errors surface to the model as the result string verbatim — sanitise tool inputs at the source.
 
@@ -327,7 +327,7 @@ Across every `*Text` / `*Agent` builder:
 | Caching           | `.caching()`          |                                                                                                                                                 |
 | Conversation hist | `.history(...msgs)`   | `*Text` only. `*Agent` accumulates history across `.prompt(...)` calls on the same instance, so an explicit setter would shadow that semantics. |
 | Structured output | `.schema(json)`       | OpenAI strict mode requires `additionalProperties: false` and `required` on object types.                                                       |
-| Middleware hooks  | `.middleware(...fns)` | See below.                                                                                                                                      |
+| Middleware hooks  | `.addMiddleware(...fns)` | See below.                                                                                                                                      |
 | Reasoning effort  | `.reasoningEffort(l)` | OpenAI o-series, Gemini 2.5+                                                                                                                    |
 | Thinking budget   | `.thinkingBudget(n)`  | Anthropic, Gemini                                                                                                                               |
 
@@ -362,7 +362,7 @@ const budgetGate =
     return null;
   };
 
-await c.text.middleware(budgetGate(5.0, spent), logUsage).prompt("...");
+await c.text.addMiddleware(budgetGate(5.0, spent), logUsage).prompt("...");
 ```
 
 A pre-phase veto throws `MiddlewareVetoError` so it can be discriminated from transport or provider errors. Middlewares fire in registration order; the first non-null pre-phase return aborts.

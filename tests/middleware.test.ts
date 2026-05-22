@@ -47,7 +47,7 @@ describe("middleware — observation", () => {
     try {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = server.url;
-      await c.text.middleware(observer).prompt("hi");
+      await c.text.addMiddleware(observer).prompt("hi");
       expect(events).toHaveLength(2);
       expect(events[0]?.op).toBe("llm_request");
       expect(events[0]?.phase).toBe("pre");
@@ -79,7 +79,7 @@ describe("middleware — veto", () => {
     try {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = server.url;
-      await expect(c.text.middleware(veto).prompt("hi")).rejects.toThrow(
+      await expect(c.text.addMiddleware(veto).prompt("hi")).rejects.toThrow(
         MiddlewareVetoError,
       );
       expect(server.calls).toBe(0);
@@ -106,7 +106,7 @@ describe("middleware — veto", () => {
     try {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = server.url;
-      await expect(c.text.middleware(m1, m2, m3).prompt("hi")).rejects.toThrow(
+      await expect(c.text.addMiddleware(m1, m2, m3).prompt("hi")).rejects.toThrow(
         MiddlewareVetoError,
       );
       expect(order).toEqual(["m1", "m2"]);
@@ -133,7 +133,7 @@ describe("middleware — upload, batch_submit, cache_create", () => {
       await c.upload
         .bytes(new TextEncoder().encode("hello"))
         .filename("x.jsonl")
-        .middleware(observer)
+        .addMiddleware(observer)
         .run();
       const ops = events.map((e) => `${e.op}:${e.phase}`);
       expect(ops).toEqual(["upload:pre", "upload:post"]);
@@ -154,7 +154,7 @@ describe("middleware — upload, batch_submit, cache_create", () => {
     try {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = server.url;
-      await c.text.middleware(observer).submitBatch("hi");
+      await c.text.addMiddleware(observer).submitBatch("hi");
       const ops = events.map((e) => `${e.op}:${e.phase}`);
       expect(ops).toEqual(["batch_submit:pre", "batch_submit:post"]);
     } finally {
@@ -181,7 +181,7 @@ describe("middleware — upload, batch_submit, cache_create", () => {
       await c.text
         .system("long sys")
         .caching()
-        .middleware(observer)
+        .addMiddleware(observer)
         .prompt("q");
       const ops = events.map((e) => `${e.op}:${e.phase}`);
       // llm_request:pre fires first, then cache_create:pre/post inside it,
@@ -227,8 +227,8 @@ describe("middleware — Agent tool_call events", () => {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = server.url;
       await c.agent
-        .middleware(observer)
-        .tool({
+        .addMiddleware(observer)
+        .addTool({
           name: "echo",
           description: "echo",
           schema: { type: "object" },

@@ -87,7 +87,7 @@ describe("Agent — Anthropic", () => {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = server.url;
       const resp = await c.agent
-        .tool({
+        .addTool({
           name: "weather",
           description: "Get the weather",
           schema: { type: "object", properties: { city: { type: "string" } } },
@@ -157,7 +157,7 @@ describe("Agent — OpenAI", () => {
       const c = newClient(Providers.openai, "sk");
       c.provider.baseUrl = server.url;
       const resp = await c.agent
-        .tool({
+        .addTool({
           name: "echo",
           description: "Echo input",
           schema: { type: "object", properties: { text: { type: "string" } } },

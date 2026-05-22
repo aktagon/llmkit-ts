@@ -284,7 +284,7 @@ describe("Image.generate — middleware", () => {
       };
       const c = newClient(Providers.google, "k");
       c.provider.baseUrl = `http://localhost:${server.port}`;
-      await c.image.model(flashModel).middleware(mw).generate("x");
+      await c.image.model(flashModel).addMiddleware(mw).generate("x");
       expect(ops).toEqual(["image_generation", "image_generation"]);
       expect(phases).toEqual(["pre", "post"]);
     } finally {
@@ -301,7 +301,7 @@ describe("Image.generate — middleware", () => {
     try {
       const c = newClient(Providers.google, "k");
       c.provider.baseUrl = "http://unused";
-      await c.image.model(flashModel).middleware(mw).generate("x");
+      await c.image.model(flashModel).addMiddleware(mw).generate("x");
     } catch (e) {
       err = e;
     }
@@ -553,7 +553,7 @@ describe("Image.generate — OpenAI", () => {
         };
         const c = newClient(Providers.openai, "test-key");
         c.provider.baseUrl = `http://localhost:${server.port}`;
-        let b = c.image.model(openaiImage2).middleware(mw);
+        let b = c.image.model(openaiImage2).addMiddleware(mw);
         if (branch === "edits") {
           b = b.image("image/png", new Uint8Array([0x89, 0x50, 0x4e]));
         }
@@ -584,7 +584,7 @@ describe("Image.generate — OpenAI", () => {
       c.provider.baseUrl = `http://localhost:${server.port}`;
       let err: unknown;
       try {
-        await c.image.model(openaiImage2).middleware(mw).generate("x");
+        await c.image.model(openaiImage2).addMiddleware(mw).generate("x");
       } catch (e) {
         err = e;
       }
@@ -820,7 +820,7 @@ describe("Image.generate — xAI Grok", () => {
         };
         const c = newClient(Providers.grok, "test-key");
         c.provider.baseUrl = `http://localhost:${server.port}`;
-        let b = c.image.model(grokImagineQuality).middleware(mw);
+        let b = c.image.model(grokImagineQuality).addMiddleware(mw);
         if (branch === "edits") {
           b = b.image("image/png", new Uint8Array([0x89, 0x50, 0x4e]));
         }
