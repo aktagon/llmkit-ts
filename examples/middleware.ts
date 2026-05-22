@@ -9,7 +9,8 @@
  * Run: ANTHROPIC_API_KEY=sk-... bun run examples/middleware.ts
  */
 import { anthropic, type Client } from "../src/builders/index.ts";
-import type { Event, MiddlewareFn } from "../src/builders/index.ts";
+import type { MiddlewareFn } from "../src/builders/index.ts";
+import type { Event } from "../src/providers/middleware.ts";
 
 interface Price {
   input: number;
