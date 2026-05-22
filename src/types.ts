@@ -8,7 +8,14 @@ import type { Message } from "./structs.ts";
 //
 //
 //
-export type { BatchHandle, File, Message, Response } from "./structs.ts";
+export type {
+  BatchHandle,
+  File,
+  Message,
+  Response,
+  ToolCall,
+  ToolResult,
+} from "./structs.ts";
 
 export interface Provider {
   name: ProviderName;

@@ -19,6 +19,7 @@
 
 import { Agent as LegacyAgent } from "../agent.ts";
 import type { ProviderName } from "../providers/providers.ts";
+import type { Message, ToolCall, ToolResult } from "../structs.ts";
 import type { AgentOptions, Provider, Response } from "../types.ts";
 import type { Agent } from "./builders.ts";
 
@@ -61,6 +62,15 @@ function initAgent(b: Agent): AgentState {
   const agent = new LegacyAgent(provider, options);
   if (b._system) agent.setSystem(b._system);
   for (const t of b._tools) agent.addTool(t);
+  //
+  //
+  //
+  //
+  //
+  //
+  if (b._history.length > 0) {
+    agent.seedHistory(b._history);
+  }
   return new AgentState(agent);
 }
 
@@ -79,4 +89,36 @@ export async function agentPrompt(b: Agent, msg: string): Promise<Response> {
 //
 export function agentReset(b: Agent): void {
   b._state = undefined;
+}
+
+//
+//
+//
+//
+//
+//
+//
+export function agentMessages(b: Agent): readonly Message[] {
+  if (!b._state) return [];
+  const out: Message[] = [];
+  for (const m of b._state.agent.historyView()) {
+    const role = m.role === "tool_result" ? "tool" : m.role;
+    const toolCalls: ToolCall[] = [];
+    for (const tc of m.toolCalls ?? []) {
+      toolCalls.push({ id: tc.id, name: tc.name, input: tc.input });
+    }
+    const msg: Message = {
+      role,
+      content: m.content ?? "",
+      toolCalls,
+      toolResult: m.toolResult
+        ? ({
+            toolUseId: m.toolResult.toolUseId,
+            content: m.toolResult.content,
+          } as ToolResult)
+        : null,
+    };
+    out.push(msg);
+  }
+  return out;
 }

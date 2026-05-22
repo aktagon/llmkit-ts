@@ -50,6 +50,8 @@ export type {
   File,
   BatchHandle,
   AgentOptions,
+  ToolCall,
+  ToolResult,
 } from "./types.ts";
 export { Providers } from "./providers/providers.ts";
 export { APIError, ValidationError } from "./errors.ts";
