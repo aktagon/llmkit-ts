@@ -66,3 +66,11 @@ export type {
 } from "./image.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
+export {
+  saveHistory,
+  loadHistory,
+  UnsupportedWireVersionError,
+  MissingWireVersionError,
+  UnknownWireKeyError,
+} from "./wire.ts";
+export { WIRE_SCHEMA_VERSION } from "./wire_version.ts";

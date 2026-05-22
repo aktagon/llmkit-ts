@@ -25,6 +25,7 @@ function clone<T extends object>(b: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(b)), b) as T;
 }
 
+import { saveHistory, loadHistory } from "../wire.ts";
 import { agentMessages, agentPrompt, agentReset } from "./agent.ts";
 import { textBatch, textSubmitBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
@@ -253,6 +254,15 @@ export class Agent {
   topK(n: number): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
   topP(v: number): Agent { const out = clone(this); out._topP = v; out._state = undefined; return out; }
   get messages(): readonly Message[] { return agentMessages(this); }
+
+  save(): string { return saveHistory(this.messages); }
+
+  load(data: string): Agent {
+    const out = clone(this);
+    out._history = loadHistory(data);
+    out._state = undefined;
+    return out;
+  }
   async prompt(msg: string): Promise<Response> {
     return agentPrompt(this, msg);
   }
