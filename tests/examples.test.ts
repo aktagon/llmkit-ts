@@ -21,6 +21,7 @@ import { main as agentMain } from "../examples/agent.ts";
 import { main as streamingMain } from "../examples/streaming.ts";
 import { main as imageMain } from "../examples/image.ts";
 import { main as uploadMain } from "../examples/upload.ts";
+import { main as middlewareMain } from "../examples/middleware.ts";
 
 // ---------- mock servers ----------------------------------------------------
 
@@ -178,6 +179,17 @@ describe("examples — runnable snippets stay aligned with the API", () => {
     } finally {
       process.chdir(cwd);
       await fs.rm(dir, { recursive: true, force: true });
+      server.stop();
+    }
+  });
+
+  test("middleware runs", async () => {
+    const server = startJsonServer(anthropicOk);
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      await middlewareMain(c);
+    } finally {
       server.stop();
     }
   });
