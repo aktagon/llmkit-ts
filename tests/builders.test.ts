@@ -48,7 +48,12 @@ describe("Surface — chains", () => {
       .caching()
       .file("file-id")
       .frequencyPenalty(0.1)
-      .history({ role: "user", content: "earlier" })
+      .history({
+        role: "user",
+        content: "earlier",
+        toolCalls: [],
+        toolResult: null,
+      })
       .image("image/png", new Uint8Array([0xff]))
       .maxTokens(42)
       .addMiddleware(noopMiddleware)
@@ -70,7 +75,9 @@ describe("Surface — chains", () => {
     expect(text._files).toEqual([
       { id: "file-id", uri: "", name: "", mimeType: "" },
     ]);
-    expect(text._history).toEqual([{ role: "user", content: "earlier" }]);
+    expect(text._history).toEqual([
+      { role: "user", content: "earlier", toolCalls: [], toolResult: null },
+    ]);
     expect(text._maxTokens).toBe(42);
     expect(text._middleware).toHaveLength(1);
     expect(text._model).toBe("text-model");
@@ -232,7 +239,12 @@ describe("Terminals — throw stubs", () => {});
 // usable from outside the main llmkit package via builders.
 describe("Surface — type aliases", () => {
   test("re-exported types are constructible", () => {
-    const _msg: Message = { role: "user", content: "hi" };
+    const _msg: Message = {
+      role: "user",
+      content: "hi",
+      toolCalls: [],
+      toolResult: null,
+    };
     const _tool: Tool = {
       name: "t",
       description: "d",
@@ -365,8 +377,13 @@ describe("Phase 3 slice 1 — Text.prompt wired", () => {
       c.provider.baseUrl = server.url;
       await c.text
         .history(
-          { role: "user", content: "earlier" },
-          { role: "assistant", content: "ack" },
+          { role: "user", content: "earlier", toolCalls: [], toolResult: null },
+          {
+            role: "assistant",
+            content: "ack",
+            toolCalls: [],
+            toolResult: null,
+          },
         )
         .prompt("now");
     } finally {
@@ -1011,6 +1028,52 @@ describe("Phase 3 slice 2c — Agent.prompt + Agent.reset wired", () => {
     const forked = bot.system("new");
     expect(bot._state).toBeDefined(); // parent state preserved
     expect(forked._state).toBeUndefined(); // fork starts fresh
+  });
+
+  test("ADR-020 HIST-003: bot.history() replaces chain history", () => {
+    const c = anthropic("k");
+    const a: Message = {
+      role: "user",
+      content: "first",
+      toolCalls: [],
+      toolResult: null,
+    };
+    const b: Message = {
+      role: "assistant",
+      content: "ok",
+      toolCalls: [],
+      toolResult: null,
+    };
+    const bot = c.agent.system("seed").history(a, b);
+    expect(bot._history).toEqual([a, b]);
+    const cMsg: Message = {
+      role: "user",
+      content: "reset",
+      toolCalls: [],
+      toolResult: null,
+    };
+    const rebot = bot.history(cMsg);
+    expect(rebot._history).toEqual([cMsg]);
+  });
+
+  test("ADR-020 HIST-004: bot.messages empty before prompt; projects after init", () => {
+    const c = anthropic("k");
+    const m1: Message = {
+      role: "user",
+      content: "hi",
+      toolCalls: [],
+      toolResult: null,
+    };
+    const bot = c.agent.system("seed").history(m1);
+    expect(bot.messages).toEqual([]);
+
+    const legacy = new LegacyAgent({ name: "anthropic", apiKey: "k" });
+    legacy.seedHistory([m1]);
+    bot._state = new AgentState(legacy);
+    const got = bot.messages;
+    expect(got).toHaveLength(1);
+    expect(got[0]?.role).toBe("user");
+    expect(got[0]?.content).toBe("hi");
   });
 });
 
