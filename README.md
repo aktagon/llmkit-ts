@@ -62,9 +62,9 @@ Runnable examples for each capability live in [`examples/`](./examples); `tests/
 | cerebras  | llama-3.3-70b                               | CEREBRAS_API_KEY  |
 | ...       | (full list in `src/providers/providers.ts`) |                   |
 
-27 providers, 4 API shapes (OpenAI-compatible, Anthropic Messages, Google Generative AI, AWS Bedrock Converse). Bedrock auth uses SigV4; other providers use API-key auth.
+30 providers, 4 API shapes (OpenAI-compatible, Anthropic Messages, Google Generative AI, AWS Bedrock Converse). Bedrock auth uses SigV4; other providers use API-key auth.
 
-Per-provider factory functions: `ai21`, `anthropic`, `azure`, `bedrock`, `cerebras`, `cohere`, `deepseek`, `doubao`, `ernie`, `fireworks`, `google`, `grok`, `groq`, `lmstudio`, `minimax`, `mistral`, `moonshot`, `ollama`, `openai`, `openrouter`, `perplexity`, `qwen`, `sambanova`, `together`, `vllm`, `yi`, `zhipu`. Or use the generic `newClient(name, key)`.
+Per-provider factory functions: `ai21`, `anthropic`, `azure`, `bedrock`, `cerebras`, `cohere`, `deepseek`, `doubao`, `ernie`, `fireworks`, `google`, `grok`, `groq`, `jan`, `llamacpp`, `lmstudio`, `minimax`, `mistral`, `moonshot`, `ollama`, `openai`, `openrouter`, `perplexity`, `qwen`, `sambanova`, `together`, `vertex`, `vllm`, `yi`, `zhipu`. Or use the generic `newClient(name, key)`.
 
 ## API
 
@@ -318,7 +318,7 @@ The mode is provider-specific and inferred from the provider config. The default
 
 ### Model catalogue
 
-`c.models` and `c.providers` (ADR-019) cover model discovery in three modes. Runnable counterpart at [`examples/catalogue.ts`](./examples/catalogue.ts).
+`c.models` and `c.providers` cover model discovery in three modes. Runnable counterpart at [`examples/catalogue.ts`](./examples/catalogue.ts).
 
 ```ts
 import { Capabilities } from "@aktagon/llmkit-ts";
@@ -440,13 +440,6 @@ serialization path. Direct `JSON.stringify` on a `Message` produces
 valid JSON but lacks the `_v` envelope, and `loadHistory` rejects it
 with `MissingWireVersionError`. Use the contract path for anything
 that crosses a process boundary or a release.
-
-## Architecture
-
-- **Generated** (`src/providers/*.ts`, `src/builders/builders.ts`) — per-provider config + the typed-builder API surface. Pure data and class skeletons, no business logic.
-- **Hand-coded** (`src/llmkit.ts`, `src/agent.ts`, `src/request.ts`, `src/sigv4.ts`, `src/caching.ts`, `src/batch.ts`, `src/upload.ts`, `src/middleware.ts`, `src/paths.ts`, `src/types.ts`, `src/errors.ts`, `src/builders/{text,agent,image,stream,batch,upload}.ts`) — HTTP, request shaping, SSE consumer, agent tool loop, SigV4 signing, caching, batch lifecycle, multipart upload, middleware fanout, builder terminals.
-
-Transforms dispatch on config fields (`systemPlacement`, `wrapsOptionsIn`, `authScheme`), not provider names. Adding an OpenAI-compatible provider requires no TypeScript code.
 
 ## Mirror
 
