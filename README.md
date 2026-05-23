@@ -1,8 +1,10 @@
 # @aktagon/llmkit-ts
 
-TypeScript library for unified LLM API access. Write one chain, hit any provider. Per-provider config in `src/providers/` is generated; runtime behavior (HTTP, transforms, agent loop, SigV4) is hand-coded with the help of AI. Shares a code-generation pipeline with the [Go](https://github.com/aktagon/llmkit-go), [Python](https://github.com/aktagon/llmkit-python), and [Rust](https://github.com/aktagon/llmkit-rust) SDKs.
+One TypeScript API for Anthropic, OpenAI, Google, and 20+ other providers — including local models through Ollama and vLLM. Switch providers without rewriting your request.
 
-Runtime: Node ≥18, Bun, Deno, Cloudflare Workers, or any modern bundler (Vite, Next.js, esbuild, webpack 5+) — anywhere with `fetch` and Web Crypto.
+No runtime dependencies. Runs on Node ≥18, Bun, Deno, Cloudflare Workers, or any modern bundler (Vite, Next.js, esbuild, webpack 5+) — anywhere with `fetch` and Web Crypto.
+
+Also available for Go, Python, and Rust.
 
 ## Install
 
