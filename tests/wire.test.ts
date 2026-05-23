@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   anthropic,
   loadHistory,
+  MalformedWireDocumentError,
   type Message,
   MissingWireVersionError,
   saveHistory,
@@ -16,6 +17,8 @@ import {
   UnknownWireKeyError,
   UnsupportedWireVersionError,
 } from "../src/llmkit.ts";
+import { Agent as LegacyAgent } from "../src/agent.ts";
+import { AgentState } from "../src/builders/agent.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const GOLDEN_PATH = resolve(
@@ -102,17 +105,35 @@ describe("ADR-023 wire round-trip", () => {
   });
 
   test("STAB-012: chain methods round-trip via bot.save() / bot.load(data)", () => {
+    // Seed bot._state with a LegacyAgent carrying the canonical
+    // fixture so bot.save() actually exercises the runtime-history
+    // projection (not just a tautology over chain state).
     const c = anthropic("k");
-    const bot = c.agent.history(...canonicalFixture());
-    // No prompts run; save() reads from runtime state which is
-    // empty before init. Use loadHistory + history(...) here to
-    // exercise the contract end-to-end without spinning the
-    // network. The save-from-runtime side is covered by the
-    // round-trip-value-equal test above.
-    const data = saveHistory(bot._history);
+    const bot = c.agent;
+    const legacy = new LegacyAgent({ name: "anthropic", apiKey: "k" });
+    legacy.seedHistory(canonicalFixture());
+    bot._state = new AgentState(legacy);
+
+    const data = bot.save();
+    const golden = JSON.parse(readFileSync(GOLDEN_PATH, "utf-8"));
+    expect(JSON.parse(data)).toEqual(golden);
+
+    // Round-trip the runtime-side bytes back into a fresh builder.
     const fresh = c.agent.load(data);
-    expect(fresh._history).toEqual(bot._history);
+    expect(fresh._history).toEqual(canonicalFixture());
     expect(fresh._state).toBeUndefined();
+  });
+
+  test("STAB-003: malformed shapes throw MalformedWireDocumentError", () => {
+    const cases: Array<[string, string]> = [
+      ["non-object root", "[]"],
+      ["_v not integer", `{"_v": "1", "messages": []}`],
+      ["_v fractional", `{"_v": 1.5, "messages": []}`],
+      ["messages not array", `{"_v": 1, "messages": "oops"}`],
+    ];
+    for (const [name, data] of cases) {
+      expect(() => loadHistory(data), name).toThrow(MalformedWireDocumentError);
+    }
   });
 
   test("STAB-010: drop target artifact for cross-SDK comparator", () => {
