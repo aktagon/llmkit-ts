@@ -37,6 +37,21 @@ export class UnknownWireKeyError extends Error {
   }
 }
 
+
+
+
+
+
+
+
+
+export class MalformedWireDocumentError extends Error {
+  constructor(detail: string) {
+    super(`llmkit: malformed wire document: ${detail}`);
+    this.name = "MalformedWireDocumentError";
+  }
+}
+
 interface WireDoc {
   _v: number;
   messages: WireMessage[];
@@ -86,13 +101,15 @@ export function saveHistory(messages: readonly Message[]): string {
 export function loadHistory(data: string): Message[] {
   const parsed = JSON.parse(data);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("llmkit: wire document is not a JSON object");
+    throw new MalformedWireDocumentError("not a JSON object");
   }
   const obj = parsed as Record<string, unknown>;
   if (!("_v" in obj)) throw new MissingWireVersionError();
   const version = obj._v;
   if (typeof version !== "number" || !Number.isInteger(version)) {
-    throw new Error(`llmkit: wire _v is not an integer: ${String(version)}`);
+    throw new MalformedWireDocumentError(
+      `_v is not a non-negative integer: ${String(version)}`,
+    );
   }
   if (version > WIRE_SCHEMA_VERSION) {
     throw new UnsupportedWireVersionError(version, WIRE_SCHEMA_VERSION);
@@ -105,7 +122,9 @@ export function loadHistory(data: string): Message[] {
   const rawMsgs = obj.messages;
   if (rawMsgs === undefined) return [];
   if (!Array.isArray(rawMsgs)) {
-    throw new Error("llmkit: wire messages is not an array");
+    throw new MalformedWireDocumentError(
+      "messages is not an array of message objects",
+    );
   }
   return rawMsgs.map(fromWireMessage);
 }
@@ -134,12 +153,20 @@ function toWireToolResult(tr: ToolResult): WireToolResult {
 
 function fromWireMessage(raw: unknown): Message {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(
-      `llmkit: wire message entry is not an object: ${JSON.stringify(raw)}`,
+    throw new MalformedWireDocumentError(
+      `message entry is not an object: ${JSON.stringify(raw)}`,
     );
   }
   const obj = raw as Record<string, unknown>;
-  const tcRaw = (obj.tool_calls ?? []) as unknown[];
+  let tcRaw: unknown[] = [];
+  if (obj.tool_calls !== undefined && obj.tool_calls !== null) {
+    if (!Array.isArray(obj.tool_calls)) {
+      throw new MalformedWireDocumentError(
+        `tool_calls is not an array: ${JSON.stringify(obj.tool_calls)}`,
+      );
+    }
+    tcRaw = obj.tool_calls;
+  }
   const toolCalls: ToolCall[] = [];
   for (const tc of tcRaw) {
     if (tc === null || typeof tc !== "object" || Array.isArray(tc)) continue;
