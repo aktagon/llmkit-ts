@@ -72,5 +72,6 @@ export {
   UnsupportedWireVersionError,
   MissingWireVersionError,
   UnknownWireKeyError,
+  MalformedWireDocumentError,
 } from "./wire.ts";
 export { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
