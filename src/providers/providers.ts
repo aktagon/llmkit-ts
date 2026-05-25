@@ -54,6 +54,7 @@ export interface ProviderConfig {
   roleMappings: Record<string, string>;
   usageInputPath: string;
   usageOutputPath: string;
+  usageCostPath: string;
   reasoningTokensPath: string;
   finishReasonPath: string;
   finishMessagePath: string;
@@ -69,6 +70,7 @@ export interface ProviderConfig {
   sessionTokenEnvVar: string;
   regionEnvVar: string;
   serviceName: string;
+  toolParamsWireField: string;
 }
 
 export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
@@ -95,6 +97,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -110,6 +113,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   anthropic: {
     name: "anthropic",
@@ -132,6 +136,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.input_tokens",
     usageOutputPath: "usage.output_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "stop_reason",
     finishMessagePath: "",
@@ -147,6 +152,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   azure: {
     name: "azure",
@@ -171,6 +177,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -186,6 +193,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   bedrock: {
     name: "bedrock",
@@ -208,6 +216,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.inputTokens",
     usageOutputPath: "usage.outputTokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -223,6 +232,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "AWS_SESSION_TOKEN",
     regionEnvVar: "AWS_REGION",
     serviceName: "bedrock",
+    toolParamsWireField: "parameters",
   },
   cerebras: {
     name: "cerebras",
@@ -247,6 +257,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -262,6 +273,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   cohere: {
     name: "cohere",
@@ -286,6 +298,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -301,6 +314,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   deepseek: {
     name: "deepseek",
@@ -325,6 +339,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -340,6 +355,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   doubao: {
     name: "doubao",
@@ -364,6 +380,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -379,6 +396,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   ernie: {
     name: "ernie",
@@ -403,6 +421,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -418,6 +437,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   fireworks: {
     name: "fireworks",
@@ -442,6 +462,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -457,6 +478,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   google: {
     name: "google",
@@ -479,6 +501,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usageMetadata.promptTokenCount",
     usageOutputPath: "usageMetadata.candidatesTokenCount",
+    usageCostPath: "",
     reasoningTokensPath: "usageMetadata.thoughtsTokenCount",
     finishReasonPath: "candidates[0].finishReason",
     finishMessagePath: "candidates[0].finishMessage",
@@ -494,6 +517,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parametersJsonSchema",
   },
   grok: {
     name: "grok",
@@ -518,6 +542,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "choices[0].finish_reason",
     finishMessagePath: "",
@@ -533,6 +558,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   groq: {
     name: "groq",
@@ -557,6 +583,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -572,6 +599,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   jan: {
     name: "jan",
@@ -596,6 +624,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -611,6 +640,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   llamacpp: {
     name: "llamacpp",
@@ -635,6 +665,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -650,6 +681,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   lmstudio: {
     name: "lmstudio",
@@ -674,6 +706,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -689,6 +722,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   minimax: {
     name: "minimax",
@@ -713,6 +747,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -728,6 +763,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   mistral: {
     name: "mistral",
@@ -752,6 +788,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -767,6 +804,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   moonshot: {
     name: "moonshot",
@@ -791,6 +829,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -806,6 +845,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   ollama: {
     name: "ollama",
@@ -830,6 +870,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -845,6 +886,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   openai: {
     name: "openai",
@@ -869,6 +911,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "usage.completion_tokens_details.reasoning_tokens",
     finishReasonPath: "choices[0].finish_reason",
     finishMessagePath: "",
@@ -884,6 +927,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   openrouter: {
     name: "openrouter",
@@ -908,6 +952,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "usage.cost",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -923,6 +968,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   perplexity: {
     name: "perplexity",
@@ -946,6 +992,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -961,6 +1008,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   qwen: {
     name: "qwen",
@@ -985,6 +1033,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -1000,6 +1049,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   sambanova: {
     name: "sambanova",
@@ -1024,6 +1074,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -1039,6 +1090,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   together: {
     name: "together",
@@ -1063,6 +1115,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -1078,6 +1131,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   vertex: {
     name: "vertex",
@@ -1099,6 +1153,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "",
     usageOutputPath: "",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "predictions[0].raiFilteredReason",
     finishMessagePath: "",
@@ -1114,6 +1169,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   vllm: {
     name: "vllm",
@@ -1138,6 +1194,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -1153,6 +1210,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   yi: {
     name: "yi",
@@ -1176,6 +1234,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -1191,6 +1250,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
   zhipu: {
     name: "zhipu",
@@ -1215,6 +1275,7 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageCostPath: "",
     reasoningTokensPath: "",
     finishReasonPath: "",
     finishMessagePath: "",
@@ -1230,5 +1291,6 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     sessionTokenEnvVar: "",
     regionEnvVar: "",
     serviceName: "",
+    toolParamsWireField: "parameters",
   },
 };

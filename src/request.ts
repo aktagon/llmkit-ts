@@ -10,6 +10,7 @@ import {
   OptionKeys,
   type OptionKey,
   type OptionOverrideDef,
+  modelOptionOverrides,
   optionOverrides,
   supportedOptions,
 } from "./providers/options.ts";
@@ -40,7 +41,12 @@ export function buildRequest(
     optionOverrides(provider.name).map((o) => [o.key, o]),
   );
 
-  const maxTokensKey = supportedMap.get(OptionKeys.MAX_TOKENS);
+  const maxTokensKey = resolveOptionKey(
+    provider.name,
+    model,
+    OptionKeys.MAX_TOKENS,
+    supportedMap,
+  );
   const maxTokensValue = options.maxTokens ?? cfg.defaultMaxTokens;
   if (maxTokensKey !== undefined) {
     setNestedField(body, maxTokensKey, maxTokensValue);
@@ -65,7 +71,14 @@ export function buildRequest(
 
   if (cfg.wrapsOptionsIn) {
     const optBody: Record<string, unknown> = {};
-    applyOptions(optBody, options, supportedMap, overridesMap);
+    applyOptions(
+      optBody,
+      options,
+      provider.name,
+      model,
+      supportedMap,
+      overridesMap,
+    );
     if (maxTokensKey !== undefined) {
       setNestedField(optBody, maxTokensKey, maxTokensValue);
       delete body[maxTokensKey.split(".")[0]!];
@@ -74,7 +87,14 @@ export function buildRequest(
       body[cfg.wrapsOptionsIn] = optBody;
     }
   } else {
-    applyOptions(body, options, supportedMap, overridesMap);
+    applyOptions(
+      body,
+      options,
+      provider.name,
+      model,
+      supportedMap,
+      overridesMap,
+    );
   }
 
   if (
@@ -91,14 +111,46 @@ export function buildRequest(
   return body;
 }
 
+//
+//
+//
+//
+export function resolveOptionKey(
+  provider: ProviderName,
+  model: string,
+  param: OptionKey,
+  supportedMap: Map<OptionKey, string>,
+): string | undefined {
+  let bestKey: string | undefined;
+  let bestLen = -1;
+  for (const ov of modelOptionOverrides(provider)) {
+    if (ov.key !== param) continue;
+    if (ov.matcherKind === "id") {
+      if (ov.matcherValue === model) return ov.jsonKey;
+    } else {
+      const prefix = ov.matcherValue.endsWith("*")
+        ? ov.matcherValue.slice(0, -1)
+        : ov.matcherValue;
+      if (model.startsWith(prefix) && prefix.length > bestLen) {
+        bestKey = ov.jsonKey;
+        bestLen = prefix.length;
+      }
+    }
+  }
+  if (bestLen >= 0) return bestKey;
+  return supportedMap.get(param);
+}
+
 function applyOptions(
   target: Record<string, unknown>,
   options: PromptOptions,
+  provider: ProviderName,
+  model: string,
   supportedMap: Map<OptionKey, string>,
   overridesMap: Map<OptionKey, OptionOverrideDef>,
 ): void {
   const apply = (key: OptionKey, value: unknown): void => {
-    const jsonKey = supportedMap.get(key);
+    const jsonKey = resolveOptionKey(provider, model, key, supportedMap);
     if (jsonKey === undefined) return;
     setNestedField(target, jsonKey, value);
     const override = overridesMap.get(key);
