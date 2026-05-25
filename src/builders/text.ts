@@ -19,7 +19,7 @@
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import { APIError, ValidationError } from "../errors.ts";
-import { extractPath, extractIntPath } from "../paths.ts";
+import { extractPath, extractIntPath, extractFloatPath } from "../paths.ts";
 import { applyCaching, parseCacheUsage } from "../caching.ts";
 import {
   buildRequest as buildLegacyRequest,
@@ -150,6 +150,7 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
         reasoning: cfg.reasoningTokensPath
           ? extractIntPath(raw, cfg.reasoningTokensPath)
           : 0,
+        cost: cfg.usageCostPath ? extractFloatPath(raw, cfg.usageCostPath) : 0,
       },
     };
     if (cfg.finishReasonPath) {

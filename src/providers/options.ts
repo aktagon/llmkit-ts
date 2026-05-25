@@ -923,10 +923,96 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   ],
 };
 
+export interface ModelOptionOverrideDef {
+  matcherKind: "id" | "pattern";
+  matcherValue: string;
+  key: OptionKey;
+  jsonKey: string;
+}
+
+const MODEL_OPTION_OVERRIDES: Record<ProviderName, readonly ModelOptionOverrideDef[]> = {
+  ai21: [
+  ],
+  anthropic: [
+  ],
+  azure: [
+  ],
+  bedrock: [
+  ],
+  cerebras: [
+  ],
+  cohere: [
+  ],
+  deepseek: [
+  ],
+  doubao: [
+  ],
+  ernie: [
+  ],
+  fireworks: [
+  ],
+  google: [
+  ],
+  grok: [
+  ],
+  groq: [
+  ],
+  jan: [
+  ],
+  llamacpp: [
+  ],
+  lmstudio: [
+  ],
+  minimax: [
+  ],
+  mistral: [
+  ],
+  moonshot: [
+  ],
+  ollama: [
+  ],
+  openai: [
+    {
+      matcherKind: "pattern",
+      matcherValue: "gpt-5*",
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_completion_tokens",
+    },
+    {
+      matcherKind: "pattern",
+      matcherValue: "o*",
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_completion_tokens",
+    },
+  ],
+  openrouter: [
+  ],
+  perplexity: [
+  ],
+  qwen: [
+  ],
+  sambanova: [
+  ],
+  together: [
+  ],
+  vertex: [
+  ],
+  vllm: [
+  ],
+  yi: [
+  ],
+  zhipu: [
+  ],
+};
+
 export function supportedOptions(provider: ProviderName): readonly SupportedOptionDef[] {
   return SUPPORTED_OPTIONS[provider];
 }
 
 export function optionOverrides(provider: ProviderName): readonly OptionOverrideDef[] {
   return OPTION_OVERRIDES[provider];
+}
+
+export function modelOptionOverrides(provider: ProviderName): readonly ModelOptionOverrideDef[] {
+  return MODEL_OPTION_OVERRIDES[provider];
 }

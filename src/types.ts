@@ -64,6 +64,8 @@ export interface Usage {
   cacheWrite: number;
   cacheRead: number;
   reasoning: number;
+  /** Provider-reported cost (USD); 0 when unreported (ADR-027). */
+  cost: number;
 }
 
 /** Per-category content safety filter for Gemini providers. */
