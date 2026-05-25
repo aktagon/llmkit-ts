@@ -569,6 +569,7 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
       cacheWrite: 0,
       cacheRead: 0,
       reasoning: 0,
+      cost: 0,
     },
   };
   if (finishReason) out.finishReason = finishReason;
@@ -665,6 +666,7 @@ function parseImageResponse(
       cacheWrite: 0,
       cacheRead: 0,
       reasoning: 0,
+      cost: 0,
     },
   };
   if (finishReason) out.finishReason = finishReason;
@@ -724,6 +726,7 @@ function parseImageResponseDataArray(
       cacheWrite: 0,
       cacheRead: 0,
       reasoning: 0,
+      cost: 0,
     },
   };
 }
