@@ -64,6 +64,8 @@ export interface Usage {
   cacheWrite: number;
   cacheRead: number;
   reasoning: number;
+
+  cost: number;
 }
 
 
