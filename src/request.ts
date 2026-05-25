@@ -19,13 +19,16 @@ import type {
   Provider,
   Request as PromptRequest,
   PromptOptions,
+  Tool,
 } from "./types.ts";
+import type { Message, ToolCall, ToolResult } from "./structs.ts";
 
 export function buildRequest(
   provider: Provider,
   request: PromptRequest,
   cfg: ProviderConfig,
   options: PromptOptions,
+  tools: Tool[] = [],
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   const model = provider.model || cfg.defaultModel;
@@ -52,21 +55,28 @@ export function buildRequest(
     setNestedField(body, maxTokensKey, maxTokensValue);
   }
 
+  const msgs = toMessageList(request);
   if (isBedrock(cfg)) {
     if (request.system) {
       body.system = [{ text: request.system }];
     }
-    body.messages = buildBedrockMessages(request, cfg);
+    body.messages = buildBedrockMessages(msgs, cfg);
   } else if (cfg.systemPlacement === "SiblingObject") {
     if (request.system) {
       body.system_instruction = { parts: [{ text: request.system }] };
     }
-    body.contents = buildGoogleContents(request, cfg);
+    body.contents = buildGoogleContents(msgs, cfg);
   } else {
-    body.messages = buildMessages(request, cfg);
+    body.messages = buildMessages(msgs, request.system ?? "", cfg);
     if (cfg.systemPlacement === "TopLevelField" && request.system) {
       body.system = request.system;
     }
+  }
+
+  //
+  //
+  if (tools.length > 0) {
+    attachToolDefs(body, tools, cfg);
   }
 
   if (cfg.wrapsOptionsIn) {
@@ -260,73 +270,282 @@ export function isBedrock(cfg: ProviderConfig): boolean {
   return cfg.wrapsOptionsIn === "inferenceConfig" && cfg.authScheme === "SigV4";
 }
 
+//
+//
+//
+//
+
+//
+//
+//
+export function toolCallInput(call: ToolCall): Record<string, unknown> {
+  if (
+    call.input &&
+    typeof call.input === "object" &&
+    !Array.isArray(call.input)
+  ) {
+    return call.input as Record<string, unknown>;
+  }
+  return {};
+}
+
+//
+//
+//
+//
+//
+//
+type Msg =
+  | { kind: "text"; role: string; text: string }
+  | { kind: "calls"; calls: ToolCall[] }
+  | { kind: "result"; result: ToolResult };
+
+//
+//
+//
+//
+function toInternal(messages: Message[]): Msg[] {
+  return messages.map((m): Msg => {
+    const hasResult = m.toolResult != null;
+    const hasCalls = (m.toolCalls?.length ?? 0) > 0;
+    const hasText = (m.content ?? "").length > 0;
+    if ((hasResult ? 1 : 0) + (hasCalls ? 1 : 0) + (hasText ? 1 : 0) > 1) {
+      throw new ValidationError(
+        "message",
+        "must carry only one of text, toolCalls, or toolResult",
+      );
+    }
+    if (hasResult) return { kind: "result", result: m.toolResult! };
+    if (hasCalls) return { kind: "calls", calls: m.toolCalls! };
+    return { kind: "text", role: m.role, text: m.content ?? "" };
+  });
+}
+
+//
+//
+//
+function toMessageList(request: PromptRequest): Msg[] {
+  if (request.messages && request.messages.length > 0) {
+    return toInternal(request.messages);
+  }
+  if (request.user) {
+    return [{ kind: "text", role: "user", text: request.user }];
+  }
+  return [];
+}
+
 function buildBedrockMessages(
-  request: PromptRequest,
+  msgs: Msg[],
   cfg: ProviderConfig,
 ): Array<Record<string, unknown>> {
-  const msgs: Array<Record<string, unknown>> = [];
-  if (request.messages && request.messages.length > 0) {
-    for (const m of request.messages) {
-      msgs.push({
-        role: cfg.roleMappings[m.role] ?? m.role,
-        content: [{ text: m.content }],
-      });
+  return msgs.map((m): Record<string, unknown> => {
+    switch (m.kind) {
+      case "result":
+        return {
+          role: "user",
+          content: [
+            {
+              toolResult: {
+                toolUseId: m.result.toolUseId,
+                content: [{ text: m.result.content }],
+              },
+            },
+          ],
+        };
+      case "calls":
+        return {
+          role: cfg.roleMappings.assistant ?? "assistant",
+          content: m.calls.map((c) => ({
+            toolUse: { toolUseId: c.id, name: c.name, input: toolCallInput(c) },
+          })),
+        };
+      case "text":
+        return {
+          role: cfg.roleMappings[m.role] ?? m.role,
+          content: [{ text: m.text }],
+        };
     }
-  } else if (request.user) {
-    msgs.push({
-      role: cfg.roleMappings.user ?? "user",
-      content: [{ text: request.user }],
-    });
-  }
-  return msgs;
+  });
 }
 
 function buildGoogleContents(
-  request: PromptRequest,
+  msgs: Msg[],
   cfg: ProviderConfig,
 ): Array<Record<string, unknown>> {
-  const contents: Array<Record<string, unknown>> = [];
-  if (request.messages && request.messages.length > 0) {
-    for (const m of request.messages) {
-      contents.push({
-        role: cfg.roleMappings[m.role] ?? m.role,
-        parts: [{ text: m.content }],
-      });
+  return msgs.map((m): Record<string, unknown> => {
+    switch (m.kind) {
+      case "result":
+        return {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: m.result.toolUseId,
+                response: { result: m.result.content },
+              },
+            },
+          ],
+        };
+      case "calls":
+        return {
+          role: cfg.roleMappings.assistant ?? "model",
+          parts: m.calls.map((c) => ({
+            functionCall: { name: c.name, args: toolCallInput(c) },
+          })),
+        };
+      case "text":
+        return {
+          role: cfg.roleMappings[m.role] ?? m.role,
+          parts: [{ text: m.text }],
+        };
     }
-  } else if (request.user) {
-    contents.push({
-      role: cfg.roleMappings.user ?? "user",
-      parts: [{ text: request.user }],
-    });
-  }
-  return contents;
+  });
 }
 
 function buildMessages(
-  request: PromptRequest,
+  msgs: Msg[],
+  system: string,
   cfg: ProviderConfig,
-): Array<Record<string, string>> {
-  const msgs: Array<Record<string, string>> = [];
+): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
 
-  if (cfg.systemPlacement === "MessageInArray" && request.system) {
-    msgs.push({
+  if (cfg.systemPlacement === "MessageInArray" && system) {
+    out.push({
       role: cfg.roleMappings.system ?? "system",
-      content: request.system,
+      content: system,
     });
   }
 
-  if (request.messages && request.messages.length > 0) {
-    for (const m of request.messages) {
-      msgs.push({
-        role: cfg.roleMappings[m.role] ?? m.role,
-        content: m.content,
-      });
+  for (const m of msgs) {
+    switch (m.kind) {
+      case "result":
+        out.push(toolResultMsg(m.result, cfg));
+        break;
+      case "calls":
+        out.push(toolCallMsg(m.calls, cfg));
+        break;
+      case "text":
+        out.push({
+          role: cfg.roleMappings[m.role] ?? m.role,
+          content: m.text,
+        });
+        break;
     }
-  } else if (request.user) {
-    msgs.push({ role: cfg.roleMappings.user ?? "user", content: request.user });
   }
 
-  return msgs;
+  return out;
+}
+
+//
+//
+//
+function attachToolDefs(
+  body: Record<string, unknown>,
+  tools: Tool[],
+  cfg: ProviderConfig,
+): void {
+  if (isBedrock(cfg)) {
+    body.toolConfig = {
+      tools: tools.map((t) => ({
+        toolSpec: {
+          name: t.name,
+          description: t.description,
+          inputSchema: { json: t.schema },
+        },
+      })),
+    };
+    return;
+  }
+  if (cfg.systemPlacement === "TopLevelField") {
+    body.tools = tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.schema,
+    }));
+    return;
+  }
+  if (cfg.systemPlacement === "SiblingObject") {
+    //
+    //
+    //
+    const field = cfg.toolParamsWireField || "parameters";
+    body.tools = [
+      {
+        functionDeclarations: tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          [field]: t.schema,
+        })),
+      },
+    ];
+    return;
+  }
+  if (cfg.systemPlacement === "MessageInArray") {
+    body.tools = tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.schema,
+      },
+    }));
+    return;
+  }
+  throw new ValidationError(
+    "provider",
+    `agent tools not yet supported in TS for systemPlacement=${cfg.systemPlacement}`,
+  );
+}
+
+function toolCallMsg(
+  calls: ToolCall[],
+  cfg: ProviderConfig,
+): Record<string, unknown> {
+  if (cfg.systemPlacement === "TopLevelField") {
+    return {
+      role: cfg.roleMappings.assistant ?? "assistant",
+      content: calls.map((c) => ({
+        type: "tool_use",
+        id: c.id,
+        name: c.name,
+        input: toolCallInput(c),
+      })),
+    };
+  }
+  return {
+    role: cfg.roleMappings.assistant ?? "assistant",
+    tool_calls: calls.map((c) => ({
+      id: c.id,
+      type: "function",
+      function: {
+        name: c.name,
+        arguments: JSON.stringify(toolCallInput(c)),
+      },
+    })),
+  };
+}
+
+function toolResultMsg(
+  result: ToolResult,
+  cfg: ProviderConfig,
+): Record<string, unknown> {
+  if (cfg.systemPlacement === "TopLevelField") {
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: result.toolUseId,
+          content: result.content,
+        },
+      ],
+    };
+  }
+  return {
+    role: "tool",
+    content: result.content,
+    tool_call_id: result.toolUseId,
+  };
 }
 
 export async function executeRequest(
