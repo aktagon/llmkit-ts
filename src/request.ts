@@ -303,6 +303,13 @@ type Msg =
 //
 //
 //
+function assertNever(m: never): never {
+  throw new Error(`unhandled Msg variant: ${JSON.stringify(m)}`);
+}
+
+//
+//
+//
 //
 function toInternal(messages: Message[]): Msg[] {
   return messages.map((m): Msg => {
@@ -364,6 +371,8 @@ function buildBedrockMessages(
           role: cfg.roleMappings[m.role] ?? m.role,
           content: [{ text: m.text }],
         };
+      default:
+        return assertNever(m);
     }
   });
 }
@@ -398,6 +407,8 @@ function buildGoogleContents(
           role: cfg.roleMappings[m.role] ?? m.role,
           parts: [{ text: m.text }],
         };
+      default:
+        return assertNever(m);
     }
   });
 }
@@ -430,6 +441,8 @@ function buildMessages(
           content: m.text,
         });
         break;
+      default:
+        assertNever(m);
     }
   }
 
