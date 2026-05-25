@@ -10,35 +10,25 @@
 import { PROVIDERS, type ProviderConfig } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractIntPath, extractFloatPath, extractPath } from "./paths.ts";
-import { executeRequest, isBedrock, validateOptions } from "./request.ts";
+import {
+  buildRequest,
+  executeRequest,
+  isBedrock,
+  toolCallInput,
+  validateOptions,
+} from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
-import { OptionKeys, supportedOptions } from "./providers/options.ts";
-import { resolveOptionKey } from "./request.ts";
 import { applyCaching } from "./caching.ts";
 import type {
   AgentOptions,
   Provider,
+  Request,
   Response as PromptResponse,
   Tool,
   Usage,
 } from "./types.ts";
-import type { ToolCall, ToolResult } from "./structs.ts";
-
-// ADR-020 widened ToolCall.input from Record<string, unknown> to
-// `unknown` (optional). The runtime here defaults to {} when input is
-// null or non-object so the existing Tool.run({...}) consumer contract
-// stays intact.
-function toolCallInput(call: ToolCall): Record<string, unknown> {
-  if (
-    call.input &&
-    typeof call.input === "object" &&
-    !Array.isArray(call.input)
-  ) {
-    return call.input as Record<string, unknown>;
-  }
-  return {};
-}
+import type { Message, ToolCall, ToolResult } from "./structs.ts";
 
 interface InternalMessage {
   role: "user" | "assistant" | "tool_result";
@@ -141,7 +131,13 @@ export class Agent {
       let raw: unknown;
       let turnUsage: Usage;
       try {
-        const body = this.buildAgentRequest(cfg);
+        const body = buildRequest(
+          this.provider,
+          this.toRequest(),
+          cfg,
+          this.options,
+          this.tools,
+        );
         // Caching is a shared request-construction step (ADR-026): applied on
         // every send path by construction, like Text/batch. Before this, a
         // .caching() agent silently paid full input price every turn (BUG-004).
@@ -250,246 +246,23 @@ export class Agent {
     throw new Error(`max tool iterations (${maxIters}) reached`);
   }
 
-  private buildAgentRequest(cfg: ProviderConfig): Record<string, unknown> {
-    const body: Record<string, unknown> = {};
-    const model = this.provider.model || cfg.defaultModel;
-    if (cfg.modelInBody) body.model = model;
-
-    const supportedMap = new Map(
-      supportedOptions(this.provider.name).map((o) => [o.key, o.jsonKey]),
-    );
-    const maxTokensKey = resolveOptionKey(
-      this.provider.name,
-      model,
-      OptionKeys.MAX_TOKENS,
-      supportedMap,
-    );
-    if (maxTokensKey !== undefined) {
-      body[maxTokensKey] = this.options.maxTokens ?? cfg.defaultMaxTokens;
-    }
-
-    if (isBedrock(cfg)) {
-      if (this.system) body.system = [{ text: this.system }];
-      body.messages = this.buildBedrockMessages(cfg);
-    } else if (cfg.systemPlacement === "SiblingObject") {
-      if (this.system) {
-        body.system_instruction = { parts: [{ text: this.system }] };
-      }
-      body.contents = this.buildGoogleContents(cfg);
-    } else {
-      if (cfg.systemPlacement === "TopLevelField" && this.system) {
-        body.system = this.system;
-      }
-      body.messages = this.buildHistoryMessages(cfg);
-    }
-
-    if (this.tools.length > 0) {
-      attachToolDefs(body, this.tools, cfg);
-    }
-    return body;
-  }
-
-  private buildHistoryMessages(
-    cfg: ProviderConfig,
-  ): Array<Record<string, unknown>> {
-    const msgs: Array<Record<string, unknown>> = [];
-    if (cfg.systemPlacement === "MessageInArray" && this.system) {
-      msgs.push({
-        role: cfg.roleMappings.system ?? "system",
-        content: this.system,
-      });
-    }
-    for (const m of this.history) {
-      if (m.toolResult) {
-        msgs.push(toolResultMsg(m.toolResult, cfg));
-      } else if (m.toolCalls && m.toolCalls.length > 0) {
-        msgs.push(toolCallMsg(m.toolCalls, cfg));
-      } else {
-        msgs.push({
-          role: cfg.roleMappings[m.role] ?? m.role,
-          content: m.content ?? "",
-        });
-      }
-    }
-    return msgs;
-  }
-
-  private buildBedrockMessages(
-    cfg: ProviderConfig,
-  ): Array<Record<string, unknown>> {
-    const msgs: Array<Record<string, unknown>> = [];
-    for (const m of this.history) {
-      if (m.toolResult) {
-        msgs.push({
-          role: "user",
-          content: [
-            {
-              toolResult: {
-                toolUseId: m.toolResult.toolUseId,
-                content: [{ text: m.toolResult.content }],
-              },
-            },
-          ],
-        });
-      } else if (m.toolCalls && m.toolCalls.length > 0) {
-        msgs.push({
-          role: cfg.roleMappings.assistant ?? "assistant",
-          content: m.toolCalls.map((c) => ({
-            toolUse: { toolUseId: c.id, name: c.name, input: toolCallInput(c) },
-          })),
-        });
-      } else {
-        msgs.push({
-          role: cfg.roleMappings[m.role] ?? m.role,
-          content: [{ text: m.content ?? "" }],
-        });
-      }
-    }
-    return msgs;
-  }
-
-  private buildGoogleContents(
-    cfg: ProviderConfig,
-  ): Array<Record<string, unknown>> {
-    const contents: Array<Record<string, unknown>> = [];
-    for (const m of this.history) {
-      if (m.toolResult) {
-        contents.push({
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name: m.toolResult.toolUseId,
-                response: { result: m.toolResult.content },
-              },
-            },
-          ],
-        });
-      } else if (m.toolCalls && m.toolCalls.length > 0) {
-        contents.push({
-          role: cfg.roleMappings.assistant ?? "model",
-          parts: m.toolCalls.map((c) => ({
-            functionCall: { name: c.name, args: toolCallInput(c) },
-          })),
-        });
-      } else {
-        contents.push({
-          role: cfg.roleMappings[m.role] ?? m.role,
-          parts: [{ text: m.content ?? "" }],
-        });
-      }
-    }
-    return contents;
-  }
-}
-
-function attachToolDefs(
-  body: Record<string, unknown>,
-  tools: Tool[],
-  cfg: ProviderConfig,
-): void {
-  if (isBedrock(cfg)) {
-    body.toolConfig = {
-      tools: tools.map((t) => ({
-        toolSpec: {
-          name: t.name,
-          description: t.description,
-          inputSchema: { json: t.schema },
-        },
-      })),
-    };
-    return;
-  }
-  if (cfg.systemPlacement === "TopLevelField") {
-    body.tools = tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.schema,
+  // toRequest projects the agent's internal history onto the public
+  // ADR-020 Message shape so the shared buildRequest (request.ts) constructs
+  // the body — caching, options, tool defs, system placement and message/tool
+  // transforms all run once, identically to the Text/batch paths (ADR-026
+  // PIPE-001/004). This is what closed BUG-006: the agent no longer hand-rolls
+  // a partial body that applied only max_tokens.
+  private toRequest(): Request {
+    const messages: Message[] = this.history.map((m) => ({
+      role: m.role,
+      content: m.content ?? "",
+      toolCalls: m.toolCalls ?? [],
+      toolResult: m.toolResult ?? null,
     }));
-    return;
+    const request: Request = { messages };
+    if (this.system) request.system = this.system;
+    return request;
   }
-  if (cfg.systemPlacement === "SiblingObject") {
-    // Google carries tool params under a per-provider wire field (ADR-025):
-    // "parametersJsonSchema" accepts native JSON Schema verbatim, vs the
-    // OpenAPI-3.0-subset "parameters" default.
-    const field = cfg.toolParamsWireField || "parameters";
-    body.tools = [
-      {
-        functionDeclarations: tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          [field]: t.schema,
-        })),
-      },
-    ];
-    return;
-  }
-  if (cfg.systemPlacement === "MessageInArray") {
-    body.tools = tools.map((t) => ({
-      type: "function",
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.schema,
-      },
-    }));
-    return;
-  }
-  throw new ValidationError(
-    "provider",
-    `agent tools not yet supported in TS for systemPlacement=${cfg.systemPlacement}`,
-  );
-}
-
-function toolCallMsg(
-  calls: ToolCall[],
-  cfg: ProviderConfig,
-): Record<string, unknown> {
-  if (cfg.systemPlacement === "TopLevelField") {
-    return {
-      role: cfg.roleMappings.assistant ?? "assistant",
-      content: calls.map((c) => ({
-        type: "tool_use",
-        id: c.id,
-        name: c.name,
-        input: toolCallInput(c),
-      })),
-    };
-  }
-  return {
-    role: cfg.roleMappings.assistant ?? "assistant",
-    tool_calls: calls.map((c) => ({
-      id: c.id,
-      type: "function",
-      function: {
-        name: c.name,
-        arguments: JSON.stringify(toolCallInput(c)),
-      },
-    })),
-  };
-}
-
-function toolResultMsg(
-  result: ToolResult,
-  cfg: ProviderConfig,
-): Record<string, unknown> {
-  if (cfg.systemPlacement === "TopLevelField") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: result.toolUseId,
-          content: result.content,
-        },
-      ],
-    };
-  }
-  return {
-    role: "tool",
-    content: result.content,
-    tool_call_id: result.toolUseId,
-  };
 }
 
 function extractToolCalls(raw: unknown, cfg: ProviderConfig): ToolCall[] {

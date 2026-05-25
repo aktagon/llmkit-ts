@@ -121,6 +121,35 @@ describe("Agent — Anthropic", () => {
   });
 });
 
+describe("Agent — generation options (BUG-006 regression)", () => {
+  // Before ADR-026 routed the agent through the shared buildRequest, the TS
+  // agent applied only max_tokens — temperature/topP/etc. were stored but
+  // silently dropped from the wire body. This asserts they now land, matching
+  // the Text path.
+  test("temperature + topP reach the request body", async () => {
+    const captured: CapturedRequest[] = [];
+    const server = startMockSequence(
+      [
+        {
+          content: [{ type: "text", text: "ok" }],
+          usage: { input_tokens: 3, output_tokens: 1 },
+        },
+      ],
+      captured,
+    );
+    try {
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      await c.agent.temperature(0.1).topP(0.5).prompt("hi");
+      expect(captured).toHaveLength(1);
+      expect(captured[0]?.body.temperature).toBe(0.1);
+      expect(captured[0]?.body.top_p).toBe(0.5);
+    } finally {
+      server.stop();
+    }
+  });
+});
+
 describe("Agent — OpenAI", () => {
   test("tool_calls → text loop executes tool", async () => {
     const captured: CapturedRequest[] = [];
