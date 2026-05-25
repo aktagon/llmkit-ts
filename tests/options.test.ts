@@ -66,6 +66,25 @@ describe("prompt — option setters", () => {
     expect(body.stop).toEqual(["END"]);
   });
 
+  test.each([
+    ["gpt-5", "max_completion_tokens", "max_tokens"],
+    ["gpt-5-mini", "max_completion_tokens", "max_tokens"], // glob gpt-5*
+    ["o3", "max_completion_tokens", "max_tokens"],
+    ["o4-mini", "max_completion_tokens", "max_tokens"], // glob o*
+    ["gpt-4o", "max_tokens", "max_completion_tokens"], // unaffected
+  ])(
+    "OpenAI per-model max tokens key: %s -> %s (BUG-001 / ADR-024)",
+    async (model, wantKey, wrongKey) => {
+      const body = await captureBody(openaiResp, async (url) => {
+        const c = newClient(Providers.openai, "sk");
+        c.provider.baseUrl = url;
+        await c.text.model(model).maxTokens(128).prompt("hi");
+      });
+      expect(body[wantKey]).toBe(128);
+      expect(body[wrongKey]).toBeUndefined();
+    },
+  );
+
   test("Anthropic: topK and stopSequences land at top level with their provider json keys", async () => {
     const body = await captureBody(anthropicResp, async (url) => {
       const c = newClient(Providers.anthropic, "k");
@@ -130,5 +149,48 @@ describe("prompt — option setters", () => {
     expect(gc.max_output_tokens).toBe(256);
     expect(body.max_output_tokens).toBeUndefined();
     expect(body.temperature).toBeUndefined();
+  });
+});
+
+describe("usage cost (ADR-027 / BUG-005)", () => {
+  async function promptResp(
+    provider: keyof typeof Providers,
+    responseBody: string,
+  ): Promise<{ usage: { cost: number } }> {
+    const server = startMockServer(
+      () =>
+        new Response(responseBody, {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    try {
+      const c = newClient(Providers[provider], "k");
+      c.provider.baseUrl = server.url;
+      return await c.text.prompt("hi");
+    } finally {
+      server.stop();
+    }
+  }
+
+  test("OpenRouter surfaces usage.cost on Usage.cost", async () => {
+    const resp = await promptResp(
+      "openrouter",
+      JSON.stringify({
+        choices: [{ message: { content: "ok" } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.00042 },
+      }),
+    );
+    expect(resp.usage.cost).toBe(0.00042);
+  });
+
+  test("no-cost provider (OpenAI) stays 0", async () => {
+    const resp = await promptResp(
+      "openai",
+      JSON.stringify({
+        choices: [{ message: { content: "ok" } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.99 },
+      }),
+    );
+    expect(resp.usage.cost).toBe(0);
   });
 });

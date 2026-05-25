@@ -62,6 +62,7 @@ describe("middleware — observation", () => {
         cacheWrite: 0,
         cacheRead: 0,
         reasoning: 0,
+        cost: 0,
       });
       expect(events[1]?.err).toBeUndefined();
       expect(typeof events[1]?.duration).toBe("number");
@@ -106,9 +107,9 @@ describe("middleware — veto", () => {
     try {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = server.url;
-      await expect(c.text.addMiddleware(m1, m2, m3).prompt("hi")).rejects.toThrow(
-        MiddlewareVetoError,
-      );
+      await expect(
+        c.text.addMiddleware(m1, m2, m3).prompt("hi"),
+      ).rejects.toThrow(MiddlewareVetoError);
       expect(order).toEqual(["m1", "m2"]);
       expect(server.calls).toBe(0);
     } finally {

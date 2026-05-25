@@ -142,6 +142,13 @@ describe("Google — SystemPlacement.SiblingObject", () => {
       // Tool defs use functionDeclarations
       const tools = captured[0]?.body.tools as Array<Record<string, unknown>>;
       expect(tools[0]?.functionDeclarations).toBeDefined();
+      // ADR-025 / BUG-002: schema goes under parametersJsonSchema (native JSON
+      // Schema slot), not the OpenAPI-subset "parameters" field.
+      const decls = tools[0]?.functionDeclarations as Array<
+        Record<string, unknown>
+      >;
+      expect(decls[0]?.parametersJsonSchema).toEqual({ type: "object" });
+      expect(decls[0]?.parameters).toBeUndefined();
     } finally {
       server.stop();
     }

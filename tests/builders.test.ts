@@ -260,6 +260,7 @@ describe("Surface — type aliases", () => {
         cacheWrite: 0,
         cacheRead: 0,
         reasoning: 0,
+        cost: 0,
       },
     };
     const _img: ImageResponse = {
@@ -271,6 +272,7 @@ describe("Surface — type aliases", () => {
         cacheWrite: 0,
         cacheRead: 0,
         reasoning: 0,
+        cost: 0,
       },
     };
     const _imgData: ImageData = {

@@ -146,6 +146,7 @@ async function runStream(
         cacheWrite: 0,
         cacheRead: 0,
         reasoning: 0,
+        cost: 0,
       },
     };
     if (outcome.finishReason) result.finishReason = outcome.finishReason;

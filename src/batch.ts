@@ -5,7 +5,7 @@ import {
   batchConfig,
 } from "./providers/batch.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { extractPath, extractIntPath } from "./paths.ts";
+import { extractPath, extractIntPath, extractFloatPath } from "./paths.ts";
 import { applyCaching, parseCacheUsage } from "./caching.ts";
 import { buildAuthHeaders, buildRequest, validateOptions } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
@@ -317,6 +317,9 @@ function parseBatchResults(
         cacheRead: cache.read,
         reasoning: cfg.reasoningTokensPath
           ? extractIntPath(inner, cfg.reasoningTokensPath)
+          : 0,
+        cost: cfg.usageCostPath
+          ? extractFloatPath(inner, cfg.usageCostPath)
           : 0,
       },
     };

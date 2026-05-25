@@ -18,6 +18,16 @@ export function extractIntPath(data: unknown, path: string): number {
   return 0;
 }
 
+export function extractFloatPath(data: unknown, path: string): number {
+  const raw = extractRaw(data, path);
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "string") {
+    const n = parseFloat(raw);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
 function extractRaw(data: unknown, path: string): unknown {
   if (!path) return undefined;
   let current: unknown = data;

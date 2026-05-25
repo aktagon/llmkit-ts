@@ -86,6 +86,38 @@ describe("caching — Anthropic ExplicitCaching", () => {
       server.stop();
     }
   });
+
+  test("Agent.caching() wraps the agent request system with cache_control (BUG-004)", async () => {
+    let capturedBody: Record<string, unknown> | undefined;
+    const server = startMockJSON(
+      {
+        content: [{ type: "text", text: "done" }],
+        usage: { input_tokens: 2000, output_tokens: 5 },
+      },
+      (_req, body) => {
+        capturedBody = body;
+      },
+    );
+    try {
+      const c = newClient(Providers.anthropic, "k");
+      c.provider.baseUrl = server.url;
+      await c.agent
+        .system("a long stable system prefix")
+        .caching()
+        .prompt("hi");
+      // Caching applied on the agent path by construction (ADR-026), exactly
+      // like Text — not a string.
+      expect(capturedBody?.system).toEqual([
+        {
+          type: "text",
+          text: "a long stable system prefix",
+          cache_control: { type: "ephemeral" },
+        },
+      ]);
+    } finally {
+      server.stop();
+    }
+  });
 });
 
 describe("caching — OpenAI AutomaticCaching", () => {

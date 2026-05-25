@@ -9,11 +9,13 @@
 
 import { PROVIDERS, type ProviderConfig } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { extractIntPath, extractPath } from "./paths.ts";
+import { extractIntPath, extractFloatPath, extractPath } from "./paths.ts";
 import { executeRequest, isBedrock, validateOptions } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
 import { OptionKeys, supportedOptions } from "./providers/options.ts";
+import { resolveOptionKey } from "./request.ts";
+import { applyCaching } from "./caching.ts";
 import type {
   AgentOptions,
   Provider,
@@ -119,6 +121,7 @@ export class Agent {
       cacheWrite: 0,
       cacheRead: 0,
       reasoning: 0,
+      cost: 0,
     };
 
     const model = this.provider.model || cfg.defaultModel;
@@ -139,6 +142,12 @@ export class Agent {
       let turnUsage: Usage;
       try {
         const body = this.buildAgentRequest(cfg);
+        // Caching is a shared request-construction step (ADR-026): applied on
+        // every send path by construction, like Text/batch. Before this, a
+        // .caching() agent silently paid full input price every turn (BUG-004).
+        if (this.options.caching) {
+          await applyCaching(body, this.provider, cfg, this.options);
+        }
         const resp = await executeRequest(
           this.provider,
           cfg,
@@ -159,9 +168,13 @@ export class Agent {
           cacheWrite: 0,
           cacheRead: 0,
           reasoning: 0,
+          cost: cfg.usageCostPath
+            ? extractFloatPath(raw, cfg.usageCostPath)
+            : 0,
         };
         totalUsage.input += turnUsage.input;
         totalUsage.output += turnUsage.output;
+        totalUsage.cost += turnUsage.cost;
       } catch (err) {
         firePost(mw, {
           ...llmEvent,
@@ -245,7 +258,12 @@ export class Agent {
     const supportedMap = new Map(
       supportedOptions(this.provider.name).map((o) => [o.key, o.jsonKey]),
     );
-    const maxTokensKey = supportedMap.get(OptionKeys.MAX_TOKENS);
+    const maxTokensKey = resolveOptionKey(
+      this.provider.name,
+      model,
+      OptionKeys.MAX_TOKENS,
+      supportedMap,
+    );
     if (maxTokensKey !== undefined) {
       body[maxTokensKey] = this.options.maxTokens ?? cfg.defaultMaxTokens;
     }
@@ -391,12 +409,16 @@ function attachToolDefs(
     return;
   }
   if (cfg.systemPlacement === "SiblingObject") {
+    // Google carries tool params under a per-provider wire field (ADR-025):
+    // "parametersJsonSchema" accepts native JSON Schema verbatim, vs the
+    // OpenAPI-3.0-subset "parameters" default.
+    const field = cfg.toolParamsWireField || "parameters";
     body.tools = [
       {
         functionDeclarations: tools.map((t) => ({
           name: t.name,
           description: t.description,
-          parameters: t.schema,
+          [field]: t.schema,
         })),
       },
     ];
