@@ -169,7 +169,7 @@ export class Agent {
           cacheRead: 0,
           reasoning: 0,
           cost: cfg.usageCostPath
-            ? extractFloatPath(raw, cfg.usageCostPath)
+            ? extractFloatPath(raw, cfg.usageCostPath) * cfg.usageCostScale
             : 0,
         };
         totalUsage.input += turnUsage.input;

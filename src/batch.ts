@@ -319,7 +319,7 @@ function parseBatchResults(
           ? extractIntPath(inner, cfg.reasoningTokensPath)
           : 0,
         cost: cfg.usageCostPath
-          ? extractFloatPath(inner, cfg.usageCostPath)
+          ? extractFloatPath(inner, cfg.usageCostPath) * cfg.usageCostScale
           : 0,
       },
     };
