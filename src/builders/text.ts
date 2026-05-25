@@ -150,7 +150,9 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
         reasoning: cfg.reasoningTokensPath
           ? extractIntPath(raw, cfg.reasoningTokensPath)
           : 0,
-        cost: cfg.usageCostPath ? extractFloatPath(raw, cfg.usageCostPath) : 0,
+        cost: cfg.usageCostPath
+          ? extractFloatPath(raw, cfg.usageCostPath) * cfg.usageCostScale
+          : 0,
       },
     };
     if (cfg.finishReasonPath) {
