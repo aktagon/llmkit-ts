@@ -183,6 +183,21 @@ describe("usage cost (ADR-027 / BUG-005)", () => {
     expect(resp.usage.cost).toBe(0.00042);
   });
 
+  test("Grok scales cost_in_usd_ticks to USD (1e-10)", async () => {
+    const resp = await promptResp(
+      "grok",
+      JSON.stringify({
+        choices: [{ message: { content: "ok" } }],
+        usage: {
+          prompt_tokens: 136,
+          completion_tokens: 100,
+          cost_in_usd_ticks: 2856000,
+        },
+      }),
+    );
+    expect(resp.usage.cost).toBe(0.0002856);
+  });
+
   test("no-cost provider (OpenAI) stays 0", async () => {
     const resp = await promptResp(
       "openai",
