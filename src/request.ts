@@ -399,12 +399,9 @@ type Msg =
   | { kind: "calls"; calls: ToolCall[] }
   | { kind: "result"; result: ToolResult };
 
-// assertNever makes a missing Msg variant a compile error at every dispatch
-// site (ADR-026 PIPE-007): adding a fourth kind without handling it fails to
-// type-check here, rather than silently falling through at runtime.
-function assertNever(m: never): never {
-  throw new Error(`unhandled Msg variant: ${JSON.stringify(m)}`);
-}
+// Exhaustiveness at each Msg dispatch is enforced inline (ADR-026 PIPE-007):
+// the `const _: never = m` in every `default:` makes adding a fourth kind
+// without handling it a compile error, rather than a silent runtime fallthrough.
 
 // toInternal converts the public, untrusted Message[] into the internal sum
 // (ADR-026 PIPE-008). This is the single carrier-validation boundary: a message
@@ -470,8 +467,12 @@ function buildBedrockMessages(
           role: cfg.roleMappings[m.role] ?? m.role,
           content: [{ text: m.text }],
         };
-      default:
-        return assertNever(m);
+      default: {
+        const _exhaustive: never = m;
+        throw new Error(
+          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
+        );
+      }
     }
   });
 }
@@ -506,8 +507,12 @@ function buildGoogleContents(
           role: cfg.roleMappings[m.role] ?? m.role,
           parts: [{ text: m.text }],
         };
-      default:
-        return assertNever(m);
+      default: {
+        const _exhaustive: never = m;
+        throw new Error(
+          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
+        );
+      }
     }
   });
 }
@@ -540,8 +545,12 @@ function buildMessages(
           content: m.text,
         });
         break;
-      default:
-        assertNever(m);
+      default: {
+        const _exhaustive: never = m;
+        throw new Error(
+          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
+        );
+      }
     }
   }
 
