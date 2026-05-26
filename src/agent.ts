@@ -131,12 +131,14 @@ export class Agent {
       let raw: unknown;
       let turnUsage: Usage;
       try {
+        const extraHeaders: Record<string, string> = {};
         const body = buildRequest(
           this.provider,
           this.toRequest(),
           cfg,
           this.options,
           this.tools,
+          extraHeaders,
         );
         //
         //
@@ -149,6 +151,7 @@ export class Agent {
           cfg,
           body,
           this.options,
+          extraHeaders,
         );
         if (!resp.ok) {
           throw new APIError(
