@@ -1325,3 +1325,77 @@ export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
     toolParamsWireField: "parameters",
   },
 };
+
+export interface StructuredOutputDef {
+  formatField: string;
+  formatType: string;
+  schemaPath: string;
+  betaHeader: string;
+  enforceStrict: boolean;
+  removeAdditionalProps: boolean;
+  //
+  //
+  //
+  schemaPlacement: string;
+}
+
+const STRUCTURED_OUTPUTS: Partial<Record<ProviderName, StructuredOutputDef>> = {
+  anthropic: {
+    formatField: "output_format",
+    formatType: "json_schema",
+    schemaPath: "schema",
+    betaHeader: "structured-outputs-2025-11-13",
+    enforceStrict: true,
+    removeAdditionalProps: false,
+    schemaPlacement: "WrappedInFormat",
+  },
+  azure: {
+    formatField: "response_format",
+    formatType: "json_schema",
+    schemaPath: "json_schema.schema",
+    betaHeader: "",
+    enforceStrict: true,
+    removeAdditionalProps: false,
+    schemaPlacement: "WrappedInFormat",
+  },
+  google: {
+    formatField: "generationConfig.responseMimeType",
+    formatType: "application/json",
+    schemaPath: "generationConfig.responseSchema",
+    betaHeader: "",
+    enforceStrict: false,
+    removeAdditionalProps: true,
+    schemaPlacement: "SiblingOfFormat",
+  },
+  grok: {
+    formatField: "response_format",
+    formatType: "json_schema",
+    schemaPath: "json_schema.schema",
+    betaHeader: "",
+    enforceStrict: true,
+    removeAdditionalProps: false,
+    schemaPlacement: "WrappedInFormat",
+  },
+  mistral: {
+    formatField: "response_format",
+    formatType: "json_schema",
+    schemaPath: "json_schema.schema",
+    betaHeader: "",
+    enforceStrict: true,
+    removeAdditionalProps: false,
+    schemaPlacement: "WrappedInFormat",
+  },
+  openai: {
+    formatField: "response_format",
+    formatType: "json_schema",
+    schemaPath: "json_schema.schema",
+    betaHeader: "",
+    enforceStrict: true,
+    removeAdditionalProps: false,
+    schemaPlacement: "WrappedInFormat",
+  },
+};
+
+export function structuredOutput(provider: ProviderName): StructuredOutputDef | undefined {
+  return STRUCTURED_OUTPUTS[provider];
+}
