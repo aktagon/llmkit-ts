@@ -5,6 +5,7 @@ import {
   PROVIDERS,
   type ProviderConfig,
   type ProviderName,
+  structuredOutput,
 } from "./providers/providers.ts";
 import {
   OptionKeys,
@@ -29,6 +30,10 @@ export function buildRequest(
   cfg: ProviderConfig,
   options: PromptOptions,
   tools: Tool[] = [],
+  // headersOut, when supplied, collects request headers produced during body
+  // construction (e.g. the anthropic-beta header for structured output). The
+  // caller merges these into executeRequest. Body-only callers (batch) omit it.
+  headersOut?: Record<string, string>,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   const model = provider.model || cfg.defaultModel;
@@ -118,7 +123,101 @@ export function buildRequest(
     }));
   }
 
+  if (request.schema) {
+    applyStructuredOutput(body, headersOut, request.schema, provider.name);
+  }
+
   return body;
+}
+
+// applyStructuredOutput writes the provider-shaped structured-output fields onto
+// the body, mirroring the Go/Python/Rust addStructuredOutput. Selection is by
+// config (StructuredOutputDef), never by provider name. The beta header (if any)
+// is collected into headersOut for the caller to forward to executeRequest.
+function applyStructuredOutput(
+  body: Record<string, unknown>,
+  headersOut: Record<string, string> | undefined,
+  schema: string,
+  providerName: ProviderName,
+): void {
+  const def = structuredOutput(providerName);
+  if (!def) return;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(schema);
+  } catch {
+    return;
+  }
+
+  if (def.enforceStrict) setAdditionalPropertiesFalse(parsed);
+  if (def.removeAdditionalProps) removeAdditionalProperties(parsed);
+
+  if (def.betaHeader && headersOut) {
+    headersOut["anthropic-beta"] = def.betaHeader;
+  }
+
+  // SiblingOfFormat placement (Google): formatField carries the literal
+  // formatType (responseMimeType: "application/json") and the schema is an
+  // independent sibling at schemaPath (responseSchema), not nested in a wrapper.
+  if (def.schemaPlacement === "SiblingOfFormat") {
+    setNestedField(body, def.formatField, def.formatType);
+    setNestedField(body, def.schemaPath, parsed);
+    return;
+  }
+
+  const pathParts = def.schemaPath.split(".");
+  if (pathParts.length === 1) {
+    setNestedField(body, def.formatField, {
+      type: def.formatType,
+      [pathParts[0]!]: parsed,
+    });
+  } else {
+    const inner: Record<string, unknown> = {
+      name: "response",
+      [pathParts[1]!]: parsed,
+    };
+    if (def.enforceStrict) inner.strict = true;
+    setNestedField(body, def.formatField, {
+      type: def.formatType,
+      [pathParts[0]!]: inner,
+    });
+  }
+}
+
+// setAdditionalPropertiesFalse recursively sets additionalProperties:false and
+// auto-populates `required` (OpenAI strict mode). Mirrors the Go helper.
+function setAdditionalPropertiesFalse(schema: unknown): void {
+  if (typeof schema !== "object" || schema === null) return;
+  const m = schema as Record<string, unknown>;
+  if (m.type === "object") {
+    m.additionalProperties = false;
+    const props = m.properties;
+    if (typeof props === "object" && props !== null) {
+      if (!("required" in m)) {
+        m.required = Object.keys(props);
+      }
+      for (const v of Object.values(props)) {
+        setAdditionalPropertiesFalse(v);
+      }
+    }
+  }
+  if (m.items !== undefined) setAdditionalPropertiesFalse(m.items);
+}
+
+// removeAdditionalProperties recursively strips additionalProperties (Google).
+// Mirrors the Go helper.
+function removeAdditionalProperties(schema: unknown): void {
+  if (typeof schema !== "object" || schema === null) return;
+  const m = schema as Record<string, unknown>;
+  delete m.additionalProperties;
+  const props = m.properties;
+  if (typeof props === "object" && props !== null) {
+    for (const v of Object.values(props)) {
+      removeAdditionalProperties(v);
+    }
+  }
+  if (m.items !== undefined) removeAdditionalProperties(m.items);
 }
 
 // resolveOptionKey returns the wire (JSON) key for param on (provider, model).
@@ -566,6 +665,7 @@ export async function executeRequest(
   cfg: ProviderConfig,
   body: Record<string, unknown>,
   options: PromptOptions,
+  extraHeaders?: Record<string, string>,
 ): Promise<{ status: number; ok: boolean; text: string }> {
   const baseUrl = provider.baseUrl || cfg.baseUrl;
   const url = buildUrl(baseUrl + cfg.endpoint, provider, cfg);
@@ -592,6 +692,10 @@ export async function executeRequest(
       "content-type": "application/json",
       ...buildAuthHeaders(provider, cfg),
     };
+  }
+
+  if (extraHeaders) {
+    Object.assign(headers, extraHeaders);
   }
 
   const httpResp = await fetch(url, {
