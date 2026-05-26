@@ -402,9 +402,6 @@ type Msg =
 //
 //
 //
-function assertNever(m: never): never {
-  throw new Error(`unhandled Msg variant: ${JSON.stringify(m)}`);
-}
 
 //
 //
@@ -470,8 +467,12 @@ function buildBedrockMessages(
           role: cfg.roleMappings[m.role] ?? m.role,
           content: [{ text: m.text }],
         };
-      default:
-        return assertNever(m);
+      default: {
+        const _exhaustive: never = m;
+        throw new Error(
+          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
+        );
+      }
     }
   });
 }
@@ -506,8 +507,12 @@ function buildGoogleContents(
           role: cfg.roleMappings[m.role] ?? m.role,
           parts: [{ text: m.text }],
         };
-      default:
-        return assertNever(m);
+      default: {
+        const _exhaustive: never = m;
+        throw new Error(
+          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
+        );
+      }
     }
   });
 }
@@ -540,8 +545,12 @@ function buildMessages(
           content: m.text,
         });
         break;
-      default:
-        assertNever(m);
+      default: {
+        const _exhaustive: never = m;
+        throw new Error(
+          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
+        );
+      }
     }
   }
 
