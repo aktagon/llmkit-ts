@@ -124,12 +124,26 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
   const start = performance.now();
 
   try {
-    const body = buildLegacyRequest(provider, request, cfg, options);
+    const extraHeaders: Record<string, string> = {};
+    const body = buildLegacyRequest(
+      provider,
+      request,
+      cfg,
+      options,
+      [],
+      extraHeaders,
+    );
     if (options.caching) {
       await applyCaching(body, provider, cfg, options);
     }
 
-    const resp = await executeRequest(provider, cfg, body, options);
+    const resp = await executeRequest(
+      provider,
+      cfg,
+      body,
+      options,
+      extraHeaders,
+    );
     if (!resp.ok) {
       throw new APIError(
         resp.status,
