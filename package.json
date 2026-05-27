@@ -5,15 +5,15 @@
   "type": "module",
   "main": "./dist/llmkit.js",
   "module": "./dist/llmkit.js",
-  "types": "./src/llmkit.ts",
+  "types": "./dist/llmkit.d.ts",
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./src/llmkit.ts",
+      "types": "./dist/llmkit.d.ts",
       "import": "./dist/llmkit.js"
     },
     "./builders": {
-      "types": "./src/builders/index.ts",
+      "types": "./dist/builders/index.d.ts",
       "import": "./dist/builders/index.js"
     }
   },
@@ -56,7 +56,8 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target node --format esm --splitting --sourcemap=external",
+    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target node --format esm --splitting --sourcemap=external && bun run build:types",
+    "build:types": "tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "prepack": "bun run build"

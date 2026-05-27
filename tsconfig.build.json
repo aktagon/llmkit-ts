@@ -1,0 +1,19 @@
+{
+  // Declaration-only emit so consumers get typed `.d.ts` that
+  // `skipLibCheck` can actually skip. The main build (`bun build`) emits
+  // JS but no declarations; this fills that gap. `rewriteRelativeImportExtensions`
+  // turns the `.ts` import specifiers into `.js` in the emitted `.d.ts`,
+  // so a consumer resolving `./builders/index.js` finds the sibling
+  // `./builders/index.d.ts`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": true,
+    "rewriteRelativeImportExtensions": true,
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["tests/**/*"]
+}
