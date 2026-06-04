@@ -66,13 +66,9 @@ describe("Image.generate — Google Flash", () => {
 
       expect(receivedPath).toContain(`${flashModel}:generateContent`);
       expect(receivedKey).toBe("test-key");
-      expect(receivedBody.generationConfig.responseModalities).toEqual([
-        "IMAGE",
-      ]);
-      expect(receivedBody.generationConfig.imageConfig.aspectRatio).toBe(
-        "16:9",
-      );
-      expect(receivedBody.generationConfig.imageConfig.imageSize).toBe("2K");
+      // Body-shape asserts (generationConfig/imageConfig) migrated to the
+      // image-gen-google-flash wire fixture (ADR-028 M2); URL/auth shape
+      // and response parsing remain this test's subjects.
 
       expect(resp.images.length).toBe(1);
       expect(resp.images[0]!.mimeType).toBe("image/png");
@@ -114,11 +110,9 @@ describe("Image.generate — includeText", () => {
     try {
       const c = newClient(Providers.google, "k");
       c.provider.baseUrl = `http://localhost:${server.port}`;
+      // The [TEXT, IMAGE] modality body assert migrated to the
+      // image-gen-google-pro wire fixture (ADR-028 M2).
       const resp = await c.image.model(flashModel).includeText().generate("x");
-      expect(receivedBody.generationConfig.responseModalities).toEqual([
-        "TEXT",
-        "IMAGE",
-      ]);
       expect(resp.text).toBe("Here is your image:");
     } finally {
       server.stop(true);
@@ -126,59 +120,10 @@ describe("Image.generate — includeText", () => {
   });
 });
 
-describe("Image.generate — Parts (canonical multimodal)", () => {
-  test("preserves caller-controlled positional ordering on the wire", async () => {
-    // ADR-008's motivating scenario: text and reference images interleaved
-    // so the model attends to the description-image pairing as intended.
-    const encoded = bytesToBase64(fakePNG);
-    const refA = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x41]);
-    const refB = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x42]);
-    let receivedBody: any;
-    const server = Bun.serve({
-      port: 0,
-      fetch: async (req) => {
-        receivedBody = await req.json();
-        return new Response(
-          JSON.stringify({
-            candidates: [
-              {
-                content: {
-                  parts: [
-                    { inlineData: { mimeType: "image/png", data: encoded } },
-                  ],
-                },
-              },
-            ],
-          }),
-        );
-      },
-    });
-    try {
-      const c = newClient(Providers.google, "k");
-      c.provider.baseUrl = `http://localhost:${server.port}`;
-      await c.image
-        .model(flashModel)
-        .text("Person:")
-        .image("image/png", refA)
-        .text("Outfit:")
-        .image("image/png", refB)
-        .generate("Generate the person wearing the outfit.");
-      const parts = receivedBody.contents[0].parts;
-      expect(parts.length).toBe(5);
-      expect(parts[0].text).toBe("Person:");
-      expect(Array.from(base64ToBytes(parts[1].inlineData.data))).toEqual(
-        Array.from(refA),
-      );
-      expect(parts[2].text).toBe("Outfit:");
-      expect(Array.from(base64ToBytes(parts[3].inlineData.data))).toEqual(
-        Array.from(refB),
-      );
-      expect(parts[4].text).toBe("Generate the person wearing the outfit.");
-    } finally {
-      server.stop(true);
-    }
-  });
-});
+// The Parts positional-ordering wire test (ADR-008) migrated to the
+// wire-conformance suite: the image-edit-google-flash fixture witnesses
+// inlineData encoding and caller-order preservation byte-for-byte
+// (ADR-028 M2, falsification class d2).
 
 describe("Image.generate — pre-flight validation", () => {
   test("rejects unsupported aspect ratio on Pro", async () => {
@@ -839,81 +784,23 @@ describe("Image.generate — xAI Grok", () => {
 // =============================================================================
 
 describe("Image.generate — plan 020 phase 2 typed knobs", () => {
-  test("OpenAI quality lands in JSON body", async () => {
-    const encoded = bytesToBase64(fakePNG);
-    let received: any = {};
-    const server = Bun.serve({
-      port: 0,
-      fetch: async (req) => {
-        received = await req.json();
-        return new Response(JSON.stringify(openaiImageResponse(encoded, 1)));
-      },
-    });
-    try {
-      const c = newClient(Providers.openai, "k");
-      c.provider.baseUrl = `http://localhost:${server.port}`;
-      await c.image.model(openaiImage2).quality("high").generate("x");
-      expect(received.quality).toBe("high");
-    } finally {
-      server.stop(true);
-    }
-  });
+  // The quality/outputFormat/background JSON-body asserts migrated to the
+  // image-gen-openai wire fixture (ADR-028 M2, falsification class d3),
+  // which sets all five generations-branch knobs on one canonical call.
+  // The count test survives for its response-side subject (n=3 -> three
+  // decoded images), with the body assert dropped.
 
-  test("OpenAI outputFormat lands in JSON body", async () => {
+  test("OpenAI count(3) yields 3 decoded images", async () => {
     const encoded = bytesToBase64(fakePNG);
-    let received: any = {};
     const server = Bun.serve({
       port: 0,
-      fetch: async (req) => {
-        received = await req.json();
-        return new Response(JSON.stringify(openaiImageResponse(encoded, 1)));
-      },
-    });
-    try {
-      const c = newClient(Providers.openai, "k");
-      c.provider.baseUrl = `http://localhost:${server.port}`;
-      await c.image.model(openaiImage2).outputFormat("webp").generate("x");
-      expect(received.output_format).toBe("webp");
-    } finally {
-      server.stop(true);
-    }
-  });
-
-  test("OpenAI background lands in JSON body", async () => {
-    const encoded = bytesToBase64(fakePNG);
-    let received: any = {};
-    const server = Bun.serve({
-      port: 0,
-      fetch: async (req) => {
-        received = await req.json();
-        return new Response(JSON.stringify(openaiImageResponse(encoded, 1)));
-      },
-    });
-    try {
-      const c = newClient(Providers.openai, "k");
-      c.provider.baseUrl = `http://localhost:${server.port}`;
-      await c.image.model(openaiImage2).background("transparent").generate("x");
-      expect(received.background).toBe("transparent");
-    } finally {
-      server.stop(true);
-    }
-  });
-
-  test("OpenAI count(3) lands as n=3 and yields 3 images", async () => {
-    const encoded = bytesToBase64(fakePNG);
-    let received: any = {};
-    const server = Bun.serve({
-      port: 0,
-      fetch: async (req) => {
-        received = await req.json();
-        return new Response(JSON.stringify(openaiImageResponse(encoded, 3)));
-      },
+      fetch: async () =>
+        new Response(JSON.stringify(openaiImageResponse(encoded, 3))),
     });
     try {
       const c = newClient(Providers.openai, "k");
       c.provider.baseUrl = `http://localhost:${server.port}`;
       const resp = await c.image.model(openaiImage2).count(3).generate("x");
-      expect(received.n).toBe(3);
       expect(resp.images.length).toBe(3);
     } finally {
       server.stop(true);

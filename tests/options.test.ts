@@ -49,41 +49,11 @@ async function captureBody(
 }
 
 describe("prompt — option setters", () => {
-  test("OpenAI: frequencyPenalty, presencePenalty, seed, stopSequences land with snake_case keys", async () => {
-    const body = await captureBody(openaiResp, async (url) => {
-      const c = newClient(Providers.openai, "sk");
-      c.provider.baseUrl = url;
-      await c.text
-        .frequencyPenalty(0.5)
-        .presencePenalty(-0.25)
-        .seed(42)
-        .stopSequences("END")
-        .prompt("hi");
-    });
-    expect(body.frequency_penalty).toBe(0.5);
-    expect(body.presence_penalty).toBe(-0.25);
-    expect(body.seed).toBe(42);
-    expect(body.stop).toEqual(["END"]);
-  });
-
-  test.each([
-    ["gpt-5", "max_completion_tokens", "max_tokens"],
-    ["gpt-5-mini", "max_completion_tokens", "max_tokens"], // glob gpt-5*
-    ["o3", "max_completion_tokens", "max_tokens"],
-    ["o4-mini", "max_completion_tokens", "max_tokens"], // glob o*
-    ["gpt-4o", "max_tokens", "max_completion_tokens"], // unaffected
-  ])(
-    "OpenAI per-model max tokens key: %s -> %s (BUG-001 / ADR-024)",
-    async (model, wantKey, wrongKey) => {
-      const body = await captureBody(openaiResp, async (url) => {
-        const c = newClient(Providers.openai, "sk");
-        c.provider.baseUrl = url;
-        await c.text.model(model).maxTokens(128).prompt("hi");
-      });
-      expect(body[wantKey]).toBe(128);
-      expect(body[wrongKey]).toBeUndefined();
-    },
-  );
+  // The OpenAI snake_case option-key test, the per-model max-tokens key
+  // table (BUG-001 / ADR-024), the Anthropic thinkingBudget nesting test,
+  // and the Google generationConfig wrapping test migrated to the
+  // wire-conformance suite (ADR-028 M2): the options-* fixtures in
+  // request_wire.test.ts witness those bodies byte-for-byte across SDKs.
 
   test("Anthropic: topK and stopSequences land at top level with their provider json keys", async () => {
     const body = await captureBody(anthropicResp, async (url) => {
@@ -95,23 +65,9 @@ describe("prompt — option setters", () => {
     expect(body.stop_sequences).toEqual(["END"]);
   });
 
-  test("Anthropic: thinkingBudget nests under thinking.* and merges extraFieldsJson", async () => {
-    const body = await captureBody(anthropicResp, async (url) => {
-      const c = newClient(Providers.anthropic, "k");
-      c.provider.baseUrl = url;
-      await c.text.thinkingBudget(1024).prompt("hi");
-    });
-    expect(body.thinking).toEqual({ budget_tokens: 1024, type: "enabled" });
-  });
-
-  test("OpenAI: reasoningEffort accepts allowed values; rejects others", async () => {
-    const body = await captureBody(openaiResp, async (url) => {
-      const c = newClient(Providers.openai, "sk");
-      c.provider.baseUrl = url;
-      await c.text.reasoningEffort("low").prompt("hi");
-    });
-    expect(body.reasoning_effort).toBe("low");
-
+  test("OpenAI: reasoningEffort rejects values outside the allowed set", async () => {
+    // The accepted-value body assert migrated to the options-openai-gpt5
+    // wire fixture; the validation rejection below is this test's subject.
     let caught: unknown;
     try {
       const c = newClient(Providers.openai, "sk");
@@ -136,20 +92,6 @@ describe("prompt — option setters", () => {
     expect((caught as ValidationError).field).toBe("frequencyPenalty");
   });
 
-  test("Google: options nest under generationConfig (wrapsOptionsIn)", async () => {
-    const body = await captureBody(googleResp, async (url) => {
-      const c = newClient(Providers.google, "k");
-      c.provider.baseUrl = url;
-      await c.text.temperature(0.7).topK(10).maxTokens(256).prompt("hi");
-    });
-    const gc = body.generationConfig as Record<string, unknown>;
-    expect(gc).toBeDefined();
-    expect(gc.temperature).toBe(0.7);
-    expect(gc.top_k).toBe(10);
-    expect(gc.max_output_tokens).toBe(256);
-    expect(body.max_output_tokens).toBeUndefined();
-    expect(body.temperature).toBeUndefined();
-  });
 });
 
 describe("usage cost (ADR-027 / BUG-005)", () => {

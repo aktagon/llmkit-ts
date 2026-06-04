@@ -253,38 +253,10 @@ describe("prompt — finishReason / finishMessage", () => {
 });
 
 describe("Text.prompt — safety settings", () => {
-  test("Google: safetySettings written as top-level wire field", async () => {
-    let receivedBody: any = {};
-    const server = Bun.serve({
-      port: 0,
-      fetch: async (req) => {
-        receivedBody = await req.json();
-        return new Response(
-          JSON.stringify({
-            candidates: [{ content: { parts: [{ text: "ok" }] } }],
-            usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
-          }),
-        );
-      },
-    });
-    try {
-      const c = newClient(Providers.google, "key");
-      c.provider.baseUrl = `http://localhost:${server.port}`;
-      await c.text
-        .safetySettings([
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-        ])
-        .prompt("hello");
-      expect(receivedBody.safetySettings).toBeDefined();
-      expect(receivedBody.safetySettings).toHaveLength(1);
-      expect(receivedBody.safetySettings[0].category).toBe(
-        "HARM_CATEGORY_HARASSMENT",
-      );
-      expect(receivedBody.safetySettings[0].threshold).toBe("BLOCK_NONE");
-    } finally {
-      server.stop(true);
-    }
-  });
+  // The Google safetySettings top-level wire-field body assert migrated to
+  // the options-google wire fixture (ADR-028 M2, falsification class f).
+  // The silently-dropped case stays: no fixture sets safetySettings on a
+  // non-Google provider, so the drop behavior is only witnessed here.
 
   test("OpenAI: safetySettings silently dropped (no wire field, no error)", async () => {
     let receivedBody: any = {};
