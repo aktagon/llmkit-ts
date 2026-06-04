@@ -30,14 +30,23 @@ function assertWireGolden(fixture: string, body: unknown): void {
   expect(body).toEqual(golden);
 }
 
-// startMock returns a server that records the outbound JSON body and answers
-// with a shape valid for both the text and agent paths.
-function startMock(): { url: string; stop: () => void; body: () => unknown } {
+// startMock returns a server that records the outbound JSON body plus request
+// headers (headers feed the in-driver asserts for load-bearing headers, e.g.
+// Anthropic's structured-output beta header) and answers with a shape valid
+// for both the text and agent paths.
+function startMock(): {
+  url: string;
+  stop: () => void;
+  body: () => unknown;
+  headers: () => Headers;
+} {
   let captured: unknown = {};
+  let capturedHeaders = new Headers();
   const server = Bun.serve({
     port: 0,
     fetch: async (req) => {
       captured = await req.json();
+      capturedHeaders = req.headers;
       return new Response(
         JSON.stringify({
           id: "msgbatch_test",
@@ -53,8 +62,16 @@ function startMock(): { url: string; stop: () => void; body: () => unknown } {
     url: `http://localhost:${server.port}`,
     stop: () => server.stop(true),
     body: () => captured,
+    headers: () => capturedHeaders,
   };
 }
+
+// Omits "required" so the goldens witness EnforceStrict normalization
+// (auto-required); carries additionalProperties:false so Google's strip is
+// witnessed too. See the Go driver comment (the minting reference).
+const canonicalStructuredOutputSchema = `{"type":"object","properties":{"color":{"type":"string"}},"additionalProperties":false}`;
+
+const canonicalStructuredOutputPrompt = "What color is a clear daytime sky?";
 
 describe("request wire — cross-capability", () => {
   test("structured output (Google) matches shared golden", async () => {
@@ -63,14 +80,43 @@ describe("request wire — cross-capability", () => {
       const c = newClient(Providers.google, "key");
       c.provider.baseUrl = m.url;
       await c.text
-        .schema(
-          `{"type":"object","properties":{"color":{"type":"string"}},"required":["color"],"additionalProperties":false}`,
-        )
-        .prompt("What color is a clear daytime sky?");
+        .schema(canonicalStructuredOutputSchema)
+        .prompt(canonicalStructuredOutputPrompt);
     } finally {
       m.stop();
     }
     assertWireGolden("structured-output-google", m.body());
+  });
+
+  test("structured output (OpenAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .schema(canonicalStructuredOutputSchema)
+        .prompt(canonicalStructuredOutputPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("structured-output-openai", m.body());
+  });
+
+  test("structured output (Anthropic) matches shared golden + beta header", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .schema(canonicalStructuredOutputSchema)
+        .prompt(canonicalStructuredOutputPrompt);
+    } finally {
+      m.stop();
+    }
+    // ADR-028 Open Questions: load-bearing headers assert in-driver. Without
+    // this beta header Anthropic rejects output_format with a 400.
+    expect(m.headers().get("anthropic-beta")).toBe("structured-outputs-2025-11-13");
+    assertWireGolden("structured-output-anthropic", m.body());
   });
 
   test("agent-path caching (Anthropic) matches shared golden", async () => {
