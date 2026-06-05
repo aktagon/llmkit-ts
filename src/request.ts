@@ -87,6 +87,7 @@ export function buildRequest(
   if (cfg.wrapsOptionsIn) {
     const optBody: Record<string, unknown> = {};
     applyOptions(
+      body,
       optBody,
       options,
       provider.name,
@@ -103,6 +104,7 @@ export function buildRequest(
     }
   } else {
     applyOptions(
+      body,
       body,
       options,
       provider.name,
@@ -250,7 +252,14 @@ export function resolveOptionKey(
   return supportedMap.get(param);
 }
 
+//
+//
+//
+//
+//
+//
 function applyOptions(
+  root: Record<string, unknown>,
   target: Record<string, unknown>,
   options: PromptOptions,
   provider: ProviderName,
@@ -269,6 +278,13 @@ function applyOptions(
         unknown
       >;
       mergeIntoParent(target, jsonKey, extras);
+    }
+    if (override?.rootExtraFieldsJson) {
+      const extras = JSON.parse(override.rootExtraFieldsJson) as Record<
+        string,
+        unknown
+      >;
+      deepMerge(root, extras);
     }
   };
   if (options.temperature !== undefined)
@@ -305,6 +321,31 @@ function setNestedField(
     cur = next as Record<string, unknown>;
   }
   cur[parts[parts.length - 1]!] = value;
+}
+
+//
+//
+//
+//
+function deepMerge(
+  dst: Record<string, unknown>,
+  src: Record<string, unknown>,
+): void {
+  for (const [k, v] of Object.entries(src)) {
+    const dv = dst[k];
+    if (
+      typeof v === "object" &&
+      v !== null &&
+      !Array.isArray(v) &&
+      typeof dv === "object" &&
+      dv !== null &&
+      !Array.isArray(dv)
+    ) {
+      deepMerge(dv as Record<string, unknown>, v as Record<string, unknown>);
+      continue;
+    }
+    dst[k] = v;
+  }
 }
 
 function mergeIntoParent(
