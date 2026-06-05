@@ -34,6 +34,7 @@ export interface OptionOverrideDef {
   jsonKey: string;
   allowedValues: readonly string[];
   extraFieldsJson: string;
+  rootExtraFieldsJson: string;
 }
 
 export const ALL_OPTIONS: readonly OptionDef[] = [
@@ -112,6 +113,10 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
     {
       key: OptionKeys.MAX_TOKENS,
       jsonKey: "max_tokens",
+    },
+    {
+      key: OptionKeys.REASONING_EFFORT,
+      jsonKey: "output_config.effort",
     },
     {
       key: OptionKeys.STOP_SEQUENCES,
@@ -853,10 +858,18 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   ],
   anthropic: [
     {
+      key: OptionKeys.REASONING_EFFORT,
+      jsonKey: "output_config.effort",
+      allowedValues: ["low", "medium", "high", "xhigh", "max"],
+      extraFieldsJson: "",
+      rootExtraFieldsJson: "{\"thinking\":{\"type\":\"adaptive\"}}",
+    },
+    {
       key: OptionKeys.THINKING_BUDGET,
       jsonKey: "thinking.budget_tokens",
       allowedValues: [],
       extraFieldsJson: "{\"type\":\"enabled\"}",
+      rootExtraFieldsJson: "",
     },
   ],
   azure: [
@@ -881,6 +894,7 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
       jsonKey: "thinkingConfig.thinkingLevel",
       allowedValues: ["low", "high"],
       extraFieldsJson: "",
+      rootExtraFieldsJson: "",
     },
   ],
   grok: [
@@ -907,6 +921,7 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
       jsonKey: "reasoning_effort",
       allowedValues: ["low", "medium", "high"],
       extraFieldsJson: "",
+      rootExtraFieldsJson: "",
     },
   ],
   openrouter: [
