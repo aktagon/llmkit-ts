@@ -7,9 +7,14 @@
 //
 //
 
-import type { File, Message, Response, SafetySetting, Tool } from "../types.ts";
+import type { Capability, File, Message, Response, SafetySetting, Tool } from "../types.ts";
 import type { ImageData, ImageResponse, MediaRef, Part } from "../image.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
+import { batchConfig } from "../providers/batch.ts";
+import { cachingConfig } from "../providers/caching.ts";
+import { imageGenConfig } from "../providers/image_gen.ts";
+import type { ProviderName } from "../providers/providers.ts";
+import { fileUploadConfig } from "../providers/upload.ts";
 import { BatchHandle } from "./batch.ts";
 
 export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, MiddlewareFn };
@@ -63,6 +68,29 @@ export class Client {
   withBaseUrl(url: string): this {
     this.provider.baseUrl = url;
     return this;
+  }
+
+
+
+
+
+
+
+
+  supports(cap: Capability): boolean {
+    const name = this.provider.name as ProviderName;
+    switch (cap) {
+      case "caching":
+        return cachingConfig(name) !== undefined;
+      case "batching":
+        return batchConfig(name) !== undefined;
+      case "file_upload":
+        return fileUploadConfig(name) !== undefined;
+      case "image_generation":
+        return imageGenConfig(name) !== undefined;
+      default:
+        return true;
+    }
   }
 }
 
