@@ -54,6 +54,10 @@ export type {
   ToolResult,
 } from "./types.ts";
 export { Providers } from "./providers/providers.ts";
+// Capability vocabulary (ADR-019 catalogue filter + ADR-030
+// Client.supports query).
+export { Capabilities } from "./types.ts";
+export type { Capability } from "./types.ts";
 export { APIError, ValidationError } from "./errors.ts";
 export type { Tool } from "./types.ts";
 export type {
