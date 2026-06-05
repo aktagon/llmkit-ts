@@ -353,7 +353,7 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
     },
     {
       key: OptionKeys.REASONING_EFFORT,
-      jsonKey: "reasoning_effort",
+      jsonKey: "thinkingConfig.thinkingLevel",
     },
     {
       key: OptionKeys.SEED,
@@ -876,6 +876,12 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   fireworks: [
   ],
   google: [
+    {
+      key: OptionKeys.REASONING_EFFORT,
+      jsonKey: "thinkingConfig.thinkingLevel",
+      allowedValues: ["low", "high"],
+      extraFieldsJson: "",
+    },
   ],
   grok: [
   ],

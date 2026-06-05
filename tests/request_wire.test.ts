@@ -11,6 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { newClient, Providers } from "../src/llmkit.ts";
+import * as wi from "./wire_inputs.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -58,13 +59,13 @@ function startMock(): {
               content: {
                 parts: [
                   { text: `{"color":"blue"}` },
-                  { inlineData: { mimeType: "image/png", data: TINY_PNG_BASE64 } },
+                  { inlineData: { mimeType: "image/png", data: wi.wireImageEditGoogleFlashImageBase64 } },
                 ],
               },
             },
           ],
           content: [{ type: "text", text: "done" }],
-          data: [{ b64_json: TINY_PNG_BASE64 }],
+          data: [{ b64_json: wi.wireImageEditGoogleFlashImageBase64 }],
           usage: { input_tokens: 2000, output_tokens: 5 },
           usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3 },
         }),
@@ -79,19 +80,14 @@ function startMock(): {
   };
 }
 
-// Omits "required" so the goldens witness EnforceStrict normalization
-// (auto-required); carries additionalProperties:false so Google's strip is
-// witnessed too. See the Go driver comment (the minting reference).
-const canonicalStructuredOutputSchema = `{"type":"object","properties":{"color":{"type":"string"}},"additionalProperties":false}`;
-
-const canonicalStructuredOutputPrompt = "What color is a clear daytime sky?";
-
-// 69-byte 1x1 RGB PNG (single brick-red pixel) — the FIXED reference image
-// for the image-edit fixture. SAME base64 constant in all four SDK drivers.
-const TINY_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4YWQEAALyAS2saifrAAAAAElFTkSuQmCC";
-
-const tinyPngBytes = Uint8Array.from(atob(TINY_PNG_BASE64), (c) => c.charCodeAt(0));
+// Canonical inputs are single-sourced from ontology/wire-fixtures.ttl (plan
+// 039) via the generated ./wire_inputs.ts consts. The schema omits "required"
+// so the goldens witness EnforceStrict normalization (auto-required); it
+// carries additionalProperties:false so Google's strip is witnessed too. See
+// the Go driver comment (the minting reference).
+const tinyPngBytes = Uint8Array.from(atob(wi.wireImageEditGoogleFlashImageBase64), (c) =>
+  c.charCodeAt(0),
+);
 
 describe("request wire — cross-capability", () => {
   test("structured output (Google) matches shared golden", async () => {
@@ -100,8 +96,8 @@ describe("request wire — cross-capability", () => {
       const c = newClient(Providers.google, "key");
       c.provider.baseUrl = m.url;
       await c.text
-        .schema(canonicalStructuredOutputSchema)
-        .prompt(canonicalStructuredOutputPrompt);
+        .schema(wi.wireStructuredOutputSchema)
+        .prompt(wi.wireStructuredOutputPrompt);
     } finally {
       m.stop();
     }
@@ -114,8 +110,8 @@ describe("request wire — cross-capability", () => {
       const c = newClient(Providers.openai, "key");
       c.provider.baseUrl = m.url;
       await c.text
-        .schema(canonicalStructuredOutputSchema)
-        .prompt(canonicalStructuredOutputPrompt);
+        .schema(wi.wireStructuredOutputSchema)
+        .prompt(wi.wireStructuredOutputPrompt);
     } finally {
       m.stop();
     }
@@ -128,8 +124,8 @@ describe("request wire — cross-capability", () => {
       const c = newClient(Providers.anthropic, "key");
       c.provider.baseUrl = m.url;
       await c.text
-        .schema(canonicalStructuredOutputSchema)
-        .prompt(canonicalStructuredOutputPrompt);
+        .schema(wi.wireStructuredOutputSchema)
+        .prompt(wi.wireStructuredOutputPrompt);
     } finally {
       m.stop();
     }
@@ -139,12 +135,58 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("structured-output-anthropic", m.body());
   });
 
+  // === Plan 039: nested-schema fixtures — the recursive normalization walk
+  // (witness-lint first catch; see the Go drivers for the rationale). ===
+
+  test("nested structured output (Google) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.google, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .schema(wi.wireStructuredOutputNestedSchema)
+        .prompt(wi.wireStructuredOutputNestedPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("structured-output-nested-google", m.body());
+  });
+
+  test("nested structured output (OpenAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .schema(wi.wireStructuredOutputNestedSchema)
+        .prompt(wi.wireStructuredOutputNestedPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("structured-output-nested-openai", m.body());
+  });
+
+  test("nested structured output (Anthropic) matches shared golden + beta header", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .schema(wi.wireStructuredOutputNestedSchema)
+        .prompt(wi.wireStructuredOutputNestedPrompt);
+    } finally {
+      m.stop();
+    }
+    expect(m.headers().get("anthropic-beta")).toBe("structured-outputs-2025-11-13");
+    assertWireGolden("structured-output-nested-anthropic", m.body());
+  });
+
   test("agent-path caching (Anthropic) matches shared golden", async () => {
     const m = startMock();
     try {
       const c = newClient(Providers.anthropic, "key");
       c.provider.baseUrl = m.url;
-      await c.agent.system("a long stable system prefix").caching().prompt("hi");
+      await c.agent.system(wi.wireCachingSystem).caching().prompt(wi.wireCachingPrompt);
     } finally {
       m.stop();
     }
@@ -156,7 +198,7 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.anthropic, "key");
       c.provider.baseUrl = m.url;
-      await c.text.system("a long stable system prefix").caching().prompt("hi");
+      await c.text.system(wi.wireCachingSystem).caching().prompt(wi.wireCachingPrompt);
     } finally {
       m.stop();
     }
@@ -168,7 +210,7 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.anthropic, "key");
       c.provider.baseUrl = m.url;
-      await c.text.system("a long stable system prefix").caching().submitBatch("hi");
+      await c.text.system(wi.wireCachingSystem).caching().submitBatch(wi.wireCachingPrompt);
     } finally {
       m.stop();
     }
@@ -184,8 +226,8 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.openai, "key");
       c.provider.baseUrl = m.url;
-      await c.text.model("gpt-5").maxTokens(1024).reasoningEffort("low").seed(42)
-        .prompt("Summarize the plot of Hamlet in two sentences.");
+      await c.text.model(wi.wireOptionsOpenaiGpt5Model).maxTokens(wi.wireOptionsOpenaiGpt5MaxTokens).reasoningEffort(wi.wireOptionsOpenaiGpt5ReasoningEffort).seed(wi.wireOptionsOpenaiGpt5Seed)
+        .prompt(wi.wireOptionsOpenaiGpt5Prompt);
     } finally {
       m.stop();
     }
@@ -197,8 +239,8 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.openai, "key");
       c.provider.baseUrl = m.url;
-      await c.text.model("o4-mini").maxTokens(1024).reasoningEffort("medium").seed(7)
-        .prompt("What is the capital of Finland?");
+      await c.text.model(wi.wireOptionsOpenaiOSeriesModel).maxTokens(wi.wireOptionsOpenaiOSeriesMaxTokens).reasoningEffort(wi.wireOptionsOpenaiOSeriesReasoningEffort).seed(wi.wireOptionsOpenaiOSeriesSeed)
+        .prompt(wi.wireOptionsOpenaiOSeriesPrompt);
     } finally {
       m.stop();
     }
@@ -210,9 +252,9 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.openai, "key");
       c.provider.baseUrl = m.url;
-      await c.text.model("gpt-4o").maxTokens(256).temperature(0.7).topP(0.9)
-        .stopSequences("END_OF_LIST").seed(42).frequencyPenalty(0.25).presencePenalty(0.15)
-        .prompt("List three primary colors, then write END_OF_LIST.");
+      await c.text.model(wi.wireOptionsOpenaiGpt4oModel).maxTokens(wi.wireOptionsOpenaiGpt4oMaxTokens).temperature(wi.wireOptionsOpenaiGpt4oTemperature).topP(wi.wireOptionsOpenaiGpt4oTopP)
+        .stopSequences(wi.wireOptionsOpenaiGpt4oStopSequences).seed(wi.wireOptionsOpenaiGpt4oSeed).frequencyPenalty(wi.wireOptionsOpenaiGpt4oFrequencyPenalty).presencePenalty(wi.wireOptionsOpenaiGpt4oPresencePenalty)
+        .prompt(wi.wireOptionsOpenaiGpt4oPrompt);
     } finally {
       m.stop();
     }
@@ -224,13 +266,28 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.anthropic, "key");
       c.provider.baseUrl = m.url;
-      await c.text.model("claude-sonnet-4-6").maxTokens(2048).thinkingBudget(1024)
-        .stopSequences("END_OF_ANSWER")
-        .prompt("Explain in one sentence why the sky appears blue at noon, then write END_OF_ANSWER.");
+      await c.text.model(wi.wireOptionsAnthropicModel).maxTokens(wi.wireOptionsAnthropicMaxTokens).thinkingBudget(wi.wireOptionsAnthropicThinkingBudget)
+        .stopSequences(wi.wireOptionsAnthropicStopSequences)
+        .prompt(wi.wireOptionsAnthropicPrompt);
     } finally {
       m.stop();
     }
     assertWireGolden("options-anthropic", m.body());
+  });
+
+  test("options (Anthropic plain, thinking off) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.text.model(wi.wireOptionsAnthropicPlainModel).maxTokens(wi.wireOptionsAnthropicPlainMaxTokens)
+        .temperature(wi.wireOptionsAnthropicPlainTemperature).topK(wi.wireOptionsAnthropicPlainTopK)
+        .stopSequences(wi.wireOptionsAnthropicPlainStopSequences)
+        .prompt(wi.wireOptionsAnthropicPlainPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("options-anthropic-plain", m.body());
   });
 
   test("options (Google gemini-3.5) matches shared golden", async () => {
@@ -238,10 +295,11 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.google, "key");
       c.provider.baseUrl = m.url;
-      await c.text.model("gemini-3.5-flash").maxTokens(1024).temperature(0.7).topP(0.9).topK(40)
-        .stopSequences("END_OF_ANSWER").seed(7)
-        .safetySettings([{ category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }])
-        .prompt("Name the two largest moons of Jupiter, then write END_OF_ANSWER.");
+      await c.text.model(wi.wireOptionsGoogleModel).maxTokens(wi.wireOptionsGoogleMaxTokens).temperature(wi.wireOptionsGoogleTemperature).topP(wi.wireOptionsGoogleTopP).topK(wi.wireOptionsGoogleTopK)
+        .stopSequences(wi.wireOptionsGoogleStopSequences).seed(wi.wireOptionsGoogleSeed)
+        .reasoningEffort(wi.wireOptionsGoogleReasoningEffort)
+        .safetySettings([{ category: wi.wireOptionsGoogleSafetyCategory, threshold: wi.wireOptionsGoogleSafetyThreshold }])
+        .prompt(wi.wireOptionsGooglePrompt);
     } finally {
       m.stop();
     }
@@ -253,8 +311,8 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.google, "key");
       c.provider.baseUrl = m.url;
-      await c.text.model("gemini-2.5-flash").maxTokens(1024).temperature(0.5).thinkingBudget(512)
-        .prompt("How many planets orbit the Sun? Answer with a number.");
+      await c.text.model(wi.wireOptionsGoogleGemini25Model).maxTokens(wi.wireOptionsGoogleGemini25MaxTokens).temperature(wi.wireOptionsGoogleGemini25Temperature).thinkingBudget(wi.wireOptionsGoogleGemini25ThinkingBudget)
+        .prompt(wi.wireOptionsGoogleGemini25Prompt);
     } finally {
       m.stop();
     }
@@ -269,8 +327,8 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.google, "key");
       c.provider.baseUrl = m.url;
-      await c.image.model("gemini-3.1-flash-image-preview").aspectRatio("16:9").imageSize("2K")
-        .generate("A lighthouse on a rocky coastline at dusk");
+      await c.image.model(wi.wireImageGenGoogleFlashModel).aspectRatio(wi.wireImageGenGoogleFlashAspectRatio).imageSize(wi.wireImageGenGoogleFlashImageSize)
+        .generate(wi.wireImageGenGoogleFlashPrompt);
     } finally {
       m.stop();
     }
@@ -282,9 +340,9 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.google, "key");
       c.provider.baseUrl = m.url;
-      await c.image.model("gemini-3-pro-image-preview").aspectRatio("4:3").imageSize("1K")
+      await c.image.model(wi.wireImageGenGoogleProModel).aspectRatio(wi.wireImageGenGoogleProAspectRatio).imageSize(wi.wireImageGenGoogleProImageSize)
         .includeText()
-        .generate("A watercolor map of the Baltic Sea");
+        .generate(wi.wireImageGenGoogleProPrompt);
     } finally {
       m.stop();
     }
@@ -296,9 +354,9 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.openai, "key");
       c.provider.baseUrl = m.url;
-      await c.image.model("gpt-image-2").imageSize("1024x1024").quality("low")
-        .outputFormat("png").background("opaque").count(1)
-        .generate("A minimalist line drawing of a sailboat");
+      await c.image.model(wi.wireImageGenOpenaiModel).imageSize(wi.wireImageGenOpenaiImageSize).quality(wi.wireImageGenOpenaiQuality)
+        .outputFormat(wi.wireImageGenOpenaiOutputFormat).background(wi.wireImageGenOpenaiBackground).count(wi.wireImageGenOpenaiCount)
+        .generate(wi.wireImageGenOpenaiPrompt);
     } finally {
       m.stop();
     }
@@ -310,8 +368,8 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.google, "key");
       c.provider.baseUrl = m.url;
-      await c.image.model("gemini-3.1-flash-image-preview").image("image/png", tinyPngBytes)
-        .generate("Recolor the square to deep blue");
+      await c.image.model(wi.wireImageEditGoogleFlashModel).image(wi.wireImageEditGoogleFlashImageMime, tinyPngBytes)
+        .generate(wi.wireImageEditGoogleFlashPrompt);
     } finally {
       m.stop();
     }
