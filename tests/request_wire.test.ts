@@ -290,6 +290,21 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("options-anthropic-plain", m.body());
   });
 
+  test("options (Anthropic adaptive thinking) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.text.model(wi.wireOptionsAnthropicAdaptiveModel).maxTokens(wi.wireOptionsAnthropicAdaptiveMaxTokens)
+        .reasoningEffort(wi.wireOptionsAnthropicAdaptiveReasoningEffort)
+        .stopSequences(wi.wireOptionsAnthropicAdaptiveStopSequences)
+        .prompt(wi.wireOptionsAnthropicAdaptivePrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("options-anthropic-adaptive", m.body());
+  });
+
   test("options (Google gemini-3.5) matches shared golden", async () => {
     const m = startMock();
     try {
