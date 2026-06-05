@@ -87,6 +87,7 @@ export function buildRequest(
   if (cfg.wrapsOptionsIn) {
     const optBody: Record<string, unknown> = {};
     applyOptions(
+      body,
       optBody,
       options,
       provider.name,
@@ -103,6 +104,7 @@ export function buildRequest(
     }
   } else {
     applyOptions(
+      body,
       body,
       options,
       provider.name,
@@ -250,7 +252,14 @@ export function resolveOptionKey(
   return supportedMap.get(param);
 }
 
+// applyOptions writes generation parameters onto target (the option object —
+// the body itself, or the wrapsOptionsIn wrapper). root is the true body
+// root: an override's rootExtraFieldsJson (ADR-029 THK-003) deep-merges
+// there, for options that imply a sibling object elsewhere in the body
+// (e.g. {"thinking":{"type":"adaptive"}} alongside Anthropic's
+// output_config.effort).
 function applyOptions(
+  root: Record<string, unknown>,
   target: Record<string, unknown>,
   options: PromptOptions,
   provider: ProviderName,
@@ -269,6 +278,13 @@ function applyOptions(
         unknown
       >;
       mergeIntoParent(target, jsonKey, extras);
+    }
+    if (override?.rootExtraFieldsJson) {
+      const extras = JSON.parse(override.rootExtraFieldsJson) as Record<
+        string,
+        unknown
+      >;
+      deepMerge(root, extras);
     }
   };
   if (options.temperature !== undefined)
@@ -305,6 +321,31 @@ function setNestedField(
     cur = next as Record<string, unknown>;
   }
   cur[parts[parts.length - 1]!] = value;
+}
+
+// deepMerge merges src into dst recursively: when both sides hold an object
+// at the same key the objects merge, otherwise src overwrites. Used for
+// rootExtraFieldsJson (ADR-029) so e.g. {"thinking":{"type":"adaptive"}}
+// composes with an existing thinking object rather than replacing it.
+function deepMerge(
+  dst: Record<string, unknown>,
+  src: Record<string, unknown>,
+): void {
+  for (const [k, v] of Object.entries(src)) {
+    const dv = dst[k];
+    if (
+      typeof v === "object" &&
+      v !== null &&
+      !Array.isArray(v) &&
+      typeof dv === "object" &&
+      dv !== null &&
+      !Array.isArray(dv)
+    ) {
+      deepMerge(dv as Record<string, unknown>, v as Record<string, unknown>);
+      continue;
+    }
+    dst[k] = v;
+  }
 }
 
 function mergeIntoParent(
