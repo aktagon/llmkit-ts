@@ -24,6 +24,21 @@ import type {
 } from "./types.ts";
 import type { Message, ToolCall, ToolResult } from "./structs.ts";
 
+//
+//
+//
+//
+export function resolveModel(provider: Provider, cfg: ProviderConfig): string {
+  if (provider.model) return provider.model;
+  if (!cfg.defaultModel) {
+    throw new ValidationError(
+      "model",
+      `no model chosen and "${provider.name}" declares no default; pick one (models.live() lists what the daemon serves)`,
+    );
+  }
+  return cfg.defaultModel;
+}
+
 export function buildRequest(
   provider: Provider,
   request: PromptRequest,
@@ -36,7 +51,7 @@ export function buildRequest(
   headersOut?: Record<string, string>,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
-  const model = provider.model || cfg.defaultModel;
+  const model = resolveModel(provider, cfg);
 
   if (cfg.modelInBody) {
     body.model = model;
@@ -782,7 +797,7 @@ export function buildUrl(
   provider: Provider,
   cfg: ProviderConfig,
 ): string {
-  const model = provider.model || cfg.defaultModel;
+  const model = resolveModel(provider, cfg);
   let url = base.replaceAll("{model}", model);
   if (cfg.regionEnvVar) {
     const region = process.env[cfg.regionEnvVar] || "";

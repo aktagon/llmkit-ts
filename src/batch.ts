@@ -7,7 +7,12 @@ import {
 import { APIError, ValidationError } from "./errors.ts";
 import { extractPath, extractIntPath, extractFloatPath } from "./paths.ts";
 import { applyCaching, parseCacheUsage } from "./caching.ts";
-import { buildAuthHeaders, buildRequest, validateOptions } from "./request.ts";
+import {
+  buildAuthHeaders,
+  buildRequest,
+  resolveModel,
+  validateOptions,
+} from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import type {
@@ -65,7 +70,7 @@ export async function submitBatch(
     op: "batch_submit",
     phase: "pre",
     provider: provider.name,
-    model: provider.model || cfg.defaultModel,
+    model: resolveModel(provider, cfg),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
