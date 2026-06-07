@@ -12,6 +12,7 @@ import {
 } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractIntPath, extractPath } from "./paths.ts";
+import { resolveModel } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
 import type { Provider, PromptOptions } from "./types.ts";
@@ -104,14 +105,14 @@ async function applyResource(
     op: "cache_create",
     phase: "pre",
     provider: provider.name,
-    model: provider.model || cfg.defaultModel,
+    model: resolveModel(provider, cfg),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
   const start = performance.now();
 
   try {
-    const model = provider.model || cfg.defaultModel;
+    const model = resolveModel(provider, cfg);
     const ttlSeconds = options.cacheTTL ?? Number(cc.defaultTtl || "0");
     const createBody: Record<string, unknown> = {
       model: `models/${model}`,
