@@ -14,6 +14,7 @@ import {
   buildRequest,
   executeRequest,
   isBedrock,
+  resolveModel,
   toolCallInput,
   validateOptions,
 } from "./request.ts";
@@ -114,7 +115,7 @@ export class Agent {
       cost: 0,
     };
 
-    const model = this.provider.model || cfg.defaultModel;
+    const model = resolveModel(this.provider, cfg);
     const mw = this.options.middleware;
 
     for (let i = 0; i < maxIters; i++) {
