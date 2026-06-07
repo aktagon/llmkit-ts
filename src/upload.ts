@@ -2,7 +2,7 @@ import { PROVIDERS } from "./providers/providers.ts";
 import { fileUploadConfig } from "./providers/upload.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractPath } from "./paths.ts";
-import { buildAuthHeaders } from "./request.ts";
+import { buildAuthHeaders, resolveModel } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import type { File as LLMFile, Provider } from "./types.ts";
@@ -36,7 +36,7 @@ export async function uploadFile(
     op: "upload",
     phase: "pre",
     provider: provider.name,
-    model: provider.model || cfg.defaultModel,
+    model: resolveModel(provider, cfg),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
