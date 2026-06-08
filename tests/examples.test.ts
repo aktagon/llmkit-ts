@@ -15,7 +15,7 @@
 // Mock servers reuse the `Bun.serve` pattern from tests/builders.test.ts.
 
 import { describe, test } from "bun:test";
-import { anthropic, google, openai } from "../src/builders/index.ts";
+import { anthropic, google, openai, vertex } from "../src/builders/index.ts";
 import { main as quickstartMain } from "../examples/quickstart.ts";
 import { main as agentMain } from "../examples/agent.ts";
 import { main as streamingMain } from "../examples/streaming.ts";
@@ -23,6 +23,10 @@ import { main as imageMain } from "../examples/image.ts";
 import { main as uploadMain } from "../examples/upload.ts";
 import { main as middlewareMain } from "../examples/middleware.ts";
 import { main as catalogueMain } from "../examples/catalogue.ts";
+import { main as musicMain } from "../examples/music.ts";
+import { main as batchMain } from "../examples/batch.ts";
+import { main as cachingMain } from "../examples/caching.ts";
+import { main as reasoningMain } from "../examples/reasoning.ts";
 
 // ---------- mock servers ----------------------------------------------------
 
@@ -110,6 +114,91 @@ const anthropicModels = {
   has_more: false,
   last_id: "claude-opus-4-7",
 };
+
+const anthropicCachingOk = {
+  content: [{ type: "text", text: "ok" }],
+  usage: {
+    input_tokens: 10,
+    output_tokens: 2,
+    cache_creation_input_tokens: 100,
+    cache_read_input_tokens: 50,
+  },
+  stop_reason: "end_turn",
+};
+
+const openaiReasoningOk = {
+  choices: [{ message: { content: "30, 60, 90 — three of them" } }],
+  usage: {
+    prompt_tokens: 40,
+    completion_tokens: 25,
+    completion_tokens_details: { reasoning_tokens: 17 },
+  },
+};
+
+function vertexMusicResponse() {
+  // base64 of a tiny WAV header stub
+  const bytes = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x01, 0x02, 0x03]);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  const encoded = btoa(bin);
+  return {
+    predictions: [{ audioContent: encoded, mimeType: "audio/wav" }],
+  };
+}
+
+// Anthropic batch is a three-hop flow (submit -> poll -> results), so it
+// needs a path-routing server rather than a single canned body.
+function startAnthropicBatchServer(): { url: string; stop: () => void } {
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+      await req.text();
+      if (
+        req.method === "POST" &&
+        url.pathname === "/v1/messages/batches"
+      ) {
+        return new Response(
+          JSON.stringify({ id: "batch_xyz", processing_status: "ended" }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.pathname === "/v1/messages/batches/batch_xyz") {
+        return new Response(
+          JSON.stringify({ id: "batch_xyz", processing_status: "ended" }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.pathname === "/v1/messages/batches/batch_xyz/results") {
+        const lines = [
+          { custom_id: "req-0", text: "bonjour" },
+          { custom_id: "req-1", text: "hola" },
+          { custom_id: "req-2", text: "hallo" },
+        ]
+          .map((r) =>
+            JSON.stringify({
+              custom_id: r.custom_id,
+              result: {
+                message: {
+                  content: [{ type: "text", text: r.text }],
+                  usage: { input_tokens: 1, output_tokens: 1 },
+                },
+              },
+            }),
+          )
+          .join("\n");
+        return new Response(lines, {
+          headers: { "content-type": "application/x-ndjson" },
+        });
+      }
+      return new Response("unexpected", { status: 500 });
+    },
+  });
+  return {
+    url: `http://localhost:${server.port}`,
+    stop: () => server.stop(true),
+  };
+}
 
 const anthropicSse = [
   "event: content_block_delta",
@@ -236,6 +325,59 @@ describe("examples — runnable snippets stay aligned with the API", () => {
       await catalogueMain(anthropic("k"));
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("music runs", async () => {
+    const server = startJsonServer(vertexMusicResponse());
+    const cwd = process.cwd();
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const pathMod = await import("node:path");
+    const dir = await fs.mkdtemp(pathMod.join(os.tmpdir(), "llmkit-ex-mus-"));
+    process.chdir(dir);
+    try {
+      const c = vertex("k");
+      c.provider.baseUrl = server.url;
+      await musicMain(c);
+      await fs.access(pathMod.join(dir, "out.wav"));
+    } finally {
+      process.chdir(cwd);
+      await fs.rm(dir, { recursive: true, force: true });
+      server.stop();
+    }
+  });
+
+  test("batch runs", async () => {
+    const server = startAnthropicBatchServer();
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      await batchMain(c);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("caching runs", async () => {
+    const server = startJsonServer(anthropicCachingOk);
+    try {
+      const c = anthropic("k");
+      c.provider.baseUrl = server.url;
+      await cachingMain(c);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("reasoning runs", async () => {
+    const server = startJsonServer(openaiReasoningOk);
+    try {
+      const c = openai("k");
+      c.provider.baseUrl = server.url;
+      await reasoningMain(c);
+    } finally {
+      server.stop();
     }
   });
 });
