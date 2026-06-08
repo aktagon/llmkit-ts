@@ -304,8 +304,9 @@ The `.path()` branch dynamically loads `node:fs/promises` and is unavailable in 
 
 ### Batches
 
+<!-- llmkit:include ts/examples/batch.ts#batch -->
 ```ts
-const results = await c.text
+const results = await client.text
   .system("Be brief")
   .batch(
     "Translate hello to French",
