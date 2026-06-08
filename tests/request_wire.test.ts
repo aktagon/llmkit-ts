@@ -54,6 +54,7 @@ function startMock(): {
       return new Response(
         JSON.stringify({
           id: "msgbatch_test",
+          request_id: "vid_test", // VID-007: Grok video-submit handle id
           candidates: [
             {
               content: {
@@ -389,5 +390,19 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("image-edit-google-flash", m.body());
+  });
+
+  // ADR-034 / VID-007: video-submit body {model, prompt}. The async
+  // VideoHandle is discarded — only the outbound submit bytes are asserted.
+  test("video submit (Grok) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.grok, "key");
+      c.provider.baseUrl = m.url;
+      await c.video.model(wi.wireVideoGrokModel).submit(wi.wireVideoGrokPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-grok", m.body());
   });
 });

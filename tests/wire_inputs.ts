@@ -80,3 +80,5 @@ export const wireStructuredOutputPrompt = "What color is a clear daytime sky?";
 export const wireStructuredOutputSchema = "{\"type\":\"object\",\"properties\":{\"color\":{\"type\":\"string\"}},\"additionalProperties\":false}";
 export const wireStructuredOutputNestedPrompt = "Name a coastal city in Finland where a harbor pilot might reside. Reply as structured data.";
 export const wireStructuredOutputNestedSchema = "{\"type\":\"object\",\"properties\":{\"residence\":{\"type\":\"object\",\"properties\":{\"addresses\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}}},\"additionalProperties\":false}},\"additionalProperties\":false}";
+export const wireVideoGrokModel = "grok-imagine-video";
+export const wireVideoGrokPrompt = "A drone shot sweeping over snow-capped alpine peaks at sunrise";
