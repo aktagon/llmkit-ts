@@ -9,6 +9,7 @@ export {
   Client,
   Text,
   Image,
+  Music,
   Agent,
   Upload,
   ai21,
@@ -68,6 +69,12 @@ export type {
   Part,
   ImageOptions,
 } from "./image.ts";
+export type {
+  MusicRequest,
+  MusicResponse,
+  AudioData,
+  MusicOptions,
+} from "./music.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export {
