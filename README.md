@@ -89,12 +89,22 @@ Capability-scoped fields (`cacheRead`, `cacheWrite`, `reasoning`) are zero when 
 
 ### Stream — chunks + trailing handle
 
+<!-- llmkit:include ts/examples/streaming.ts#stream -->
 ```ts
-const stream = c.text.system("Be brief").stream("Tell me a joke");
+const stream = client.text
+  .system("Be brief")
+  .stream("Tell me a one-line joke");
 for await (const chunk of stream) {
   process.stdout.write(chunk);
 }
-console.log("\n", stream.response()?.usage);
+process.stdout.write("\n");
+const final = stream.response();
+if (final !== null) {
+  console.log(
+    `input=${final.usage.input} output=${final.usage.output} ` +
+      `finishReason=${final.finishReason ?? ""}`,
+  );
+}
 ```
 
 `TextStream` implements `AsyncIterable<string>`. After iteration completes, `stream.response()` returns the final `Response` (with token counts) and `stream.error()` returns any terminal error. Handles both Anthropic-style typed events and OpenAI-style data-only frames internally.
