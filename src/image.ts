@@ -23,12 +23,17 @@ export type { MediaRef } from "./structs.ts";
 import type { MediaRef } from "./structs.ts";
 
 /**
- * Universal multimodal input atom. Discriminated union: a Part is either
- * a text part or an image part. Construct via object literal — typed-builder
- * accumulators (`c.text.text(s)`, `c.image.image(m, b)`, ...) are the
- * canonical user-facing path.
+ * Universal multimodal input atom. Discriminated union: a Part is a text
+ * part, an image part, or a lyrics part (a text payload tagged as song
+ * lyrics, used only by music generation — ADR-033). Construct via object
+ * literal — typed-builder accumulators (`c.text.text(s)`,
+ * `c.image.image(m, b)`, `c.music.lyrics(s)`, ...) are the canonical
+ * user-facing path.
  */
-export type Part = { text: string } | { image: MediaRef };
+export type Part =
+  | { text: string }
+  | { image: MediaRef }
+  | { lyrics: string };
 
 export type { ImageData } from "./structs.ts";
 import type { ImageData } from "./structs.ts";
@@ -621,7 +626,7 @@ function buildImageBody(
           data: bytesToBase64(p.image.bytes),
         },
       });
-    } else {
+    } else if ("text" in p) {
       wire.push({ text: p.text });
     }
   }
