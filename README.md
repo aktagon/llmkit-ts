@@ -37,7 +37,7 @@ const resp = await c.text
   .prompt("Why is the sky blue?");
 
 console.log(resp.text);
-console.log(resp.tokens.input, resp.tokens.output);
+console.log(resp.usage.input, resp.usage.output);
 ```
 
 `c.text`, `c.image`, `c.agent`, and `c.upload` are fields on the `Client` — access them without parentheses. Chain methods (`.system(...)`, `.temperature(...)`) clone the builder and return the clone, so a forked chain shares no state with its parent. The typed builder is the only public surface as of v1.0.0. One mental model — `client.<capability>.<chain>.<terminal>` — across every capability.
@@ -78,11 +78,11 @@ const resp = await c.text
   .prompt("What is 2+2?");
 
 console.log(resp.text); // "4"
-console.log(resp.tokens.input); // prompt tokens
-console.log(resp.tokens.output); // completion tokens
-console.log(resp.tokens.cacheRead); // tokens served from cache
-console.log(resp.tokens.cacheWrite); // tokens written to cache (Anthropic explicit)
-console.log(resp.tokens.reasoning); // internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
+console.log(resp.usage.input); // prompt tokens
+console.log(resp.usage.output); // completion tokens
+console.log(resp.usage.cacheRead); // tokens served from cache
+console.log(resp.usage.cacheWrite); // tokens written to cache (Anthropic explicit)
+console.log(resp.usage.reasoning); // internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
 ```
 
 Capability-scoped fields (`cacheRead`, `cacheWrite`, `reasoning`) are zero when the provider doesn't report them separately.
@@ -94,7 +94,7 @@ const stream = c.text.system("Be brief").stream("Tell me a joke");
 for await (const chunk of stream) {
   process.stdout.write(chunk);
 }
-console.log("\n", stream.response()?.tokens);
+console.log("\n", stream.response()?.usage);
 ```
 
 `TextStream` implements `AsyncIterable<string>`. After iteration completes, `stream.response()` returns the final `Response` (with token counts) and `stream.error()` returns any terminal error. Handles both Anthropic-style typed events and OpenAI-style data-only frames internally.
@@ -218,7 +218,7 @@ const resp = await c.image
   .generate("A red circle");
 ```
 
-Edit-mode (single image into `instances[0].image`) and inpainting (`.mask(mime, bytes)` into `instances[0].mask.image`) work the same way. Imagen-specific knobs like `negativePrompt` and `safetySetting` are reachable through `.extraFields(...)` — they spread into the request's `parameters` block. Vertex's `:predict` response does not carry token counts; `resp.tokens` stays zero.
+Edit-mode (single image into `instances[0].image`) and inpainting (`.mask(mime, bytes)` into `instances[0].mask.image`) work the same way. Imagen-specific knobs like `negativePrompt` and `safetySetting` are reachable through `.extraFields(...)` — they spread into the request's `parameters` block. Vertex's `:predict` response does not carry token counts; `resp.usage` stays zero.
 
 ### Music — text-to-music
 
@@ -324,7 +324,7 @@ results.forEach((r) => console.log(r.text));
 await c.text.system(longSysPrompt).caching().prompt("...");
 
 // OpenAI — automatic server-side caching (caching() is a hint; reads
-// surface in resp.tokens.cacheRead regardless):
+// surface in resp.usage.cacheRead regardless):
 await c.text.system(longSysPrompt).caching().prompt("...");
 
 // Google — pre-flight POST creates a cachedContents resource, then the
