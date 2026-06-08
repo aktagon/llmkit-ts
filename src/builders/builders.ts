@@ -17,9 +17,10 @@ import { imageGenConfig } from "../providers/image_gen.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import { fileUploadConfig } from "../providers/upload.ts";
 import { BatchHandle } from "./batch.ts";
+import { VideoHandle } from "./video.ts";
 
 export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, AudioData, MusicResponse, MiddlewareFn };
-export { BatchHandle };
+export { BatchHandle, VideoHandle };
 
 export interface ProviderConfig {
   name: string;
@@ -39,6 +40,7 @@ import { musicGenerate } from "./music.ts";
 import { textStream } from "./stream.ts";
 import { textPrompt } from "./text.ts";
 import { uploadRun } from "./upload.ts";
+import { videoSubmit } from "./video.ts";
 import type { AgentState } from "./agent.ts";
 import type { TextStream } from "./stream.ts";
 
@@ -49,6 +51,7 @@ export class Client {
   text: Text;
   image: Image;
   music: Music;
+  video: Video;
   agent: Agent;
   upload: Upload;
   models: Models;
@@ -59,6 +62,7 @@ export class Client {
     this.text = new Text(this);
     this.image = new Image(this);
     this.music = new Music(this);
+    this.video = new Video(this);
     this.agent = new Agent(this);
     this.upload = new Upload(this);
     this.models = new Models(this);
@@ -257,6 +261,26 @@ export class Music {
   text(s: string): Music { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   async generate(msg: string): Promise<MusicResponse> {
     return musicGenerate(this, msg);
+  }
+}
+
+//
+
+export class Video {
+ client: Client;
+ _middleware: MiddlewareFn[] = [];
+ _model: string = "";
+ _raw: boolean = false;
+ _parts: Part[] = [];
+
+  constructor(client: Client) { this.client = client; }
+
+  addMiddleware(...fns: MiddlewareFn[]): Video { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  model(name: string): Video { const out = clone(this); out._model = name; return out; }
+  raw(): Video { const out = clone(this); out._raw = true; return out; }
+  text(s: string): Video { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
+  async submit(msg: string): Promise<VideoHandle> {
+    return videoSubmit(this, msg);
   }
 }
 

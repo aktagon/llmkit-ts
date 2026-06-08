@@ -331,3 +331,78 @@ export interface ToolResult {
 
   content: string;
 }
+
+
+
+
+export interface VideoData {
+
+
+
+  mimeType: string;
+
+
+
+
+  url?: string;
+
+
+
+
+  bytes?: Uint8Array;
+
+
+
+
+  durationSeconds?: number;
+}
+
+
+
+
+export interface VideoHandle {
+
+
+
+  id: string;
+
+
+
+
+  provider: Provider;
+
+
+
+
+  raw?: boolean;
+}
+
+
+
+
+export interface VideoResponse {
+
+
+
+  videos: VideoData[];
+
+
+
+
+  usage: Usage;
+
+
+
+
+  finishReason?: string;
+
+
+
+
+  finishMessage?: string;
+
+
+
+
+  raw?: unknown;
+}
