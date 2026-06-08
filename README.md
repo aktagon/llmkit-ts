@@ -234,11 +234,20 @@ Edit-mode (single image into `instances[0].image`) and inpainting (`.mask(mime, 
 
 Generate audio from a text prompt via the typed-builder chain on `c.music`. Decoded audio bytes come back on `resp.audio[0].bytes`. Models that support vocals take lyrics via `.lyrics(...)` (use section tags like `[verse]`); instrumental-only models reject lyrics before the request is sent.
 
+<!-- llmkit:include ts/examples/music.ts#music -->
 ```typescript
-const r = await c.music.model("lyria-002").generate("a calm instrumental, warm piano and soft strings");
-await Bun.write("out.wav", r.audio[0].bytes);
+const r = await client.music
+  .model("lyria-002")
+  .generate("a calm instrumental, warm piano and soft strings");
 
-// with lyrics:
+const first = r.audio[0];
+if (!first) throw new Error("no audio returned");
+await Bun.write("out.wav", first.bytes);
+```
+
+Models with vocals take lyrics via `.lyrics(...)`:
+
+```typescript
 const song = await c.music.model("lyria-3-pro-preview").lyrics("[verse] neon lights").generate("dream pop, 90 bpm");
 ```
 
