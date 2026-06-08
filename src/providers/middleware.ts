@@ -22,6 +22,7 @@ export type MiddlewareOp =
   | "upload"
   | "batch_submit"
   | "image_generation"
+  | "music_generation"
   | "models_list";
 
 export interface Event {

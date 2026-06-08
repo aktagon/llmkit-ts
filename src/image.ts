@@ -28,7 +28,12 @@ import type { MediaRef } from "./structs.ts";
 
 
 
-export type Part = { text: string } | { image: MediaRef };
+
+
+export type Part =
+  | { text: string }
+  | { image: MediaRef }
+  | { lyrics: string };
 
 export type { ImageData } from "./structs.ts";
 import type { ImageData } from "./structs.ts";
@@ -621,7 +626,7 @@ function buildImageBody(
           data: bytesToBase64(p.image.bytes),
         },
       });
-    } else {
+    } else if ("text" in p) {
       wire.push({ text: p.text });
     }
   }

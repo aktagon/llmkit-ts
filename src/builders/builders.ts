@@ -9,6 +9,7 @@
 
 import type { Capability, File, Message, Response, SafetySetting, Tool } from "../types.ts";
 import type { ImageData, ImageResponse, MediaRef, Part } from "../image.ts";
+import type { AudioData, MusicResponse } from "../music.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { batchConfig } from "../providers/batch.ts";
 import { cachingConfig } from "../providers/caching.ts";
@@ -17,7 +18,7 @@ import type { ProviderName } from "../providers/providers.ts";
 import { fileUploadConfig } from "../providers/upload.ts";
 import { BatchHandle } from "./batch.ts";
 
-export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, MiddlewareFn };
+export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, AudioData, MusicResponse, MiddlewareFn };
 export { BatchHandle };
 
 export interface ProviderConfig {
@@ -34,6 +35,7 @@ import { saveHistory, loadHistory } from "../wire.ts";
 import { agentMessages, agentPrompt, agentReset } from "./agent.ts";
 import { textBatch, textSubmitBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
+import { musicGenerate } from "./music.ts";
 import { textStream } from "./stream.ts";
 import { textPrompt } from "./text.ts";
 import { uploadRun } from "./upload.ts";
@@ -46,6 +48,7 @@ export class Client {
   provider: ProviderConfig;
   text: Text;
   image: Image;
+  music: Music;
   agent: Agent;
   upload: Upload;
   models: Models;
@@ -55,6 +58,7 @@ export class Client {
     this.provider = { name, apiKey };
     this.text = new Text(this);
     this.image = new Image(this);
+    this.music = new Music(this);
     this.agent = new Agent(this);
     this.upload = new Upload(this);
     this.models = new Models(this);
@@ -232,6 +236,27 @@ export class Image {
   extraFields(extras: Record<string, unknown>): Image { const out = clone(this); out._extraFields = { ...(this._extraFields ?? {}), ...extras }; return out; }
   async generate(msg: string): Promise<ImageResponse> {
     return imageGenerate(this, msg);
+  }
+}
+
+//
+
+export class Music {
+ client: Client;
+ _middleware: MiddlewareFn[] = [];
+ _parts: Part[] = [];
+ _model: string = "";
+ _raw: boolean = false;
+
+  constructor(client: Client) { this.client = client; }
+
+  addMiddleware(...fns: MiddlewareFn[]): Music { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  lyrics(s: string): Music { const out = clone(this); out._parts = [...out._parts, { lyrics: s }]; return out; }  // ordered
+  model(name: string): Music { const out = clone(this); out._model = name; return out; }
+  raw(): Music { const out = clone(this); out._raw = true; return out; }
+  text(s: string): Music { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
+  async generate(msg: string): Promise<MusicResponse> {
+    return musicGenerate(this, msg);
   }
 }
 

@@ -5,6 +5,21 @@ import type { Capability, Provider, Usage } from "./types.ts";
 
 
 
+export interface AudioData {
+
+
+
+  mimeType: string;
+
+
+
+
+  bytes: Uint8Array;
+}
+
+
+
+
 export interface BatchHandle {
 
 
@@ -195,6 +210,41 @@ export interface ModelInfo {
 
 
   created?: number;
+
+
+
+
+  raw?: unknown;
+}
+
+
+
+
+export interface MusicResponse {
+
+
+
+  audio: AudioData[];
+
+
+
+
+  text: string;
+
+
+
+
+  usage: Usage;
+
+
+
+
+  finishReason?: string;
+
+
+
+
+  finishMessage?: string;
 
 
 
