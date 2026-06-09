@@ -224,10 +224,30 @@ async function dispatchVideoSubmit(
   model: string,
   parts: Part[],
 ): Promise<string> {
+  // The submit-response field holding the poll handle id is the only
+  // per-shape difference for the {model, prompt} body. Exhaustive over the
+  // wire-shape union: a future shape added to the union without a runtime arm
+  // is a compile error here, not a silent Grok fallthrough.
+  let idField: string;
+  switch (vgCfg.wireShape) {
+    case "VideoGrok":
+      idField = "request_id";
+      break;
+    case "VideoZhipu":
+      idField = "id";
+      break;
+    default: {
+      const _exhaustive: never = vgCfg.wireShape;
+      throw new APIError(
+        0,
+        `video submit: unsupported wire shape ${String(_exhaustive)}`,
+        false,
+      );
+    }
+  }
   const body = { model, prompt: joinPromptText(parts) };
   const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, headers);
   const raw = JSON.parse(respText) as Record<string, unknown>;
-  const idField = vgCfg.wireShape === "VideoZhipu" ? "id" : "request_id";
   const id = typeof raw[idField] === "string" ? (raw[idField] as string) : "";
   if (!id) {
     throw new APIError(0, `video submit: empty ${idField}`, false);
@@ -258,37 +278,50 @@ function parseVideoPoll(
   vgCfg: VideoGenDef,
   raw: unknown,
 ): VideoResponse | null {
-  if (vgCfg.wireShape === "VideoZhipu") {
-    const root = raw as { task_status?: unknown };
-    const status =
-      typeof root.task_status === "string" ? root.task_status : "";
-    switch (status) {
-      case "SUCCESS":
-        return videoResultFromZhipu(vgCfg, raw);
-      case "FAIL":
-        throw new APIError(0, "video generation failed", false);
-      default:
-        return null; // PROCESSING (or any non-terminal status)
-    }
-  }
-
-  // VideoGrok
-  const root = raw as { status?: unknown; error?: unknown };
-  const status = typeof root.status === "string" ? root.status : "";
-  switch (status) {
-    case "done":
-      return videoResultFromGrok(vgCfg, raw);
-    case "failed":
-    case "expired": {
-      let msg: string = status;
-      const errObj = root.error as { message?: unknown } | undefined;
-      if (errObj && typeof errObj.message === "string" && errObj.message) {
-        msg = errObj.message;
+  // Exhaustive over the wire-shape union: a future shape without a poll arm
+  // is a compile error here, not a silent Grok fallthrough that would hang
+  // the poll loop on a never-terminal status.
+  switch (vgCfg.wireShape) {
+    case "VideoZhipu": {
+      const root = raw as { task_status?: unknown };
+      const status =
+        typeof root.task_status === "string" ? root.task_status : "";
+      switch (status) {
+        case "SUCCESS":
+          return videoResultFromZhipu(vgCfg, raw);
+        case "FAIL":
+          throw new APIError(0, "video generation failed", false);
+        default:
+          return null; // PROCESSING (or any non-terminal status)
       }
-      throw new APIError(0, `video generation ${status}: ${msg}`, false);
     }
-    default:
-      return null; // pending (or any non-terminal status)
+    case "VideoGrok": {
+      const root = raw as { status?: unknown; error?: unknown };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "done":
+          return videoResultFromGrok(vgCfg, raw);
+        case "failed":
+        case "expired": {
+          let msg: string = status;
+          const errObj = root.error as { message?: unknown } | undefined;
+          if (errObj && typeof errObj.message === "string" && errObj.message) {
+            msg = errObj.message;
+          }
+          throw new APIError(0, `video generation ${status}: ${msg}`, false);
+        }
+        default:
+          return null; // pending (or any non-terminal status)
+      }
+    }
+    default: {
+      const _exhaustive: never = vgCfg.wireShape;
+      throw new APIError(
+        0,
+        `video poll: unsupported wire shape ${String(_exhaustive)}`,
+        false,
+      );
+    }
   }
 }
 
