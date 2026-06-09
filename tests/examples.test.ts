@@ -15,7 +15,7 @@
 // Mock servers reuse the `Bun.serve` pattern from tests/builders.test.ts.
 
 import { describe, test } from "bun:test";
-import { anthropic, google, openai, vertex } from "../src/builders/index.ts";
+import { anthropic, google, grok, openai, vertex } from "../src/builders/index.ts";
 import { main as quickstartMain } from "../examples/quickstart.ts";
 import { main as agentMain } from "../examples/agent.ts";
 import { main as streamingMain } from "../examples/streaming.ts";
@@ -24,6 +24,7 @@ import { main as uploadMain } from "../examples/upload.ts";
 import { main as middlewareMain } from "../examples/middleware.ts";
 import { main as catalogueMain } from "../examples/catalogue.ts";
 import { main as musicMain } from "../examples/music.ts";
+import { main as videoMain } from "../examples/video.ts";
 import { main as batchMain } from "../examples/batch.ts";
 import { main as cachingMain } from "../examples/caching.ts";
 import { main as reasoningMain } from "../examples/reasoning.ts";
@@ -200,6 +201,44 @@ function startAnthropicBatchServer(): { url: string; stop: () => void } {
   };
 }
 
+// Grok video is an async submit -> poll flow, so it needs a path-routing
+// server. The poll returns `done` on the first GET so the example's wait()
+// resolves without hitting its default poll interval.
+function startGrokVideoServer(): { url: string; stop: () => void } {
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+      await req.text();
+      if (
+        req.method === "POST" &&
+        url.pathname.endsWith("/v1/videos/generations")
+      ) {
+        return new Response(JSON.stringify({ request_id: "vid-123" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (req.method === "GET" && url.pathname === "/v1/videos/vid-123") {
+        return new Response(
+          JSON.stringify({
+            status: "done",
+            video: {
+              url: "https://vidgen.x.ai/abc/video.mp4",
+              duration: 8,
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+  return {
+    url: `http://localhost:${server.port}`,
+    stop: () => server.stop(true),
+  };
+}
+
 const anthropicSse = [
   "event: content_block_delta",
   'data: {"delta":{"text":"Hi"}}',
@@ -344,6 +383,17 @@ describe("examples — runnable snippets stay aligned with the API", () => {
     } finally {
       process.chdir(cwd);
       await fs.rm(dir, { recursive: true, force: true });
+      server.stop();
+    }
+  });
+
+  test("video runs", async () => {
+    const server = startGrokVideoServer();
+    try {
+      const c = grok("k");
+      c.provider.baseUrl = server.url;
+      await videoMain(c);
+    } finally {
       server.stop();
     }
   });
