@@ -79,7 +79,7 @@ export class VideoHandle {
 
     const base = this.provider.baseUrl || cfg.baseUrl;
     const headers = buildAuthHeaders(this.provider, cfg);
-    const pollUrl = videoPollURL(vgCfg.wireShape, base, this.id);
+    const pollUrl = videoPollURL(vgCfg.pollEndpoint, base, this.id);
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const timeout = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     const wantRaw = !!options.raw || this.raw;
@@ -227,30 +227,20 @@ async function dispatchVideoSubmit(
   //
   //
   //
-  //
-  let idField: string;
-  switch (vgCfg.wireShape) {
-    case "VideoGrok":
-      idField = "request_id";
-      break;
-    case "VideoZhipu":
-      idField = "id";
-      break;
-    default: {
-      const _exhaustive: never = vgCfg.wireShape;
-      throw new APIError(
-        0,
-        `video submit: unsupported wire shape ${String(_exhaustive)}`,
-        false,
-      );
-    }
-  }
   const body = { model, prompt: joinPromptText(parts) };
-  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, headers);
+  const respText = await postJson(
+    resolveVideoEndpoint(baseUrl, vgCfg.genEndpoint),
+    body,
+    headers,
+  );
   const raw = JSON.parse(respText) as Record<string, unknown>;
-  const id = typeof raw[idField] === "string" ? (raw[idField] as string) : "";
+  const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
-    throw new APIError(0, `video submit: empty ${idField}`, false);
+    throw new APIError(
+      0,
+      `video submit: empty handle field ${vgCfg.submitHandleField}`,
+      false,
+    );
   }
   return id;
 }
@@ -258,13 +248,30 @@ async function dispatchVideoSubmit(
 //
 //
 //
-function videoPollURL(wireShape: string, base: string, id: string): string {
-  switch (wireShape) {
-    case "VideoZhipu":
-      return base + "/v4/async-result/" + id;
-    default: // VideoGrok
-      return base + "/v1/videos/" + id;
+//
+function videoPollURL(pollEndpoint: string, base: string, id: string): string {
+  return resolveVideoEndpoint(base, pollEndpoint.replace("{id}", id));
+}
+
+//
+//
+function resolveVideoEndpoint(base: string, endpoint: string): string {
+  return /^https?:\/\//.test(endpoint) ? endpoint : base + endpoint;
+}
+
+//
+//
+function lookupHandleField(
+  raw: Record<string, unknown>,
+  path: string,
+): string {
+  if (!path) return "";
+  let cur: unknown = raw;
+  for (const seg of path.split(".")) {
+    if (typeof cur !== "object" || cur === null) return "";
+    cur = (cur as Record<string, unknown>)[seg];
   }
+  return typeof cur === "string" ? cur : "";
 }
 
 //

@@ -24,6 +24,10 @@ export interface VideoGenDef {
   outputDelivery: VideoOutputDelivery;
   //
   genEndpoint: string;
+  //
+  pollEndpoint: string;
+  //
+  submitHandleField: string;
   requiresOutputUri: boolean;
   models: VideoModelDef[];
 }
@@ -33,6 +37,8 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoGrok",
     outputDelivery: "DeliveryURL",
     genEndpoint: "/v1/videos/generations",
+    pollEndpoint: "/v1/videos/{id}",
+    submitHandleField: "request_id",
     requiresOutputUri: false,
     models: [
       {
@@ -49,6 +55,8 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoZhipu",
     outputDelivery: "DeliveryURL",
     genEndpoint: "/v4/videos/generations",
+    pollEndpoint: "/v4/async-result/{id}",
+    submitHandleField: "id",
     requiresOutputUri: false,
     models: [
       {
