@@ -212,6 +212,11 @@ export async function videoSubmit(
 //
 //
 //
+//
+//
+//
+//
+//
 async function dispatchVideoSubmit(
   vgCfg: VideoGenDef,
   baseUrl: string,
@@ -219,30 +224,24 @@ async function dispatchVideoSubmit(
   model: string,
   parts: Part[],
 ): Promise<string> {
-  switch (vgCfg.wireShape) {
-    default: {
-      //
-      const body = { model, prompt: joinPromptText(parts) };
-      const respText = await postJson(
-        baseUrl + vgCfg.genEndpoint,
-        body,
-        headers,
-      );
-      const raw = JSON.parse(respText) as { request_id?: unknown };
-      const requestId =
-        typeof raw.request_id === "string" ? raw.request_id : "";
-      if (!requestId) {
-        throw new APIError(0, "video submit: empty request_id", false);
-      }
-      return requestId;
-    }
+  const body = { model, prompt: joinPromptText(parts) };
+  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, headers);
+  const raw = JSON.parse(respText) as Record<string, unknown>;
+  const idField = vgCfg.wireShape === "VideoZhipu" ? "id" : "request_id";
+  const id = typeof raw[idField] === "string" ? (raw[idField] as string) : "";
+  if (!id) {
+    throw new APIError(0, `video submit: empty ${idField}`, false);
   }
+  return id;
 }
 
 //
 //
+//
 function videoPollURL(wireShape: string, base: string, id: string): string {
   switch (wireShape) {
+    case "VideoZhipu":
+      return base + "/v4/async-result/" + id;
     default: // VideoGrok
       return base + "/v1/videos/" + id;
   }
@@ -253,10 +252,27 @@ function videoPollURL(wireShape: string, base: string, id: string): string {
 //
 //
 //
+//
+//
 function parseVideoPoll(
   vgCfg: VideoGenDef,
   raw: unknown,
 ): VideoResponse | null {
+  if (vgCfg.wireShape === "VideoZhipu") {
+    const root = raw as { task_status?: unknown };
+    const status =
+      typeof root.task_status === "string" ? root.task_status : "";
+    switch (status) {
+      case "SUCCESS":
+        return videoResultFromZhipu(vgCfg, raw);
+      case "FAIL":
+        throw new APIError(0, "video generation failed", false);
+      default:
+        return null; // PROCESSING (or any non-terminal status)
+    }
+  }
+
+  //
   const root = raw as { status?: unknown; error?: unknown };
   const status = typeof root.status === "string" ? root.status : "";
   switch (status) {
@@ -297,6 +313,25 @@ function videoResultFromGrok(
     data.durationSeconds = Math.trunc(video.duration);
   }
   return buildVideoResponse([data]);
+}
+
+//
+//
+//
+//
+function videoResultFromZhipu(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { video_result?: unknown };
+  const results = Array.isArray(root.video_result) ? root.video_result : [];
+  if (results.length === 0) {
+    return buildVideoResponse([]);
+  }
+  const first = results[0] as { url?: unknown };
+  const url = typeof first.url === "string" ? first.url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
 //

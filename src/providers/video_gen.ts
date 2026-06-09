@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 //
 //
-export type VideoWireShape = "VideoGrok";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu";
 
 //
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -42,6 +42,22 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["480p", "720p"],
+      },
+    ],
+  },
+  zhipu: {
+    wireShape: "VideoZhipu",
+    outputDelivery: "DeliveryURL",
+    genEndpoint: "/v4/videos/generations",
+    requiresOutputUri: false,
+    models: [
+      {
+        modelId: "cogvideox-3",
+        label: "CogVideoX-3",
+        supportsImageToVideo: true,
+        maxDurationSeconds: 10,
+        outputMime: "video/mp4",
+        resolutions: ["1080p", "4k", "720p"],
       },
     ],
   },
