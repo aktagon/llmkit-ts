@@ -22,8 +22,12 @@ export interface VideoModelDef {
 export interface VideoGenDef {
   wireShape: VideoWireShape;
   outputDelivery: VideoOutputDelivery;
-  // genEndpoint is the submit endpoint path.
+  // genEndpoint is the submit endpoint path (relative or absolute).
   genEndpoint: string;
+  // pollEndpoint is the poll template with an {id} placeholder.
+  pollEndpoint: string;
+  // submitHandleField is a dotted path to the poll handle id.
+  submitHandleField: string;
   requiresOutputUri: boolean;
   models: VideoModelDef[];
 }
@@ -33,6 +37,8 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoGrok",
     outputDelivery: "DeliveryURL",
     genEndpoint: "/v1/videos/generations",
+    pollEndpoint: "/v1/videos/{id}",
+    submitHandleField: "request_id",
     requiresOutputUri: false,
     models: [
       {
@@ -49,6 +55,8 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoZhipu",
     outputDelivery: "DeliveryURL",
     genEndpoint: "/v4/videos/generations",
+    pollEndpoint: "/v4/async-result/{id}",
+    submitHandleField: "id",
     requiresOutputUri: false,
     models: [
       {
