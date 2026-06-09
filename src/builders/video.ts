@@ -281,6 +281,8 @@ function lookupHandleField(
 //
 //
 //
+//
+//
 function parseVideoPoll(
   vgCfg: VideoGenDef,
   raw: unknown,
@@ -289,6 +291,19 @@ function parseVideoPoll(
   //
   //
   switch (vgCfg.wireShape) {
+    case "VideoTogether": {
+      const root = raw as { status?: unknown };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "completed":
+          return videoResultFromTogether(vgCfg, raw);
+        case "failed":
+        case "cancelled":
+          throw new APIError(0, `video generation ${status}`, false);
+        default:
+          return null; // queued, in_progress (or any non-terminal status)
+      }
+    }
     case "VideoZhipu": {
       const root = raw as { task_status?: unknown };
       const status =
@@ -371,6 +386,24 @@ function videoResultFromZhipu(
   }
   const first = results[0] as { url?: unknown };
   const url = typeof first.url === "string" ? first.url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+//
+//
+//
+//
+function videoResultFromTogether(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { outputs?: { video_url?: unknown } };
+  const outputs = root.outputs;
+  if (!outputs || typeof outputs !== "object") {
+    return buildVideoResponse([]);
+  }
+  const url = typeof outputs.video_url === "string" ? outputs.video_url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
