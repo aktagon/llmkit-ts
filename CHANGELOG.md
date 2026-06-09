@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-06-09
+
 ### Added
 
 - Video generation — `c.video.model(id).submit(prompt)` returns a `VideoHandle` immediately; `handle.wait()` polls until the job finishes and returns `VideoResponse { videos: VideoData[], usage, finishReason, finishMessage }`. Each `VideoData` carries `url`, `mimeType`, and `durationSeconds`. One provider so far: xAI Grok Imagine (`grok-imagine-video`), which delivers a temporary hosted URL — download it yourself.
