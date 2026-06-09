@@ -208,10 +208,15 @@ export async function videoSubmit(
 
 // dispatchVideoSubmit POSTs the submit body per wire shape (never by provider
 // name — the wire shape is the single discriminator) and returns the
-// provider-assigned request id.
+// provider-assigned poll handle id.
 //
-//   - VideoGrok (xAI): POST {model, prompt} to genEndpoint; the response is
-//     {"request_id": "..."}.
+//   - VideoGrok (xAI) and VideoZhipu (CogVideoX) share the simple {model,
+//     prompt} submit body. They differ only in which response field carries
+//     the poll handle: Grok returns it as request_id, Zhipu as the top-level
+//     id (alongside its own request_id, which is NOT the poll key).
+//
+// A future shape with a different submit body (e.g. minimax's hex body or
+// Google's generateContent) adds an arm that builds its own body.
 async function dispatchVideoSubmit(
   vgCfg: VideoGenDef,
   baseUrl: string,
@@ -219,44 +224,55 @@ async function dispatchVideoSubmit(
   model: string,
   parts: Part[],
 ): Promise<string> {
-  switch (vgCfg.wireShape) {
-    default: {
-      // VideoGrok
-      const body = { model, prompt: joinPromptText(parts) };
-      const respText = await postJson(
-        baseUrl + vgCfg.genEndpoint,
-        body,
-        headers,
-      );
-      const raw = JSON.parse(respText) as { request_id?: unknown };
-      const requestId =
-        typeof raw.request_id === "string" ? raw.request_id : "";
-      if (!requestId) {
-        throw new APIError(0, "video submit: empty request_id", false);
-      }
-      return requestId;
-    }
+  const body = { model, prompt: joinPromptText(parts) };
+  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, headers);
+  const raw = JSON.parse(respText) as Record<string, unknown>;
+  const idField = vgCfg.wireShape === "VideoZhipu" ? "id" : "request_id";
+  const id = typeof raw[idField] === "string" ? (raw[idField] as string) : "";
+  if (!id) {
+    throw new APIError(0, `video submit: empty ${idField}`, false);
   }
+  return id;
 }
 
 // videoPollURL builds the per-wire-shape poll URL.
 //   - VideoGrok: GET {base}/v1/videos/{id}.
+//   - VideoZhipu: GET {base}/v4/async-result/{id}.
 function videoPollURL(wireShape: string, base: string, id: string): string {
   switch (wireShape) {
+    case "VideoZhipu":
+      return base + "/v4/async-result/" + id;
     default: // VideoGrok
       return base + "/v1/videos/" + id;
   }
 }
 
-// parseVideoPoll decodes one poll response. Returns the finished VideoResponse
-// when the job reached terminal-success, null while still pending, and throws
-// when the job failed or expired.
+// parseVideoPoll decodes one poll response per wire shape. Returns the
+// finished VideoResponse when the job reached terminal-success, null while
+// still pending, and throws when the job failed or expired.
 //   - VideoGrok: {"status": "done", "video": {"url", "duration"}} or
 //     {"status": "failed", "error": {"code", "message"}}.
+//   - VideoZhipu: {"task_status": "SUCCESS"|"FAIL"|"PROCESSING",
+//     "video_result": [{"url"}]}.
 function parseVideoPoll(
   vgCfg: VideoGenDef,
   raw: unknown,
 ): VideoResponse | null {
+  if (vgCfg.wireShape === "VideoZhipu") {
+    const root = raw as { task_status?: unknown };
+    const status =
+      typeof root.task_status === "string" ? root.task_status : "";
+    switch (status) {
+      case "SUCCESS":
+        return videoResultFromZhipu(vgCfg, raw);
+      case "FAIL":
+        throw new APIError(0, "video generation failed", false);
+      default:
+        return null; // PROCESSING (or any non-terminal status)
+    }
+  }
+
+  // VideoGrok
   const root = raw as { status?: unknown; error?: unknown };
   const status = typeof root.status === "string" ? root.status : "";
   switch (status) {
@@ -297,6 +313,25 @@ function videoResultFromGrok(
     data.durationSeconds = Math.trunc(video.duration);
   }
   return buildVideoResponse([data]);
+}
+
+// videoResultFromZhipu extracts the finished video from a Zhipu CogVideoX
+// poll response. Zhipu uses url delivery: the finished video sits at
+// video_result[0].url (no duration field on the result), so VideoData.url
+// carries the temporary Zhipu-hosted URL and bytes stays empty.
+function videoResultFromZhipu(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { video_result?: unknown };
+  const results = Array.isArray(root.video_result) ? root.video_result : [];
+  if (results.length === 0) {
+    return buildVideoResponse([]);
+  }
+  const first = results[0] as { url?: unknown };
+  const url = typeof first.url === "string" ? first.url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
 // videoFallbackMime returns the first model's output MIME, used when the
