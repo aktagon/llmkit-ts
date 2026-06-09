@@ -422,4 +422,21 @@ describe("request wire — cross-capability", () => {
     }
     assertWireGolden("video-zhipu", m.body());
   });
+
+  // ADR-034 fan-out: Together video-submit body {model, prompt} —
+  // structurally identical to Grok's/Zhipu's (the shared {model, prompt} arm);
+  // the lifecycle divergence is delivery-side, covered by the unit tests.
+  test("video submit (Together) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.together, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoTogetherModel)
+        .submit(wi.wireVideoTogetherPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-together", m.body());
+  });
 });

@@ -257,6 +257,96 @@ describe("Video.submit + wait — Zhipu (VideoZhipu)", () => {
   });
 });
 
+const togetherVideoModel = "minimax/video-01-director";
+
+// togetherVideoServer serves the Together submit + poll endpoints. Submit
+// returns the poll handle as the top-level `id` with status=queued; the poll
+// GET /v2/videos/{id} returns status=in_progress until the supplied done body.
+function togetherVideoServer(
+  pendingPolls: number,
+  doneBody: Record<string, unknown>,
+  onSubmit?: (body: Record<string, unknown>, auth: string) => void,
+) {
+  let polls = 0;
+  return Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      const auth = req.headers.get("authorization") ?? "";
+      if (req.method === "POST" && url.pathname.endsWith("/v2/videos")) {
+        const body = (await req.json()) as Record<string, unknown>;
+        onSubmit?.(body, auth);
+        return new Response(
+          JSON.stringify({ id: "together-vid-1", status: "queued" }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (req.method === "GET" && url.pathname === "/v2/videos/together-vid-1") {
+        polls += 1;
+        if (polls <= pendingPolls) {
+          return new Response(JSON.stringify({ status: "in_progress" }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify(doneBody), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+}
+
+describe("Video.submit + wait — Together (VideoTogether)", () => {
+  test("happy path: id handle, /v2/videos poll, outputs.video_url url delivery", async () => {
+    let receivedBody: Record<string, unknown> | undefined;
+    const done = {
+      status: "completed",
+      outputs: { video_url: "https://api.together.xyz/files/v.mp4" },
+      model: togetherVideoModel,
+    };
+    const server = togetherVideoServer(2, done, (body) => {
+      receivedBody = body;
+    });
+    try {
+      const c = newClient(Providers.together, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+
+      const handle = await c.video
+        .model(togetherVideoModel)
+        .submit("a drone shot over the alps");
+      expect(handle.id).toBe("together-vid-1");
+      expect(receivedBody!.model).toBe(togetherVideoModel);
+
+      const resp = await handle.wait(FAST_WAIT);
+      expect(resp.videos).toHaveLength(1);
+      expect(resp.videos[0]!.url).toBe("https://api.together.xyz/files/v.mp4");
+      expect(resp.videos[0]!.mimeType).toBe("video/mp4");
+      expect(resp.videos[0]!.bytes).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("cancelled status throws", async () => {
+    const server = togetherVideoServer(0, { status: "cancelled" });
+    try {
+      const c = newClient(Providers.together, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video.model(togetherVideoModel).submit("blocked");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe("Video.submit — pre-flight validation", () => {
   test("requires model", async () => {
     const c = newClient(Providers.grok, "test-token");

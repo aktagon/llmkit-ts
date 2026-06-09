@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 // Video wire-shape discriminators. Each selects the submit-body build,
 // poll mechanism, and result-extraction transform.
-export type VideoWireShape = "VideoGrok" | "VideoZhipu";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether";
 
 // Output-delivery modes: download bytes | return URL | caller S3 URI.
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -48,6 +48,24 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["480p", "720p"],
+      },
+    ],
+  },
+  together: {
+    wireShape: "VideoTogether",
+    outputDelivery: "DeliveryURL",
+    genEndpoint: "/v2/videos",
+    pollEndpoint: "/v2/videos/{id}",
+    submitHandleField: "id",
+    requiresOutputUri: false,
+    models: [
+      {
+        modelId: "minimax/video-01-director",
+        label: "MiniMax Video 01 Director (Together)",
+        supportsImageToVideo: true,
+        maxDurationSeconds: 6,
+        outputMime: "video/mp4",
+        resolutions: ["720p"],
       },
     ],
   },

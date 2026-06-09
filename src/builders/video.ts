@@ -281,6 +281,8 @@ function lookupHandleField(
 //     {"status": "failed", "error": {"code", "message"}}.
 //   - VideoZhipu: {"task_status": "SUCCESS"|"FAIL"|"PROCESSING",
 //     "video_result": [{"url"}]}.
+//   - VideoTogether: {"status": "completed"|"failed"|"cancelled"|"queued"|
+//     "in_progress", "outputs": {"video_url"}}.
 function parseVideoPoll(
   vgCfg: VideoGenDef,
   raw: unknown,
@@ -289,6 +291,19 @@ function parseVideoPoll(
   // is a compile error here, not a silent Grok fallthrough that would hang
   // the poll loop on a never-terminal status.
   switch (vgCfg.wireShape) {
+    case "VideoTogether": {
+      const root = raw as { status?: unknown };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "completed":
+          return videoResultFromTogether(vgCfg, raw);
+        case "failed":
+        case "cancelled":
+          throw new APIError(0, `video generation ${status}`, false);
+        default:
+          return null; // queued, in_progress (or any non-terminal status)
+      }
+    }
     case "VideoZhipu": {
       const root = raw as { task_status?: unknown };
       const status =
@@ -371,6 +386,24 @@ function videoResultFromZhipu(
   }
   const first = results[0] as { url?: unknown };
   const url = typeof first.url === "string" ? first.url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+// videoResultFromTogether extracts the finished video from a Together poll
+// response. Together uses url delivery: the finished video sits at
+// outputs.video_url, so VideoData.url carries the temporary Together-hosted
+// URL and bytes stays empty.
+function videoResultFromTogether(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { outputs?: { video_url?: unknown } };
+  const outputs = root.outputs;
+  if (!outputs || typeof outputs !== "object") {
+    return buildVideoResponse([]);
+  }
+  const url = typeof outputs.video_url === "string" ? outputs.video_url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
