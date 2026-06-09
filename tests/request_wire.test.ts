@@ -405,4 +405,21 @@ describe("request wire — cross-capability", () => {
     }
     assertWireGolden("video-grok", m.body());
   });
+
+  // ADR-034 fan-out: Zhipu CogVideoX video-submit body {model, prompt} —
+  // structurally identical to Grok's (the shared {model, prompt} arm); the
+  // lifecycle divergence is delivery-side, covered by the unit tests.
+  test("video submit (Zhipu) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.zhipu, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoZhipuModel)
+        .submit(wi.wireVideoZhipuPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-zhipu", m.body());
+  });
 });

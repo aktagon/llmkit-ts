@@ -82,3 +82,5 @@ export const wireStructuredOutputNestedPrompt = "Name a coastal city in Finland 
 export const wireStructuredOutputNestedSchema = "{\"type\":\"object\",\"properties\":{\"residence\":{\"type\":\"object\",\"properties\":{\"addresses\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}}},\"additionalProperties\":false}},\"additionalProperties\":false}";
 export const wireVideoGrokModel = "grok-imagine-video";
 export const wireVideoGrokPrompt = "A drone shot sweeping over snow-capped alpine peaks at sunrise";
+export const wireVideoZhipuModel = "cogvideox-3";
+export const wireVideoZhipuPrompt = "A drone shot sweeping over snow-capped alpine peaks at sunrise";
