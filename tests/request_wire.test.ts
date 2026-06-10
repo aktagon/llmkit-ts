@@ -55,6 +55,7 @@ function startMock(): {
         JSON.stringify({
           id: "msgbatch_test",
           request_id: "vid_test", // VID-007: Grok video-submit handle id
+          task_id: "vid_test", // VideoMinimax: top-level task_id submit handle
           output: { task_id: "vid_test", task_status: "PENDING" }, // VideoQwen: output.task_id submit handle
           candidates: [
             {
@@ -456,5 +457,22 @@ describe("request wire — cross-capability", () => {
     }
     expect(m.headers().get("x-dashscope-async")).toBe("enable");
     assertWireGolden("video-qwen", m.body());
+  });
+
+  // ADR-034 fan-out: MiniMax video-submit body is the shared {model, prompt}.
+  // The two-hop result (poll file_id -> file-retrieve download_url) is
+  // delivery-side, covered by the unit tests.
+  test("video submit (MiniMax) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.minimax, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoMinimaxModel)
+        .submit(wi.wireVideoMinimaxPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-minimax", m.body());
   });
 });

@@ -456,6 +456,100 @@ describe("Video.submit + wait — Qwen (VideoQwen)", () => {
   });
 });
 
+const minimaxVideoModel = "MiniMax-Hailuo-2.3";
+
+// minimaxVideoServer serves the MiniMax two-hop flow: submit -> {task_id};
+// query poll returns Processing until {status:Success, file_id}; the
+// file-retrieve hop returns the download URL. file_id is served as a JSON
+// number (minimax encodes it as an integer).
+function minimaxVideoServer(
+  pendingPolls: number,
+  downloadURL: string,
+  failStatus: boolean,
+) {
+  let polls = 0;
+  return Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      if (req.method === "POST" && url.pathname.endsWith("/v1/video_generation")) {
+        return new Response(
+          JSON.stringify({ task_id: "mmtask-1", base_resp: { status_code: 0 } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (req.method === "GET" && url.pathname === "/v1/query/video_generation") {
+        if (failStatus) {
+          return new Response(JSON.stringify({ status: "Fail" }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        polls += 1;
+        if (polls <= pendingPolls) {
+          return new Response(JSON.stringify({ status: "Processing" }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(
+          JSON.stringify({ status: "Success", file_id: 99887766 }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (req.method === "GET" && url.pathname === "/v1/files/retrieve") {
+        return new Response(
+          JSON.stringify({ file: { download_url: downloadURL } }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+}
+
+describe("Video.submit + wait — MiniMax (VideoMinimax, two-hop)", () => {
+  test("submit -> poll Success+file_id -> file-retrieve download_url", async () => {
+    const server = minimaxVideoServer(
+      2,
+      "https://files.minimax.io/abc/v.mp4",
+      false,
+    );
+    try {
+      const c = newClient(Providers.minimax, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`; // override wins (Option D)
+
+      const handle = await c.video
+        .model(minimaxVideoModel)
+        .submit("a drone shot over the alps");
+      expect(handle.id).toBe("mmtask-1");
+
+      const resp = await handle.wait(FAST_WAIT);
+      expect(resp.videos).toHaveLength(1);
+      expect(resp.videos[0]!.url).toBe("https://files.minimax.io/abc/v.mp4");
+      expect(resp.videos[0]!.bytes).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("Fail status throws", async () => {
+    const server = minimaxVideoServer(0, "", true);
+    try {
+      const c = newClient(Providers.minimax, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video.model(minimaxVideoModel).submit("blocked");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe("Video.submit — pre-flight validation", () => {
   test("requires model", async () => {
     const c = newClient(Providers.grok, "test-token");
