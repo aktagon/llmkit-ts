@@ -77,7 +77,7 @@ export class VideoHandle {
       );
     }
 
-    const base = this.provider.baseUrl || cfg.baseUrl;
+    const base = videoBaseUrl(this.provider, cfg, vgCfg);
     const headers = buildAuthHeaders(this.provider, cfg);
     const pollUrl = videoPollURL(vgCfg.pollEndpoint, base, this.id);
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -182,7 +182,7 @@ export async function videoSubmit(
   const start = performance.now();
 
   try {
-    const baseUrl = provider.baseUrl || cfg.baseUrl;
+    const baseUrl = videoBaseUrl(provider, cfg, vgCfg);
     const headers = buildAuthHeaders(provider, cfg);
     const requestId = await dispatchVideoSubmit(
       vgCfg,
@@ -228,11 +228,7 @@ async function dispatchVideoSubmit(
   //
   //
   const body = { model, prompt: joinPromptText(parts) };
-  const respText = await postJson(
-    resolveVideoEndpoint(baseUrl, vgCfg.genEndpoint),
-    body,
-    headers,
-  );
+  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, headers);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -249,14 +245,19 @@ async function dispatchVideoSubmit(
 //
 //
 //
-function videoPollURL(pollEndpoint: string, base: string, id: string): string {
-  return resolveVideoEndpoint(base, pollEndpoint.replace("{id}", id));
+//
+function videoBaseUrl(
+  provider: Provider,
+  cfg: { baseUrl: string },
+  vgCfg: VideoGenDef,
+): string {
+  return provider.baseUrl || vgCfg.videoBaseUrl || cfg.baseUrl;
 }
 
 //
 //
-function resolveVideoEndpoint(base: string, endpoint: string): string {
-  return /^https?:\/\//.test(endpoint) ? endpoint : base + endpoint;
+function videoPollURL(pollEndpoint: string, base: string, id: string): string {
+  return base + pollEndpoint.replace("{id}", id);
 }
 
 //
