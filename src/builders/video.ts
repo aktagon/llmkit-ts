@@ -97,8 +97,14 @@ export class VideoHandle {
       const raw = JSON.parse(respText) as unknown;
       const result = parseVideoPoll(vgCfg, raw);
       if (result) {
-        if (wantRaw) result.raw = raw;
-        return result;
+        // Two-hop providers (vgCfg.fileEndpoint set, e.g. minimax): the
+        // terminal poll carried a file reference, not a video URL — resolve it
+        // with one more GET before returning.
+        const finalResult = vgCfg.fileEndpoint
+          ? await resolveVideoFile(base, vgCfg, raw, headers)
+          : result;
+        if (wantRaw) finalResult.raw = raw;
+        return finalResult;
       }
       await sleep(interval);
     }
@@ -336,6 +342,21 @@ function parseVideoPoll(
           return null; // PENDING, RUNNING, UNKNOWN (or any non-terminal status)
       }
     }
+    case "VideoMinimax": {
+      // Two-hop: terminal-success yields a file_id, not a URL. Return an empty
+      // response to signal done; wait() performs the file-retrieve hop (gated
+      // on vgCfg.fileEndpoint) and fills the URL.
+      const root = raw as { status?: unknown };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "Success":
+          return buildVideoResponse([]);
+        case "Fail":
+          throw new APIError(0, "video generation failed", false);
+        default:
+          return null; // Queueing, Preparing, Processing
+      }
+    }
     case "VideoZhipu": {
       const root = raw as { task_status?: unknown };
       const status =
@@ -454,6 +475,58 @@ function videoResultFromQwen(
     return buildVideoResponse([]);
   }
   const url = typeof output.video_url === "string" ? output.video_url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+// resolveVideoFile performs the two-hop file-retrieve step for providers whose
+// terminal poll yields a file reference rather than a finished video URL
+// (vgCfg.fileEndpoint set, e.g. minimax): extract the file id from the terminal
+// poll body, GET the file endpoint (joined to the resolved video base), and
+// extract the finished reference. file-id and result locations are wire-shape-
+// keyed (the transform); the endpoint is config.
+async function resolveVideoFile(
+  base: string,
+  vgCfg: VideoGenDef,
+  pollRaw: unknown,
+  headers: Record<string, string>,
+): Promise<VideoResponse> {
+  const root = pollRaw as { file_id?: unknown };
+  const fileId = videoFileId(root.file_id);
+  if (!fileId) {
+    throw new APIError(
+      0,
+      "video file hop: terminal poll carried no file_id",
+      false,
+    );
+  }
+  const fileUrl = base + vgCfg.fileEndpoint.replace("{file_id}", fileId);
+  const fileText = await fetchText(fileUrl, headers);
+  const fileRaw = JSON.parse(fileText) as unknown;
+  return videoResultFromMinimaxFile(vgCfg, fileRaw);
+}
+
+// videoFileId reads the minimax terminal poll's file_id, which the API may
+// encode as a string or a (large) integer.
+function videoFileId(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(Math.trunc(v));
+  return "";
+}
+
+// videoResultFromMinimaxFile extracts the finished video from a minimax
+// file-retrieve response. minimax uses url delivery: the download URL sits at
+// file.download_url, so VideoData.url carries it and bytes stays empty.
+function videoResultFromMinimaxFile(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { file?: { download_url?: unknown } };
+  const file = root.file;
+  if (!file || typeof file !== "object") {
+    return buildVideoResponse([]);
+  }
+  const url = typeof file.download_url === "string" ? file.download_url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
