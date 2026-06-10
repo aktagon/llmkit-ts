@@ -22,9 +22,11 @@ export interface VideoModelDef {
 export interface VideoGenDef {
   wireShape: VideoWireShape;
   outputDelivery: VideoOutputDelivery;
-  // genEndpoint is the submit endpoint path (relative or absolute).
+  // videoBaseUrl is the video API base when it differs from the chat base; "" = use chat base.
+  videoBaseUrl: string;
+  // genEndpoint is the submit endpoint path, relative to the resolved video base.
   genEndpoint: string;
-  // pollEndpoint is the poll template with an {id} placeholder.
+  // pollEndpoint is the poll template with an {id}, relative to the resolved video base.
   pollEndpoint: string;
   // submitHandleField is a dotted path to the poll handle id.
   submitHandleField: string;
@@ -36,6 +38,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
   grok: {
     wireShape: "VideoGrok",
     outputDelivery: "DeliveryURL",
+    videoBaseUrl: "",
     genEndpoint: "/v1/videos/generations",
     pollEndpoint: "/v1/videos/{id}",
     submitHandleField: "request_id",
@@ -54,6 +57,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
   together: {
     wireShape: "VideoTogether",
     outputDelivery: "DeliveryURL",
+    videoBaseUrl: "",
     genEndpoint: "/v2/videos",
     pollEndpoint: "/v2/videos/{id}",
     submitHandleField: "id",
@@ -72,6 +76,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
   zhipu: {
     wireShape: "VideoZhipu",
     outputDelivery: "DeliveryURL",
+    videoBaseUrl: "",
     genEndpoint: "/v4/videos/generations",
     pollEndpoint: "/v4/async-result/{id}",
     submitHandleField: "id",

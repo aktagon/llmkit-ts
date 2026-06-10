@@ -77,7 +77,7 @@ export class VideoHandle {
       );
     }
 
-    const base = this.provider.baseUrl || cfg.baseUrl;
+    const base = videoBaseUrl(this.provider, cfg, vgCfg);
     const headers = buildAuthHeaders(this.provider, cfg);
     const pollUrl = videoPollURL(vgCfg.pollEndpoint, base, this.id);
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -182,7 +182,7 @@ export async function videoSubmit(
   const start = performance.now();
 
   try {
-    const baseUrl = provider.baseUrl || cfg.baseUrl;
+    const baseUrl = videoBaseUrl(provider, cfg, vgCfg);
     const headers = buildAuthHeaders(provider, cfg);
     const requestId = await dispatchVideoSubmit(
       vgCfg,
@@ -228,11 +228,7 @@ async function dispatchVideoSubmit(
   // from the chat base); handle id read from the config-declared dotted path
   // (OQ7) — both are A-Box facts, not per-wire-shape code branches.
   const body = { model, prompt: joinPromptText(parts) };
-  const respText = await postJson(
-    resolveVideoEndpoint(baseUrl, vgCfg.genEndpoint),
-    body,
-    headers,
-  );
+  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, headers);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -245,18 +241,23 @@ async function dispatchVideoSubmit(
   return id;
 }
 
-// videoPollURL builds the poll URL from the config template (OQ7): the {id}
-// placeholder is substituted with the handle id, used verbatim when absolute
-// or joined to base otherwise. The poll path is an A-Box fact, not a
-// per-wire-shape code constant.
-function videoPollURL(pollEndpoint: string, base: string, id: string): string {
-  return resolveVideoEndpoint(base, pollEndpoint.replace("{id}", id));
+// videoBaseUrl resolves the base for the video API (Option D): an explicit
+// per-client override wins (tests point it at a mock; users at a proxy), else
+// the provider's distinct video base (vgCfg.videoBaseUrl) when the video host
+// differs from chat, else the chat base. Endpoints are always relative paths
+// joined to this base — never absolute — so the host stays overridable.
+function videoBaseUrl(
+  provider: Provider,
+  cfg: { baseUrl: string },
+  vgCfg: VideoGenDef,
+): string {
+  return provider.baseUrl || vgCfg.videoBaseUrl || cfg.baseUrl;
 }
 
-// resolveVideoEndpoint returns endpoint verbatim when absolute (http(s)://),
-// else joins it to base.
-function resolveVideoEndpoint(base: string, endpoint: string): string {
-  return /^https?:\/\//.test(endpoint) ? endpoint : base + endpoint;
+// videoPollURL substitutes {id} in the config poll template (an A-Box fact,
+// OQ7) and joins it to the resolved video base.
+function videoPollURL(pollEndpoint: string, base: string, id: string): string {
+  return base + pollEndpoint.replace("{id}", id);
 }
 
 // lookupHandleField descends a dotted path (e.g. "id", "output.task_id")
