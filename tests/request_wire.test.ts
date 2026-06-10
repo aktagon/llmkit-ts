@@ -55,6 +55,7 @@ function startMock(): {
         JSON.stringify({
           id: "msgbatch_test",
           request_id: "vid_test", // VID-007: Grok video-submit handle id
+          output: { task_id: "vid_test", task_status: "PENDING" }, // VideoQwen: output.task_id submit handle
           candidates: [
             {
               content: {
@@ -438,5 +439,22 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("video-together", m.body());
+  });
+
+  // ADR-034 fan-out: Qwen (DashScope) video-submit body is the NESTED
+  // {model, input:{prompt}} shape — the first divergent submit body. Also
+  // asserts the load-bearing X-DashScope-Async: enable header in-driver
+  // (mirrors the Anthropic beta-header assert).
+  test("video submit (Qwen) matches shared golden + async header", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.qwen, "key");
+      c.provider.baseUrl = m.url;
+      await c.video.model(wi.wireVideoQwenModel).submit(wi.wireVideoQwenPrompt);
+    } finally {
+      m.stop();
+    }
+    expect(m.headers().get("x-dashscope-async")).toBe("enable");
+    assertWireGolden("video-qwen", m.body());
   });
 });

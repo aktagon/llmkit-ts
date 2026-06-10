@@ -347,6 +347,115 @@ describe("Video.submit + wait — Together (VideoTogether)", () => {
   });
 });
 
+const qwenVideoModel = "wan2.2-t2v-plus";
+
+// qwenVideoServer serves the DashScope (Qwen) submit + poll endpoints. Submit
+// returns the poll handle as output.task_id (the dotted-path handle) with
+// output.task_status=PENDING; the poll GET /api/v1/tasks/{id} returns
+// output.task_status=RUNNING until the supplied done body. onSubmit receives
+// the parsed body plus the captured X-DashScope-Async header value.
+function qwenVideoServer(
+  pendingPolls: number,
+  doneBody: Record<string, unknown>,
+  onSubmit?: (body: Record<string, unknown>, asyncHeader: string) => void,
+) {
+  let polls = 0;
+  return Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      if (req.method === "POST" && url.pathname.endsWith("/video-synthesis")) {
+        const body = (await req.json()) as Record<string, unknown>;
+        onSubmit?.(body, req.headers.get("x-dashscope-async") ?? "");
+        return new Response(
+          JSON.stringify({
+            output: { task_id: "qwen-vid-1", task_status: "PENDING" },
+            request_id: "req-1",
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname === "/api/v1/tasks/qwen-vid-1"
+      ) {
+        polls += 1;
+        if (polls <= pendingPolls) {
+          return new Response(
+            JSON.stringify({ output: { task_status: "RUNNING" } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify(doneBody), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+}
+
+describe("Video.submit + wait — Qwen (VideoQwen)", () => {
+  test("nested body + async header, output.task_id handle, output.video_url url delivery", async () => {
+    let receivedBody: Record<string, unknown> | undefined;
+    let receivedAsyncHeader = "";
+    const done = {
+      output: {
+        task_status: "SUCCEEDED",
+        video_url: "https://dashscope-result.oss-cn.aliyuncs.com/v.mp4",
+      },
+    };
+    const server = qwenVideoServer(2, done, (body, asyncHeader) => {
+      receivedBody = body;
+      receivedAsyncHeader = asyncHeader;
+    });
+    try {
+      const c = newClient(Providers.qwen, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+
+      const handle = await c.video
+        .model(qwenVideoModel)
+        .submit("a drone shot over the alps");
+      expect(handle.id).toBe("qwen-vid-1");
+      // Nested submit body: prompt under input, no top-level prompt.
+      expect(receivedBody!.model).toBe(qwenVideoModel);
+      expect(receivedBody!.input).toEqual({
+        prompt: "a drone shot over the alps",
+      });
+      expect(receivedBody!.prompt).toBeUndefined();
+      expect(receivedAsyncHeader).toBe("enable");
+
+      const resp = await handle.wait(FAST_WAIT);
+      expect(resp.videos).toHaveLength(1);
+      expect(resp.videos[0]!.url).toBe(
+        "https://dashscope-result.oss-cn.aliyuncs.com/v.mp4",
+      );
+      expect(resp.videos[0]!.mimeType).toBe("video/mp4");
+      expect(resp.videos[0]!.bytes).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("FAILED status throws", async () => {
+    const server = qwenVideoServer(0, { output: { task_status: "FAILED" } });
+    try {
+      const c = newClient(Providers.qwen, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video.model(qwenVideoModel).submit("blocked");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe("Video.submit — pre-flight validation", () => {
   test("requires model", async () => {
     const c = newClient(Providers.grok, "test-token");

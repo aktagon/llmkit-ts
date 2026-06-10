@@ -210,13 +210,17 @@ export async function videoSubmit(
 // name — the wire shape is the single discriminator) and returns the
 // provider-assigned poll handle id.
 //
-//   - VideoGrok (xAI) and VideoZhipu (CogVideoX) share the simple {model,
-//     prompt} submit body. They differ only in which response field carries
-//     the poll handle: Grok returns it as request_id, Zhipu as the top-level
-//     id (alongside its own request_id, which is NOT the poll key).
+//   - VideoGrok (xAI), VideoZhipu (CogVideoX), and VideoTogether share the
+//     simple {model, prompt} submit body. They differ only in which response
+//     field carries the poll handle: Grok returns it as request_id, Zhipu and
+//     Together as the top-level id.
+//   - VideoQwen (DashScope) nests the prompt under an `input` object
+//     ({model, input:{prompt}}) and requires the X-DashScope-Async: enable
+//     header.
 //
-// A future shape with a different submit body (e.g. minimax's hex body or
-// Google's generateContent) adds an arm that builds its own body.
+// The body and any per-shape headers are selected by wire shape (never
+// provider name); the poll handle id is always read from the config-declared
+// dotted path (vgCfg.submitHandleField).
 async function dispatchVideoSubmit(
   vgCfg: VideoGenDef,
   baseUrl: string,
@@ -224,11 +228,19 @@ async function dispatchVideoSubmit(
   model: string,
   parts: Part[],
 ): Promise<string> {
-  // Submit endpoint resolved from config (absolute when the video host differs
-  // from the chat base); handle id read from the config-declared dotted path
-  // (OQ7) — both are A-Box facts, not per-wire-shape code branches.
-  const body = { model, prompt: joinPromptText(parts) };
-  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, headers);
+  // Submit endpoint resolved from the config-declared base + relative path
+  // (Option D); handle id read from the config-declared dotted path (OQ7).
+  let body: Record<string, unknown>;
+  let postHeaders = headers;
+  if (vgCfg.wireShape === "VideoQwen") {
+    body = { model, input: { prompt: joinPromptText(parts) } };
+    // DashScope's async submit requires this header; set per-request only so
+    // it never leaks into the shared auth-header map.
+    postHeaders = { ...headers, "X-DashScope-Async": "enable" };
+  } else {
+    body = { model, prompt: joinPromptText(parts) };
+  }
+  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, postHeaders);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -284,6 +296,8 @@ function lookupHandleField(
 //     "video_result": [{"url"}]}.
 //   - VideoTogether: {"status": "completed"|"failed"|"cancelled"|"queued"|
 //     "in_progress", "outputs": {"video_url"}}.
+//   - VideoQwen: {"output": {"task_status": "SUCCEEDED"|"FAILED"|"CANCELED"|
+//     "PENDING"|"RUNNING"|"UNKNOWN", "video_url"}}.
 function parseVideoPoll(
   vgCfg: VideoGenDef,
   raw: unknown,
@@ -303,6 +317,23 @@ function parseVideoPoll(
           throw new APIError(0, `video generation ${status}`, false);
         default:
           return null; // queued, in_progress (or any non-terminal status)
+      }
+    }
+    case "VideoQwen": {
+      const root = raw as { output?: { task_status?: unknown } };
+      const output = root.output;
+      const status =
+        output && typeof output.task_status === "string"
+          ? output.task_status
+          : "";
+      switch (status) {
+        case "SUCCEEDED":
+          return videoResultFromQwen(vgCfg, raw);
+        case "FAILED":
+        case "CANCELED":
+          throw new APIError(0, `video generation ${status}`, false);
+        default:
+          return null; // PENDING, RUNNING, UNKNOWN (or any non-terminal status)
       }
     }
     case "VideoZhipu": {
@@ -405,6 +436,24 @@ function videoResultFromTogether(
     return buildVideoResponse([]);
   }
   const url = typeof outputs.video_url === "string" ? outputs.video_url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+// videoResultFromQwen extracts the finished video from a DashScope (Qwen) poll
+// response. Qwen uses url delivery: the finished video sits at
+// output.video_url, so VideoData.url carries the temporary DashScope-hosted URL
+// and bytes stays empty.
+function videoResultFromQwen(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { output?: { video_url?: unknown } };
+  const output = root.output;
+  if (!output || typeof output !== "object") {
+    return buildVideoResponse([]);
+  }
+  const url = typeof output.video_url === "string" ? output.video_url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
