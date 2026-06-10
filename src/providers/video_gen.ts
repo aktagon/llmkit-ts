@@ -23,6 +23,8 @@ export interface VideoGenDef {
   wireShape: VideoWireShape;
   outputDelivery: VideoOutputDelivery;
   //
+  videoBaseUrl: string;
+  //
   genEndpoint: string;
   //
   pollEndpoint: string;
@@ -36,6 +38,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
   grok: {
     wireShape: "VideoGrok",
     outputDelivery: "DeliveryURL",
+    videoBaseUrl: "",
     genEndpoint: "/v1/videos/generations",
     pollEndpoint: "/v1/videos/{id}",
     submitHandleField: "request_id",
@@ -54,6 +57,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
   together: {
     wireShape: "VideoTogether",
     outputDelivery: "DeliveryURL",
+    videoBaseUrl: "",
     genEndpoint: "/v2/videos",
     pollEndpoint: "/v2/videos/{id}",
     submitHandleField: "id",
@@ -72,6 +76,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
   zhipu: {
     wireShape: "VideoZhipu",
     outputDelivery: "DeliveryURL",
+    videoBaseUrl: "",
     genEndpoint: "/v4/videos/generations",
     pollEndpoint: "/v4/async-result/{id}",
     submitHandleField: "id",
