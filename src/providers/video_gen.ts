@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 //
 //
-export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen";
 
 //
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -51,6 +51,25 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["480p", "720p"],
+      },
+    ],
+  },
+  qwen: {
+    wireShape: "VideoQwen",
+    outputDelivery: "DeliveryURL",
+    videoBaseUrl: "https://dashscope-intl.aliyuncs.com",
+    genEndpoint: "/api/v1/services/aigc/video-generation/video-synthesis",
+    pollEndpoint: "/api/v1/tasks/{id}",
+    submitHandleField: "output.task_id",
+    requiresOutputUri: false,
+    models: [
+      {
+        modelId: "wan2.2-t2v-plus",
+        label: "Wan 2.2 T2V Plus",
+        supportsImageToVideo: true,
+        maxDurationSeconds: 5,
+        outputMime: "video/mp4",
+        resolutions: ["720p"],
       },
     ],
   },

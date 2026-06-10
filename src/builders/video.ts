@@ -217,6 +217,10 @@ export async function videoSubmit(
 //
 //
 //
+//
+//
+//
+//
 async function dispatchVideoSubmit(
   vgCfg: VideoGenDef,
   baseUrl: string,
@@ -226,9 +230,17 @@ async function dispatchVideoSubmit(
 ): Promise<string> {
   //
   //
-  //
-  const body = { model, prompt: joinPromptText(parts) };
-  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, headers);
+  let body: Record<string, unknown>;
+  let postHeaders = headers;
+  if (vgCfg.wireShape === "VideoQwen") {
+    body = { model, input: { prompt: joinPromptText(parts) } };
+    //
+    //
+    postHeaders = { ...headers, "X-DashScope-Async": "enable" };
+  } else {
+    body = { model, prompt: joinPromptText(parts) };
+  }
+  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, postHeaders);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -284,6 +296,8 @@ function lookupHandleField(
 //
 //
 //
+//
+//
 function parseVideoPoll(
   vgCfg: VideoGenDef,
   raw: unknown,
@@ -303,6 +317,23 @@ function parseVideoPoll(
           throw new APIError(0, `video generation ${status}`, false);
         default:
           return null; // queued, in_progress (or any non-terminal status)
+      }
+    }
+    case "VideoQwen": {
+      const root = raw as { output?: { task_status?: unknown } };
+      const output = root.output;
+      const status =
+        output && typeof output.task_status === "string"
+          ? output.task_status
+          : "";
+      switch (status) {
+        case "SUCCEEDED":
+          return videoResultFromQwen(vgCfg, raw);
+        case "FAILED":
+        case "CANCELED":
+          throw new APIError(0, `video generation ${status}`, false);
+        default:
+          return null; // PENDING, RUNNING, UNKNOWN (or any non-terminal status)
       }
     }
     case "VideoZhipu": {
@@ -405,6 +436,24 @@ function videoResultFromTogether(
     return buildVideoResponse([]);
   }
   const url = typeof outputs.video_url === "string" ? outputs.video_url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+//
+//
+//
+//
+function videoResultFromQwen(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { output?: { video_url?: unknown } };
+  const output = root.output;
+  if (!output || typeof output !== "object") {
+    return buildVideoResponse([]);
+  }
+  const url = typeof output.video_url === "string" ? output.video_url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
