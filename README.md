@@ -40,7 +40,7 @@ console.log(resp.text);
 console.log(resp.usage.input, resp.usage.output);
 ```
 
-`c.text`, `c.image`, `c.agent`, and `c.upload` are fields on the `Client` — access them without parentheses. Chain methods (`.system(...)`, `.temperature(...)`) clone the builder and return the clone, so a forked chain shares no state with its parent. The typed builder is the only public surface as of v1.0.0. One mental model — `client.<capability>.<chain>.<terminal>` — across every capability.
+`c.text`, `c.image`, `c.music`, `c.video`, `c.agent`, and `c.upload` are fields on the `Client` — access them without parentheses. Chain methods (`.system(...)`, `.temperature(...)`) clone the builder and return the clone, so a forked chain shares no state with its parent. The typed builder is the only public surface as of v1.0.0. One mental model — `client.<capability>.<chain>.<terminal>` — across every capability.
 
 Runnable examples for each capability live in [`examples/`](./examples); `tests/examples.test.ts` exercises every documented call shape against a mock HTTP server, so the snippets in this README cannot drift from the actual API surface.
 
