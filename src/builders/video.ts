@@ -97,8 +97,14 @@ export class VideoHandle {
       const raw = JSON.parse(respText) as unknown;
       const result = parseVideoPoll(vgCfg, raw);
       if (result) {
-        if (wantRaw) result.raw = raw;
-        return result;
+        //
+        //
+        //
+        const finalResult = vgCfg.fileEndpoint
+          ? await resolveVideoFile(base, vgCfg, raw, headers)
+          : result;
+        if (wantRaw) finalResult.raw = raw;
+        return finalResult;
       }
       await sleep(interval);
     }
@@ -336,6 +342,21 @@ function parseVideoPoll(
           return null; // PENDING, RUNNING, UNKNOWN (or any non-terminal status)
       }
     }
+    case "VideoMinimax": {
+      //
+      //
+      //
+      const root = raw as { status?: unknown };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "Success":
+          return buildVideoResponse([]);
+        case "Fail":
+          throw new APIError(0, "video generation failed", false);
+        default:
+          return null; // Queueing, Preparing, Processing
+      }
+    }
     case "VideoZhipu": {
       const root = raw as { task_status?: unknown };
       const status =
@@ -454,6 +475,58 @@ function videoResultFromQwen(
     return buildVideoResponse([]);
   }
   const url = typeof output.video_url === "string" ? output.video_url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+//
+//
+//
+//
+//
+//
+async function resolveVideoFile(
+  base: string,
+  vgCfg: VideoGenDef,
+  pollRaw: unknown,
+  headers: Record<string, string>,
+): Promise<VideoResponse> {
+  const root = pollRaw as { file_id?: unknown };
+  const fileId = videoFileId(root.file_id);
+  if (!fileId) {
+    throw new APIError(
+      0,
+      "video file hop: terminal poll carried no file_id",
+      false,
+    );
+  }
+  const fileUrl = base + vgCfg.fileEndpoint.replace("{file_id}", fileId);
+  const fileText = await fetchText(fileUrl, headers);
+  const fileRaw = JSON.parse(fileText) as unknown;
+  return videoResultFromMinimaxFile(vgCfg, fileRaw);
+}
+
+//
+//
+function videoFileId(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(Math.trunc(v));
+  return "";
+}
+
+//
+//
+//
+function videoResultFromMinimaxFile(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { file?: { download_url?: unknown } };
+  const file = root.file;
+  if (!file || typeof file !== "object") {
+    return buildVideoResponse([]);
+  }
+  const url = typeof file.download_url === "string" ? file.download_url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 

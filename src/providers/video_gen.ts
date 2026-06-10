@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 //
 //
-export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax";
 
 //
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -29,6 +29,8 @@ export interface VideoGenDef {
   //
   pollEndpoint: string;
   //
+  fileEndpoint: string;
+  //
   submitHandleField: string;
   requiresOutputUri: boolean;
   models: VideoModelDef[];
@@ -41,6 +43,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     videoBaseUrl: "",
     genEndpoint: "/v1/videos/generations",
     pollEndpoint: "/v1/videos/{id}",
+    fileEndpoint: "",
     submitHandleField: "request_id",
     requiresOutputUri: false,
     models: [
@@ -54,12 +57,33 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
       },
     ],
   },
+  minimax: {
+    wireShape: "VideoMinimax",
+    outputDelivery: "DeliveryURL",
+    videoBaseUrl: "https://api.minimax.io",
+    genEndpoint: "/v1/video_generation",
+    pollEndpoint: "/v1/query/video_generation?task_id={id}",
+    fileEndpoint: "/v1/files/retrieve?file_id={file_id}",
+    submitHandleField: "task_id",
+    requiresOutputUri: false,
+    models: [
+      {
+        modelId: "MiniMax-Hailuo-2.3",
+        label: "MiniMax Hailuo 2.3",
+        supportsImageToVideo: true,
+        maxDurationSeconds: 6,
+        outputMime: "video/mp4",
+        resolutions: ["1080p", "768p"],
+      },
+    ],
+  },
   qwen: {
     wireShape: "VideoQwen",
     outputDelivery: "DeliveryURL",
     videoBaseUrl: "https://dashscope-intl.aliyuncs.com",
     genEndpoint: "/api/v1/services/aigc/video-generation/video-synthesis",
     pollEndpoint: "/api/v1/tasks/{id}",
+    fileEndpoint: "",
     submitHandleField: "output.task_id",
     requiresOutputUri: false,
     models: [
@@ -79,6 +103,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     videoBaseUrl: "",
     genEndpoint: "/v2/videos",
     pollEndpoint: "/v2/videos/{id}",
+    fileEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
     models: [
@@ -98,6 +123,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     videoBaseUrl: "",
     genEndpoint: "/v4/videos/generations",
     pollEndpoint: "/v4/async-result/{id}",
+    fileEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
     models: [
