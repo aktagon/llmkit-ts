@@ -12,6 +12,7 @@
 // reconstruct a handle via `new VideoHandle(id, provider, raw)`.
 
 import { PROVIDERS } from "../providers/providers.ts";
+import type { ProviderConfig } from "../providers/providers.ts";
 import {
   type VideoGenDef,
   type VideoModelDef,
@@ -79,7 +80,11 @@ export class VideoHandle {
 
     const base = videoBaseUrl(this.provider, cfg, vgCfg);
     const headers = buildAuthHeaders(this.provider, cfg);
-    const pollUrl = videoPollURL(vgCfg.pollEndpoint, base, this.id);
+    const pollUrl = appendVideoAuth(
+      videoPollURL(vgCfg.pollEndpoint, base, this.id),
+      this.provider,
+      cfg,
+    );
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const timeout = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     const wantRaw = !!options.raw || this.raw;
@@ -100,9 +105,20 @@ export class VideoHandle {
         // Two-hop providers (vgCfg.fileEndpoint set, e.g. minimax): the
         // terminal poll carried a file reference, not a video URL — resolve it
         // with one more GET before returning.
-        const finalResult = vgCfg.fileEndpoint
+        let finalResult = vgCfg.fileEndpoint
           ? await resolveVideoFile(base, vgCfg, raw, headers)
           : result;
+        // Delivery dispatch (VID-005). Download-delivery providers (Veo)
+        // returned a temporary fetch URI in VideoData.url; GET it and fill
+        // VideoData.bytes (clearing url, per the source-XOR contract). Url-
+        // and output-uri-delivery providers leave the url.
+        if (vgCfg.outputDelivery === "DeliveryDownload") {
+          finalResult = await downloadVideoBytes(
+            this.provider,
+            cfg,
+            finalResult,
+          );
+        }
         if (wantRaw) finalResult.raw = raw;
         return finalResult;
       }
@@ -194,6 +210,8 @@ export async function videoSubmit(
       vgCfg,
       baseUrl,
       headers,
+      provider,
+      cfg,
       b._model,
       parts,
     );
@@ -231,6 +249,8 @@ async function dispatchVideoSubmit(
   vgCfg: VideoGenDef,
   baseUrl: string,
   headers: Record<string, string>,
+  provider: Provider,
+  cfg: ProviderConfig,
   model: string,
   parts: Part[],
 ): Promise<string> {
@@ -243,10 +263,24 @@ async function dispatchVideoSubmit(
     // DashScope's async submit requires this header; set per-request only so
     // it never leaks into the shared auth-header map.
     postHeaders = { ...headers, "X-DashScope-Async": "enable" };
+  } else if (vgCfg.wireShape === "VideoVeo") {
+    // Veo carries the model in the submit PATH (:predictLongRunning), not the
+    // body — so the body has no model field. The prompt nests under
+    // instances[]; the optional parameters object is omitted on the prompt-
+    // only hot path.
+    body = { instances: [{ prompt: joinPromptText(parts) }] };
   } else {
     body = { model, prompt: joinPromptText(parts) };
   }
-  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, postHeaders);
+  // {model} in the submit endpoint is substituted with the per-call model
+  // (Veo's :predictLongRunning path); a no-op for providers that carry the
+  // model in the body. Query-param auth (Google ?key=) is appended last.
+  const submitUrl = appendVideoAuth(
+    baseUrl + vgCfg.genEndpoint.replace("{model}", model),
+    provider,
+    cfg,
+  );
+  const respText = await postJson(submitUrl, body, postHeaders);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -369,6 +403,37 @@ function parseVideoPoll(
         default:
           return null; // PROCESSING (or any non-terminal status)
       }
+    }
+    case "VideoVeo": {
+      // Operation-based LRO: poll until done=true (the long-running-operation
+      // done flag, not a status string). A done op carrying an error object is
+      // a terminal failure; otherwise the response holds the finished video.
+      const root = raw as {
+        done?: unknown;
+        error?: { message?: unknown };
+      };
+      if (root.done !== true) {
+        return null;
+      }
+      if (root.error && typeof root.error === "object") {
+        const msg =
+          typeof root.error.message === "string" && root.error.message
+            ? root.error.message
+            : "operation failed";
+        throw new APIError(0, `video generation failed: ${msg}`, false);
+      }
+      // A done op with neither error nor a usable uri must surface as an error,
+      // not a silent zero-byte success: download delivery would otherwise GET
+      // nothing and return a VideoData with empty bytes and empty url.
+      const result = videoResultFromVeo(vgCfg, raw);
+      if (result.videos.length === 0 || !result.videos[0]!.url) {
+        throw new APIError(
+          0,
+          "video generation: operation done but carried no video uri",
+          false,
+        );
+      }
+      return result;
     }
     case "VideoGrok": {
       const root = raw as { status?: unknown; error?: unknown };
@@ -530,6 +595,73 @@ function videoResultFromMinimaxFile(
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
+// videoResultFromVeo extracts the finished video reference from a Veo LRO poll
+// response. Veo uses download delivery: the response carries a temporary
+// Files-API download URI at
+// response.generateVideoResponse.generatedSamples[0].video.uri. This places it
+// in VideoData.url; the wait() download step (outputDelivery=DeliveryDownload)
+// then fetches the bytes into VideoData.bytes and clears url.
+function videoResultFromVeo(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as {
+    response?: {
+      generateVideoResponse?: { generatedSamples?: unknown };
+    };
+  };
+  const gvr = root.response?.generateVideoResponse;
+  const samples = Array.isArray(gvr?.generatedSamples)
+    ? gvr.generatedSamples
+    : [];
+  if (samples.length === 0) {
+    return buildVideoResponse([]);
+  }
+  const first = samples[0] as { video?: { uri?: unknown } };
+  const uri =
+    first.video && typeof first.video.uri === "string" ? first.video.uri : "";
+  return buildVideoResponse([{ mimeType: mime, url: uri }]);
+}
+
+// appendVideoAuth appends the provider's query-param API key to a video URL
+// when the provider authenticates that way (Google ?key=); a no-op for
+// bearer-header providers (every other video provider). Picks ? or & based on
+// whether the URL already carries a query string (the Files-API download URI
+// arrives with ?alt=media).
+function appendVideoAuth(
+  url: string,
+  provider: Provider,
+  cfg: ProviderConfig,
+): string {
+  if (cfg.authScheme !== "QueryParamKey" || !cfg.authQueryParam) {
+    return url;
+  }
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
+}
+
+// downloadVideoBytes fetches the finished video for download-delivery providers
+// (vgCfg.outputDelivery === DeliveryDownload, e.g. Veo). The poll result placed
+// the temporary fetch URI in VideoData.url; this GETs each one (carrying the
+// provider's query-param auth when applicable) and moves the payload into
+// VideoData.bytes, clearing url so the source-XOR contract holds (VID-004):
+// download delivery returns bytes, never a url.
+async function downloadVideoBytes(
+  provider: Provider,
+  cfg: ProviderConfig,
+  resp: VideoResponse,
+): Promise<VideoResponse> {
+  const headers = buildAuthHeaders(provider, cfg);
+  for (const video of resp.videos) {
+    if (!video.url) continue;
+    const fetchUrl = appendVideoAuth(video.url, provider, cfg);
+    video.bytes = await fetchBytes(fetchUrl, headers);
+    video.url = "";
+  }
+  return resp;
+}
+
 // videoFallbackMime returns the first model's output MIME, used when the
 // provider does not echo a MIME on the result.
 function videoFallbackMime(vgCfg: VideoGenDef): string {
@@ -612,6 +744,22 @@ async function fetchText(
     );
   }
   return text;
+}
+
+async function fetchBytes(
+  url: string,
+  headers: Record<string, string>,
+): Promise<Uint8Array> {
+  const resp = await fetch(url, { headers });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return new Uint8Array(await resp.arrayBuffer());
 }
 
 function sleep(ms: number): Promise<void> {
