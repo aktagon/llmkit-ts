@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 //
 //
-export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo" | "VideoBedrock";
 
 //
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -37,6 +37,26 @@ export interface VideoGenDef {
 }
 
 const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
+  bedrock: {
+    wireShape: "VideoBedrock",
+    outputDelivery: "DeliveryOutputURI",
+    videoBaseUrl: "",
+    genEndpoint: "/async-invoke",
+    pollEndpoint: "/async-invoke/{id}",
+    fileEndpoint: "",
+    submitHandleField: "invocationArn",
+    requiresOutputUri: true,
+    models: [
+      {
+        modelId: "amazon.nova-reel-v1:0",
+        label: "Nova Reel",
+        supportsImageToVideo: true,
+        maxDurationSeconds: 6,
+        outputMime: "video/mp4",
+        resolutions: ["720p"],
+      },
+    ],
+  },
   google: {
     wireShape: "VideoVeo",
     outputDelivery: "DeliveryDownload",

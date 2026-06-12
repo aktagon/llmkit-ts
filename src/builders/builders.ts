@@ -270,6 +270,7 @@ export class Video {
  client: Client;
  _middleware: MiddlewareFn[] = [];
  _model: string = "";
+ _outputURI: string = "";
  _raw: boolean = false;
  _parts: Part[] = [];
 
@@ -277,6 +278,7 @@ export class Video {
 
   addMiddleware(...fns: MiddlewareFn[]): Video { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Video { const out = clone(this); out._model = name; return out; }
+  outputURI(uri: string): Video { const out = clone(this); out._outputURI = uri; return out; }
   raw(): Video { const out = clone(this); out._raw = true; return out; }
   text(s: string): Video { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   async submit(msg: string): Promise<VideoHandle> {

@@ -21,6 +21,10 @@ export async function signSigV4(
   sessionToken: string,
   region: string,
   service: string,
+  //
+  //
+  //
+  method: string = "POST",
 ): Promise<Record<string, string>> {
   const now = _testNow.value ?? new Date();
   const datestamp = formatDatestamp(now);
@@ -49,7 +53,7 @@ export async function signSigV4(
     host,
   );
   const canonicalRequest = [
-    "POST",
+    method,
     path,
     canonicalQueryString(query),
     canonicalHeaders,
