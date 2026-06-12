@@ -80,11 +80,18 @@ export class VideoHandle {
 
     const base = videoBaseUrl(this.provider, cfg, vgCfg);
     const headers = buildAuthHeaders(this.provider, cfg);
-    const pollUrl = appendVideoAuth(
-      videoPollURL(vgCfg.pollEndpoint, base, this.id),
-      this.provider,
-      cfg,
-    );
+    //
+    //
+    //
+    //
+    const sigV4 = cfg.authScheme === "SigV4";
+    const pollUrl = sigV4
+      ? base + vgCfg.pollEndpoint.replace("{id}", pathEscapeSegment(this.id))
+      : appendVideoAuth(
+          videoPollURL(vgCfg.pollEndpoint, base, this.id),
+          this.provider,
+          cfg,
+        );
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const timeout = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     const wantRaw = !!options.raw || this.raw;
@@ -98,7 +105,9 @@ export class VideoHandle {
           false,
         );
       }
-      const respText = await fetchText(pollUrl, headers);
+      const respText = sigV4
+        ? await sigV4Get(pollUrl, this.provider, cfg)
+        : await fetchText(pollUrl, headers);
       const raw = JSON.parse(respText) as unknown;
       const result = parseVideoPoll(vgCfg, raw);
       if (result) {
@@ -193,6 +202,17 @@ export async function videoSubmit(
     );
   }
 
+  //
+  //
+  //
+  //
+  if (vgCfg.requiresOutputUri && !b._outputURI) {
+    throw new ValidationError(
+      "output_uri",
+      `${provider.name} requires a caller output S3 URI; set outputURI on the request`,
+    );
+  }
+
   const baseEvent: Event = {
     op: "video_generation",
     phase: "pre",
@@ -213,6 +233,7 @@ export async function videoSubmit(
       provider,
       cfg,
       b._model,
+      b._outputURI,
       parts,
     );
     firePost(b._middleware as MiddlewareFn[], {
@@ -245,6 +266,9 @@ export async function videoSubmit(
 //
 //
 //
+//
+//
+//
 async function dispatchVideoSubmit(
   vgCfg: VideoGenDef,
   baseUrl: string,
@@ -252,6 +276,7 @@ async function dispatchVideoSubmit(
   provider: Provider,
   cfg: ProviderConfig,
   model: string,
+  outputUri: string,
   parts: Part[],
 ): Promise<string> {
   //
@@ -269,6 +294,21 @@ async function dispatchVideoSubmit(
     //
     //
     body = { instances: [{ prompt: joinPromptText(parts) }] };
+  } else if (vgCfg.wireShape === "VideoBedrock") {
+    //
+    //
+    //
+    //
+    body = {
+      modelId: model,
+      modelInput: {
+        taskType: "TEXT_VIDEO",
+        textToVideoParams: { text: joinPromptText(parts) },
+      },
+      outputDataConfig: {
+        s3OutputDataConfig: { s3Uri: outputUri },
+      },
+    };
   } else {
     body = { model, prompt: joinPromptText(parts) };
   }
@@ -280,7 +320,12 @@ async function dispatchVideoSubmit(
     provider,
     cfg,
   );
-  const respText = await postJson(submitUrl, body, postHeaders);
+  //
+  //
+  const respText =
+    cfg.authScheme === "SigV4"
+      ? await sigV4PostJson(submitUrl, body, provider, cfg)
+      : await postJson(submitUrl, body, postHeaders);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -298,12 +343,21 @@ async function dispatchVideoSubmit(
 //
 //
 //
+//
 function videoBaseUrl(
   provider: Provider,
-  cfg: { baseUrl: string },
+  cfg: ProviderConfig,
   vgCfg: VideoGenDef,
 ): string {
-  return provider.baseUrl || vgCfg.videoBaseUrl || cfg.baseUrl;
+  if (provider.baseUrl) return provider.baseUrl;
+  let base = vgCfg.videoBaseUrl || cfg.baseUrl;
+  //
+  //
+  //
+  if (cfg.regionEnvVar) {
+    base = base.replaceAll("{region}", process.env[cfg.regionEnvVar] || "");
+  }
+  return base;
 }
 
 //
@@ -434,6 +488,40 @@ function parseVideoPoll(
         );
       }
       return result;
+    }
+    case "VideoBedrock": {
+      //
+      //
+      //
+      //
+      const root = raw as { status?: unknown; failureMessage?: unknown };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "Completed": {
+          //
+          //
+          //
+          //
+          const result = videoResultFromBedrock(vgCfg, raw);
+          if (result.videos.length === 0 || !result.videos[0]!.url) {
+            throw new APIError(
+              0,
+              "video generation: completed but carried no output s3 uri",
+              false,
+            );
+          }
+          return result;
+        }
+        case "Failed": {
+          const msg =
+            typeof root.failureMessage === "string" && root.failureMessage
+              ? root.failureMessage
+              : "operation failed";
+          throw new APIError(0, `video generation failed: ${msg}`, false);
+        }
+        default:
+          return null; // InProgress (or any non-terminal status)
+      }
     }
     case "VideoGrok": {
       const root = raw as { status?: unknown; error?: unknown };
@@ -629,6 +717,37 @@ function videoResultFromVeo(
 //
 //
 //
+//
+//
+function videoResultFromBedrock(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as {
+    outputDataConfig?: { s3OutputDataConfig?: { s3Uri?: unknown } };
+  };
+  const s3 = root.outputDataConfig?.s3OutputDataConfig;
+  const url = s3 && typeof s3.s3Uri === "string" ? s3.s3Uri : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+//
+//
+//
+//
+//
+//
+//
+function pathEscapeSegment(s: string): string {
+  return encodeURIComponent(s).replace(/%3A/gi, ":");
+}
+
+//
+//
+//
+//
+//
 function appendVideoAuth(
   url: string,
   provider: Provider,
@@ -760,6 +879,75 @@ async function fetchBytes(
     );
   }
   return new Uint8Array(await resp.arrayBuffer());
+}
+
+//
+//
+//
+//
+async function sigV4PostJson(
+  url: string,
+  body: Record<string, unknown>,
+  provider: Provider,
+  cfg: ProviderConfig,
+): Promise<string> {
+  const { signSigV4 } = await import("../sigv4.ts");
+  const jsonBody = JSON.stringify(body);
+  const region = process.env[cfg.regionEnvVar] || "";
+  const secret = process.env[cfg.secretKeyEnvVar] || "";
+  const session = process.env[cfg.sessionTokenEnvVar] || "";
+  const headers = await signSigV4(
+    url,
+    new TextEncoder().encode(jsonBody),
+    provider.apiKey,
+    secret,
+    session,
+    region,
+    cfg.serviceName,
+  );
+  headers["Content-Type"] = "application/json";
+  const resp = await fetch(url, { method: "POST", headers, body: jsonBody });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return text;
+}
+
+//
+async function sigV4Get(
+  url: string,
+  provider: Provider,
+  cfg: ProviderConfig,
+): Promise<string> {
+  const { signSigV4 } = await import("../sigv4.ts");
+  const region = process.env[cfg.regionEnvVar] || "";
+  const secret = process.env[cfg.secretKeyEnvVar] || "";
+  const session = process.env[cfg.sessionTokenEnvVar] || "";
+  const headers = await signSigV4(
+    url,
+    new Uint8Array(),
+    provider.apiKey,
+    secret,
+    session,
+    region,
+    cfg.serviceName,
+    "GET",
+  );
+  const resp = await fetch(url, { method: "GET", headers });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return text;
 }
 
 function sleep(ms: number): Promise<void> {
