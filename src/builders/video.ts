@@ -12,6 +12,7 @@
 //
 
 import { PROVIDERS } from "../providers/providers.ts";
+import type { ProviderConfig } from "../providers/providers.ts";
 import {
   type VideoGenDef,
   type VideoModelDef,
@@ -79,7 +80,11 @@ export class VideoHandle {
 
     const base = videoBaseUrl(this.provider, cfg, vgCfg);
     const headers = buildAuthHeaders(this.provider, cfg);
-    const pollUrl = videoPollURL(vgCfg.pollEndpoint, base, this.id);
+    const pollUrl = appendVideoAuth(
+      videoPollURL(vgCfg.pollEndpoint, base, this.id),
+      this.provider,
+      cfg,
+    );
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const timeout = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     const wantRaw = !!options.raw || this.raw;
@@ -100,9 +105,20 @@ export class VideoHandle {
         //
         //
         //
-        const finalResult = vgCfg.fileEndpoint
+        let finalResult = vgCfg.fileEndpoint
           ? await resolveVideoFile(base, vgCfg, raw, headers)
           : result;
+        //
+        //
+        //
+        //
+        if (vgCfg.outputDelivery === "DeliveryDownload") {
+          finalResult = await downloadVideoBytes(
+            this.provider,
+            cfg,
+            finalResult,
+          );
+        }
         if (wantRaw) finalResult.raw = raw;
         return finalResult;
       }
@@ -194,6 +210,8 @@ export async function videoSubmit(
       vgCfg,
       baseUrl,
       headers,
+      provider,
+      cfg,
       b._model,
       parts,
     );
@@ -231,6 +249,8 @@ async function dispatchVideoSubmit(
   vgCfg: VideoGenDef,
   baseUrl: string,
   headers: Record<string, string>,
+  provider: Provider,
+  cfg: ProviderConfig,
   model: string,
   parts: Part[],
 ): Promise<string> {
@@ -243,10 +263,24 @@ async function dispatchVideoSubmit(
     //
     //
     postHeaders = { ...headers, "X-DashScope-Async": "enable" };
+  } else if (vgCfg.wireShape === "VideoVeo") {
+    //
+    //
+    //
+    //
+    body = { instances: [{ prompt: joinPromptText(parts) }] };
   } else {
     body = { model, prompt: joinPromptText(parts) };
   }
-  const respText = await postJson(baseUrl + vgCfg.genEndpoint, body, postHeaders);
+  //
+  //
+  //
+  const submitUrl = appendVideoAuth(
+    baseUrl + vgCfg.genEndpoint.replace("{model}", model),
+    provider,
+    cfg,
+  );
+  const respText = await postJson(submitUrl, body, postHeaders);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -369,6 +403,37 @@ function parseVideoPoll(
         default:
           return null; // PROCESSING (or any non-terminal status)
       }
+    }
+    case "VideoVeo": {
+      //
+      //
+      //
+      const root = raw as {
+        done?: unknown;
+        error?: { message?: unknown };
+      };
+      if (root.done !== true) {
+        return null;
+      }
+      if (root.error && typeof root.error === "object") {
+        const msg =
+          typeof root.error.message === "string" && root.error.message
+            ? root.error.message
+            : "operation failed";
+        throw new APIError(0, `video generation failed: ${msg}`, false);
+      }
+      //
+      //
+      //
+      const result = videoResultFromVeo(vgCfg, raw);
+      if (result.videos.length === 0 || !result.videos[0]!.url) {
+        throw new APIError(
+          0,
+          "video generation: operation done but carried no video uri",
+          false,
+        );
+      }
+      return result;
     }
     case "VideoGrok": {
       const root = raw as { status?: unknown; error?: unknown };
@@ -532,6 +597,73 @@ function videoResultFromMinimaxFile(
 
 //
 //
+//
+//
+//
+//
+function videoResultFromVeo(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as {
+    response?: {
+      generateVideoResponse?: { generatedSamples?: unknown };
+    };
+  };
+  const gvr = root.response?.generateVideoResponse;
+  const samples = Array.isArray(gvr?.generatedSamples)
+    ? gvr.generatedSamples
+    : [];
+  if (samples.length === 0) {
+    return buildVideoResponse([]);
+  }
+  const first = samples[0] as { video?: { uri?: unknown } };
+  const uri =
+    first.video && typeof first.video.uri === "string" ? first.video.uri : "";
+  return buildVideoResponse([{ mimeType: mime, url: uri }]);
+}
+
+//
+//
+//
+//
+//
+function appendVideoAuth(
+  url: string,
+  provider: Provider,
+  cfg: ProviderConfig,
+): string {
+  if (cfg.authScheme !== "QueryParamKey" || !cfg.authQueryParam) {
+    return url;
+  }
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
+}
+
+//
+//
+//
+//
+//
+//
+async function downloadVideoBytes(
+  provider: Provider,
+  cfg: ProviderConfig,
+  resp: VideoResponse,
+): Promise<VideoResponse> {
+  const headers = buildAuthHeaders(provider, cfg);
+  for (const video of resp.videos) {
+    if (!video.url) continue;
+    const fetchUrl = appendVideoAuth(video.url, provider, cfg);
+    video.bytes = await fetchBytes(fetchUrl, headers);
+    video.url = "";
+  }
+  return resp;
+}
+
+//
+//
 function videoFallbackMime(vgCfg: VideoGenDef): string {
   return vgCfg.models.length > 0 ? vgCfg.models[0]!.outputMime : "video/mp4";
 }
@@ -612,6 +744,22 @@ async function fetchText(
     );
   }
   return text;
+}
+
+async function fetchBytes(
+  url: string,
+  headers: Record<string, string>,
+): Promise<Uint8Array> {
+  const resp = await fetch(url, { headers });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return new Uint8Array(await resp.arrayBuffer());
 }
 
 function sleep(ms: number): Promise<void> {

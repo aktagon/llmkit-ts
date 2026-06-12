@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 //
 //
-export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo";
 
 //
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -37,6 +37,26 @@ export interface VideoGenDef {
 }
 
 const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
+  google: {
+    wireShape: "VideoVeo",
+    outputDelivery: "DeliveryDownload",
+    videoBaseUrl: "",
+    genEndpoint: "/v1beta/models/{model}:predictLongRunning",
+    pollEndpoint: "/v1beta/{id}",
+    fileEndpoint: "",
+    submitHandleField: "name",
+    requiresOutputUri: false,
+    models: [
+      {
+        modelId: "veo-3.1-generate-preview",
+        label: "Veo 3.1",
+        supportsImageToVideo: true,
+        maxDurationSeconds: 8,
+        outputMime: "video/mp4",
+        resolutions: ["1080p", "720p"],
+      },
+    ],
+  },
   grok: {
     wireShape: "VideoGrok",
     outputDelivery: "DeliveryURL",
