@@ -56,6 +56,7 @@ function startMock(): {
           id: "msgbatch_test",
           request_id: "vid_test", // VID-007: Grok video-submit handle id
           task_id: "vid_test", // VideoMinimax: top-level task_id submit handle
+          invocationArn: "arn:aws:bedrock:test:async-invoke/vid_test", // VideoBedrock submit handle
           name: "models/veo-test/operations/op_test", // VideoVeo: operation-name submit handle
           output: { task_id: "vid_test", task_status: "PENDING" }, // VideoQwen: output.task_id submit handle
           candidates: [
@@ -494,5 +495,25 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("video-google", m.body());
+  });
+
+  // ADR-034 delivery-mode phase: Bedrock Nova Reel video-submit body is the
+  // nested {modelId, modelInput:{taskType, textToVideoParams:{text}},
+  // outputDataConfig:{s3OutputDataConfig:{s3Uri}}} shape — model in the BODY
+  // (unlike Veo's path), carrying the caller S3 URI. The SigV4 signing and the
+  // output-uri delivery (no download) are covered by the unit tests.
+  test("video submit (Bedrock Nova Reel) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.bedrock, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoBedrockModel)
+        .outputURI("s3://llmkit-wire-fixtures/out/")
+        .submit(wi.wireVideoBedrockPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-bedrock", m.body());
   });
 });

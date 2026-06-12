@@ -80,11 +80,18 @@ export class VideoHandle {
 
     const base = videoBaseUrl(this.provider, cfg, vgCfg);
     const headers = buildAuthHeaders(this.provider, cfg);
-    const pollUrl = appendVideoAuth(
-      videoPollURL(vgCfg.pollEndpoint, base, this.id),
-      this.provider,
-      cfg,
-    );
+    // Bedrock (SigV4) signs the poll GET and carries the handle ARN as a single
+    // percent-encoded path segment (its ':' and '/' must not split into extra
+    // segments). Every other provider uses the verbatim {id} substitution and
+    // the bearer/query-param auth path.
+    const sigV4 = cfg.authScheme === "SigV4";
+    const pollUrl = sigV4
+      ? base + vgCfg.pollEndpoint.replace("{id}", pathEscapeSegment(this.id))
+      : appendVideoAuth(
+          videoPollURL(vgCfg.pollEndpoint, base, this.id),
+          this.provider,
+          cfg,
+        );
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const timeout = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     const wantRaw = !!options.raw || this.raw;
@@ -98,7 +105,9 @@ export class VideoHandle {
           false,
         );
       }
-      const respText = await fetchText(pollUrl, headers);
+      const respText = sigV4
+        ? await sigV4Get(pollUrl, this.provider, cfg)
+        : await fetchText(pollUrl, headers);
       const raw = JSON.parse(respText) as unknown;
       const result = parseVideoPoll(vgCfg, raw);
       if (result) {
@@ -193,6 +202,17 @@ export async function videoSubmit(
     );
   }
 
+  // VID-005: output-uri providers (Bedrock Nova Reel) write the video to the
+  // caller's own S3 bucket, so the submit MUST carry a destination URI. Reject
+  // pre-flight rather than letting the provider 400. Mirror of go/video.go
+  // submitVideo.
+  if (vgCfg.requiresOutputUri && !b._outputURI) {
+    throw new ValidationError(
+      "output_uri",
+      `${provider.name} requires a caller output S3 URI; set outputURI on the request`,
+    );
+  }
+
   const baseEvent: Event = {
     op: "video_generation",
     phase: "pre",
@@ -213,6 +233,7 @@ export async function videoSubmit(
       provider,
       cfg,
       b._model,
+      b._outputURI,
       parts,
     );
     firePost(b._middleware as MiddlewareFn[], {
@@ -241,6 +262,9 @@ export async function videoSubmit(
 //   - VideoQwen (DashScope) nests the prompt under an `input` object
 //     ({model, input:{prompt}}) and requires the X-DashScope-Async: enable
 //     header.
+//   - VideoBedrock (Nova Reel) nests the prompt under modelInput and carries
+//     the caller S3 URI under outputDataConfig, and is signed with SigV4 (the
+//     bearer/query-param header map does not apply).
 //
 // The body and any per-shape headers are selected by wire shape (never
 // provider name); the poll handle id is always read from the config-declared
@@ -252,6 +276,7 @@ async function dispatchVideoSubmit(
   provider: Provider,
   cfg: ProviderConfig,
   model: string,
+  outputUri: string,
   parts: Part[],
 ): Promise<string> {
   // Submit endpoint resolved from the config-declared base + relative path
@@ -269,6 +294,21 @@ async function dispatchVideoSubmit(
     // instances[]; the optional parameters object is omitted on the prompt-
     // only hot path.
     body = { instances: [{ prompt: joinPromptText(parts) }] };
+  } else if (vgCfg.wireShape === "VideoBedrock") {
+    // Nova Reel carries the model in the BODY (modelId, unlike the Converse
+    // chat path) and writes the mp4 to the caller's S3 bucket. The optional
+    // videoGenerationConfig is omitted on the prompt-only hot path (provider
+    // defaults apply).
+    body = {
+      modelId: model,
+      modelInput: {
+        taskType: "TEXT_VIDEO",
+        textToVideoParams: { text: joinPromptText(parts) },
+      },
+      outputDataConfig: {
+        s3OutputDataConfig: { s3Uri: outputUri },
+      },
+    };
   } else {
     body = { model, prompt: joinPromptText(parts) };
   }
@@ -280,7 +320,12 @@ async function dispatchVideoSubmit(
     provider,
     cfg,
   );
-  const respText = await postJson(submitUrl, body, postHeaders);
+  // Bedrock (SigV4) signs the submit POST; the bearer/query-param header map
+  // does not apply. Region/secret/session come from the AWS env vars.
+  const respText =
+    cfg.authScheme === "SigV4"
+      ? await sigV4PostJson(submitUrl, body, provider, cfg)
+      : await postJson(submitUrl, body, postHeaders);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -297,13 +342,22 @@ async function dispatchVideoSubmit(
 // per-client override wins (tests point it at a mock; users at a proxy), else
 // the provider's distinct video base (vgCfg.videoBaseUrl) when the video host
 // differs from chat, else the chat base. Endpoints are always relative paths
-// joined to this base — never absolute — so the host stays overridable.
+// joined to this base — never absolute — so the host stays overridable. Mirror
+// of go/video.go videoBaseURL.
 function videoBaseUrl(
   provider: Provider,
-  cfg: { baseUrl: string },
+  cfg: ProviderConfig,
   vgCfg: VideoGenDef,
 ): string {
-  return provider.baseUrl || vgCfg.videoBaseUrl || cfg.baseUrl;
+  if (provider.baseUrl) return provider.baseUrl;
+  let base = vgCfg.videoBaseUrl || cfg.baseUrl;
+  // SigV4 hosts carry a {region} placeholder (Bedrock:
+  // bedrock-runtime.{region}.amazonaws.com) resolved from the region env var;
+  // a no-op for every provider without the placeholder.
+  if (cfg.regionEnvVar) {
+    base = base.replaceAll("{region}", process.env[cfg.regionEnvVar] || "");
+  }
+  return base;
 }
 
 // videoPollURL substitutes {id} in the config poll template (an A-Box fact,
@@ -434,6 +488,40 @@ function parseVideoPoll(
         );
       }
       return result;
+    }
+    case "VideoBedrock": {
+      // Bedrock async-invoke status (GetAsyncInvoke): Completed terminal-
+      // success, Failed terminal-error (failureMessage), InProgress pending.
+      // On success the provider wrote the mp4 to the caller's S3 bucket and
+      // echoes the URI.
+      const root = raw as { status?: unknown; failureMessage?: unknown };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "Completed": {
+          // A Completed invocation that echoes no output s3 uri must surface as
+          // an error, not a silent empty success (mirrors the Veo done+no-uri
+          // guard): the caller would otherwise get a "successful" response
+          // whose url is empty and never find the mp4.
+          const result = videoResultFromBedrock(vgCfg, raw);
+          if (result.videos.length === 0 || !result.videos[0]!.url) {
+            throw new APIError(
+              0,
+              "video generation: completed but carried no output s3 uri",
+              false,
+            );
+          }
+          return result;
+        }
+        case "Failed": {
+          const msg =
+            typeof root.failureMessage === "string" && root.failureMessage
+              ? root.failureMessage
+              : "operation failed";
+          throw new APIError(0, `video generation failed: ${msg}`, false);
+        }
+        default:
+          return null; // InProgress (or any non-terminal status)
+      }
     }
     case "VideoGrok": {
       const root = raw as { status?: unknown; error?: unknown };
@@ -624,6 +712,37 @@ function videoResultFromVeo(
   return buildVideoResponse([{ mimeType: mime, url: uri }]);
 }
 
+// videoResultFromBedrock extracts the finished video reference from a Bedrock
+// Nova Reel poll response. Bedrock uses output-uri delivery: the provider wrote
+// the mp4 to the caller's own S3 bucket and the finished poll echoes the S3 URI
+// at outputDataConfig.s3OutputDataConfig.s3Uri. The SDK surfaces it as
+// VideoData.url with bytes empty — the wait() delivery step never downloads it
+// (only DeliveryDownload fetches), so the caller fetches from S3 with their own
+// tooling (VID-005).
+function videoResultFromBedrock(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as {
+    outputDataConfig?: { s3OutputDataConfig?: { s3Uri?: unknown } };
+  };
+  const s3 = root.outputDataConfig?.s3OutputDataConfig;
+  const url = s3 && typeof s3.s3Uri === "string" ? s3.s3Uri : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+// pathEscapeSegment encodes a value as a single URL path segment, mirroring
+// Go's url.PathEscape: '/' becomes %2F (keeping it one segment) but ':' stays
+// literal — which matches Bedrock's SigV4 canonicalization (the live-verified
+// Converse chat path signs a model id carrying ':' literally and AWS accepts
+// it). signSigV4 canonicalizes the URL's pathname, and new URL().pathname
+// preserves both the literal ':' and the %2F, so the signed path equals the
+// wire path.
+function pathEscapeSegment(s: string): string {
+  return encodeURIComponent(s).replace(/%3A/gi, ":");
+}
+
 // appendVideoAuth appends the provider's query-param API key to a video URL
 // when the provider authenticates that way (Google ?key=); a no-op for
 // bearer-header providers (every other video provider). Picks ? or & based on
@@ -760,6 +879,75 @@ async function fetchBytes(
     );
   }
   return new Uint8Array(await resp.arrayBuffer());
+}
+
+// sigV4PostJson signs and sends a JSON POST with AWS SigV4, mirroring the chat
+// path in request.ts executeRequest. Region/secret/session come from the AWS
+// env vars; the signed canonical path equals the wire path (the body is
+// content-hashed into the signature).
+async function sigV4PostJson(
+  url: string,
+  body: Record<string, unknown>,
+  provider: Provider,
+  cfg: ProviderConfig,
+): Promise<string> {
+  const { signSigV4 } = await import("../sigv4.ts");
+  const jsonBody = JSON.stringify(body);
+  const region = process.env[cfg.regionEnvVar] || "";
+  const secret = process.env[cfg.secretKeyEnvVar] || "";
+  const session = process.env[cfg.sessionTokenEnvVar] || "";
+  const headers = await signSigV4(
+    url,
+    new TextEncoder().encode(jsonBody),
+    provider.apiKey,
+    secret,
+    session,
+    region,
+    cfg.serviceName,
+  );
+  headers["Content-Type"] = "application/json";
+  const resp = await fetch(url, { method: "POST", headers, body: jsonBody });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return text;
+}
+
+// sigV4Get signs and sends an empty-body GET with AWS SigV4 (the Bedrock poll).
+async function sigV4Get(
+  url: string,
+  provider: Provider,
+  cfg: ProviderConfig,
+): Promise<string> {
+  const { signSigV4 } = await import("../sigv4.ts");
+  const region = process.env[cfg.regionEnvVar] || "";
+  const secret = process.env[cfg.secretKeyEnvVar] || "";
+  const session = process.env[cfg.sessionTokenEnvVar] || "";
+  const headers = await signSigV4(
+    url,
+    new Uint8Array(),
+    provider.apiKey,
+    secret,
+    session,
+    region,
+    cfg.serviceName,
+    "GET",
+  );
+  const resp = await fetch(url, { method: "GET", headers });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return text;
 }
 
 function sleep(ms: number): Promise<void> {

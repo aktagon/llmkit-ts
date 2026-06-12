@@ -714,6 +714,186 @@ describe("Video.submit + wait — Veo (VideoVeo, download delivery)", () => {
   });
 });
 
+const novaReelModel = "amazon.nova-reel-v1:0";
+const novaReelARN =
+  "arn:aws:bedrock:us-east-1:123456789012:async-invoke/abc123def456";
+const novaReelOutputURI = "s3://my-bucket/out/";
+
+// bedrockVideoServer serves the Nova Reel start-async-invoke + get-async-invoke
+// endpoints. Bedrock is the FIRST SigV4-signed video provider (every other is a
+// bearer header) and the FIRST output-uri delivery (the provider writes the mp4
+// to the caller's S3 bucket; the SDK never downloads). Submit returns the poll
+// handle as the top-level `invocationArn`; the poll returns status=InProgress
+// until the supplied done body. When failMsg is non-empty the poll returns a
+// Failed status carrying it. Every request must carry a SigV4 Authorization
+// header; the submit body is captured for shape assertions.
+function bedrockVideoServer(
+  pendingPolls: number,
+  doneBody: Record<string, unknown>,
+  failMsg: string,
+  onSubmit?: (body: Record<string, unknown>, auth: string) => void,
+  onPollPath?: (path: string, auth: string) => void,
+) {
+  let polls = 0;
+  return Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      const auth = req.headers.get("authorization") ?? "";
+      if (req.method === "POST" && url.pathname.endsWith("/async-invoke")) {
+        const body = (await req.json()) as Record<string, unknown>;
+        onSubmit?.(body, auth);
+        return new Response(JSON.stringify({ invocationArn: novaReelARN }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (req.method === "GET" && url.pathname.includes("/async-invoke/")) {
+        onPollPath?.(url.pathname, auth);
+        if (failMsg) {
+          return new Response(
+            JSON.stringify({ status: "Failed", failureMessage: failMsg }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        polls += 1;
+        if (polls <= pendingPolls) {
+          return new Response(JSON.stringify({ status: "InProgress" }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify(doneBody), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+}
+
+describe("Video.submit + wait — Bedrock Nova Reel (VideoBedrock, output-uri)", () => {
+  test("submit (SigV4, modelId in body) -> InProgress -> Completed, url=S3 URI, no bytes", async () => {
+    let submitBody: Record<string, unknown> | undefined;
+    let submitAuth = "";
+    let pollAuth = "";
+    let seenPollPath = "";
+    const done = {
+      status: "Completed",
+      outputDataConfig: {
+        s3OutputDataConfig: { s3Uri: novaReelOutputURI },
+      },
+    };
+    const server = bedrockVideoServer(
+      2,
+      done,
+      "",
+      (body, auth) => {
+        submitBody = body;
+        submitAuth = auth;
+      },
+      (path, auth) => {
+        seenPollPath = path;
+        pollAuth = auth;
+      },
+    );
+    try {
+      const c = newClient(Providers.bedrock, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+
+      const handle = await c.video
+        .model(novaReelModel)
+        .outputURI(novaReelOutputURI)
+        .submit("a drone shot over the alps, 6s");
+      expect(handle.id).toBe(novaReelARN);
+      // SigV4-signed submit, modelId in the BODY, prompt nested, caller S3 URI.
+      expect(submitAuth.startsWith("AWS4-HMAC-SHA256")).toBe(true);
+      expect(submitBody!.modelId).toBe(novaReelModel);
+      const modelInput = submitBody!.modelInput as {
+        taskType: string;
+        textToVideoParams: { text: string };
+      };
+      expect(modelInput.taskType).toBe("TEXT_VIDEO");
+      expect(modelInput.textToVideoParams.text).toBe(
+        "a drone shot over the alps, 6s",
+      );
+      const odc = submitBody!.outputDataConfig as {
+        s3OutputDataConfig: { s3Uri: string };
+      };
+      expect(odc.s3OutputDataConfig.s3Uri).toBe(novaReelOutputURI);
+
+      const resp = await handle.wait(FAST_WAIT);
+      // SigV4-signed poll, and the ARN round-trips as ONE path segment: the
+      // ':' stays literal and the '/' is %2F-encoded on the wire (Bun's
+      // url.pathname preserves %2F), so decoding restores the full ARN.
+      expect(pollAuth.startsWith("AWS4-HMAC-SHA256")).toBe(true);
+      expect(decodeURIComponent(seenPollPath)).toContain(novaReelARN);
+      expect(resp.videos).toHaveLength(1);
+      expect(resp.videos[0]!.url).toBe(novaReelOutputURI);
+      expect(resp.videos[0]!.mimeType).toBe("video/mp4");
+      expect(resp.videos[0]!.bytes).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("VID-005: omitting the output URI rejects pre-flight with field output_uri", async () => {
+    const c = newClient(Providers.bedrock, "test-token");
+    c.provider.baseUrl = "http://unused";
+    let err: unknown;
+    try {
+      await c.video.model(novaReelModel).submit("a drone shot over the alps");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).field).toBe("output_uri");
+  });
+
+  test("Failed status surfaces the failureMessage", async () => {
+    const failMsg = "S3 bucket not writable by the service role";
+    const server = bedrockVideoServer(0, {}, failMsg);
+    try {
+      const c = newClient(Providers.bedrock, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video
+        .model(novaReelModel)
+        .outputURI(novaReelOutputURI)
+        .submit("a drone shot over the alps");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+      expect((err as APIError).message).toContain(failMsg);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("Completed but no output s3 uri throws (mirrors Veo done+no-uri guard)", async () => {
+    const server = bedrockVideoServer(0, { status: "Completed" }, "");
+    try {
+      const c = newClient(Providers.bedrock, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video
+        .model(novaReelModel)
+        .outputURI(novaReelOutputURI)
+        .submit("a drone shot");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+      expect((err as APIError).message).toContain("no output s3 uri");
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe("Video.submit — pre-flight validation", () => {
   test("requires model", async () => {
     const c = newClient(Providers.grok, "test-token");
