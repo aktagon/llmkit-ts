@@ -56,6 +56,7 @@ function startMock(): {
           id: "msgbatch_test",
           request_id: "vid_test", // VID-007: Grok video-submit handle id
           task_id: "vid_test", // VideoMinimax: top-level task_id submit handle
+          name: "models/veo-test/operations/op_test", // VideoVeo: operation-name submit handle
           output: { task_id: "vid_test", task_status: "PENDING" }, // VideoQwen: output.task_id submit handle
           candidates: [
             {
@@ -474,5 +475,24 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("video-minimax", m.body());
+  });
+
+  // ADR-034 fan-out: Google Veo video-submit body is the nested
+  // {instances:[{prompt}]} shape — the first video-submit body with NO model
+  // field, because Veo carries the model in the submit PATH
+  // (/v1beta/models/{model}:predictLongRunning). The LRO lifecycle and ?key=
+  // query-param auth are delivery-side, covered by the unit tests.
+  test("video submit (Veo) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.google, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoGoogleModel)
+        .submit(wi.wireVideoGooglePrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-google", m.body());
   });
 });

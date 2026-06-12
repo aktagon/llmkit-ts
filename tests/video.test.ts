@@ -550,6 +550,170 @@ describe("Video.submit + wait — MiniMax (VideoMinimax, two-hop)", () => {
   });
 });
 
+const veoVideoModel = "veo-3.1-generate-preview";
+
+// veoVideoServer serves the Google Veo LRO flow: submit ->
+// {name:"models/.../operations/op-1"}; operation poll returns {done:false} for
+// the first pendingPolls calls, then a done op whose response carries the
+// Files-API video.uri (download delivery). The download hop GETs that uri and
+// returns raw mp4 bytes. Every hop must carry the ?key= query-param auth
+// (Google is the first video provider that is NOT bearer-header). The download
+// uri is served with a pre-existing ?alt=media query so the test also
+// witnesses the ?->& auth-append branch. When failOp is set the done op
+// carries an error. onAuth receives the ?key= value seen on every request.
+function veoVideoServer(
+  pendingPolls: number,
+  videoBytes: Uint8Array,
+  failOp: boolean,
+  onSubmit?: (body: Record<string, unknown>) => void,
+  onAuth?: (key: string) => void,
+) {
+  let polls = 0;
+  let baseUrl = "";
+  const server = Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      onAuth?.(url.searchParams.get("key") ?? "");
+      if (
+        req.method === "POST" &&
+        url.pathname.endsWith("/veo-3.1-generate-preview:predictLongRunning")
+      ) {
+        const body = (await req.json()) as Record<string, unknown>;
+        onSubmit?.(body);
+        return new Response(
+          JSON.stringify({
+            name: "models/veo-3.1-generate-preview/operations/op-1",
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (req.method === "GET" && url.pathname.endsWith("/operations/op-1")) {
+        if (failOp) {
+          return new Response(
+            JSON.stringify({
+              done: true,
+              error: { code: 3, message: "prompt blocked by safety filter" },
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        polls += 1;
+        if (polls <= pendingPolls) {
+          return new Response(JSON.stringify({ done: false }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            done: true,
+            response: {
+              generateVideoResponse: {
+                generatedSamples: [
+                  {
+                    video: {
+                      uri: `${baseUrl}/v1beta/files/vid-file:download?alt=media`,
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname.endsWith("/files/vid-file:download")
+      ) {
+        if (url.searchParams.get("alt") !== "media") {
+          throw new Error("pre-existing alt=media did not survive auth append");
+        }
+        return new Response(videoBytes, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+  baseUrl = `http://localhost:${server.port}`;
+  return server;
+}
+
+describe("Video.submit + wait — Veo (VideoVeo, download delivery)", () => {
+  test("LRO poll -> done -> download bytes, url cleared, ?key= on every hop", async () => {
+    const wantBytes = new TextEncoder().encode(
+      "\x00\x00\x00\x18ftypmp42 fake mp4 payload",
+    );
+    let submitBody: Record<string, unknown> | undefined;
+    const seenKeys: string[] = [];
+    const server = veoVideoServer(
+      2,
+      wantBytes,
+      false,
+      (body) => {
+        submitBody = body;
+      },
+      (key) => {
+        seenKeys.push(key);
+      },
+    );
+    try {
+      const c = newClient(Providers.google, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+
+      const handle = await c.video
+        .model(veoVideoModel)
+        .submit("a drone shot over the alps at sunrise");
+      expect(handle.id).toBe(
+        "models/veo-3.1-generate-preview/operations/op-1",
+      );
+      // Veo submit body has instances[0].prompt and NO model field.
+      expect(submitBody!.model).toBeUndefined();
+      const instances = submitBody!.instances as Array<{ prompt: string }>;
+      expect(instances).toHaveLength(1);
+      expect(instances[0]!.prompt).toBe(
+        "a drone shot over the alps at sunrise",
+      );
+
+      const resp = await handle.wait(FAST_WAIT);
+      expect(resp.videos).toHaveLength(1);
+      expect(new TextDecoder().decode(resp.videos[0]!.bytes)).toBe(
+        new TextDecoder().decode(wantBytes),
+      );
+      // Source-XOR: download delivery clears url after fetching bytes.
+      expect(resp.videos[0]!.url).toBe("");
+      expect(resp.videos[0]!.mimeType).toBe("video/mp4");
+      // ?key=test-token on submit, every poll, and the download hop.
+      expect(seenKeys.every((k) => k === "test-token")).toBe(true);
+      expect(seenKeys.length).toBeGreaterThanOrEqual(4);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("done op with error throws the operation message", async () => {
+    const server = veoVideoServer(0, new Uint8Array(), true);
+    try {
+      const c = newClient(Providers.google, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video.model(veoVideoModel).submit("blocked");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+      expect((err as APIError).message).toContain(
+        "prompt blocked by safety filter",
+      );
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe("Video.submit — pre-flight validation", () => {
   test("requires model", async () => {
     const c = newClient(Providers.grok, "test-token");
