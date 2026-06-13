@@ -11,6 +11,9 @@ export interface ImageModelDef {
   label: string;
   aspectRatios: string[];
   imageSizes: string[];
+
+
+  maxInputImages: number;
 }
 
 export interface ImageGenDef {
@@ -35,12 +38,14 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         label: "Nano Banana Pro",
         aspectRatios: ["16:9", "1:1", "21:9", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16"],
         imageSizes: ["1K", "2K", "4K"],
+        maxInputImages: 11,
       },
       {
         modelId: "gemini-3.1-flash-image-preview",
         label: "Nano Banana 2",
         aspectRatios: ["16:9", "1:1", "1:4", "1:8", "21:9", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16"],
         imageSizes: ["1K", "2K", "4K", "512"],
+        maxInputImages: 14,
       },
     ],
   },
@@ -56,6 +61,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         label: "Grok Imagine Quality",
         aspectRatios: ["16:9", "19.5:9", "1:1", "1:2", "20:9", "2:1", "2:3", "3:2", "3:4", "4:3", "9:16", "9:19.5", "9:20", "auto"],
         imageSizes: [],
+        maxInputImages: 0,
       },
     ],
   },
@@ -71,24 +77,28 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         label: "GPT Image 1",
         aspectRatios: [],
         imageSizes: [],
+        maxInputImages: 0,
       },
       {
         modelId: "gpt-image-1-mini",
         label: "GPT Image 1 Mini",
         aspectRatios: [],
         imageSizes: [],
+        maxInputImages: 0,
       },
       {
         modelId: "gpt-image-1.5",
         label: "GPT Image 1.5",
         aspectRatios: [],
         imageSizes: [],
+        maxInputImages: 0,
       },
       {
         modelId: "gpt-image-2",
         label: "GPT Image 2",
         aspectRatios: [],
         imageSizes: [],
+        maxInputImages: 0,
       },
     ],
   },
@@ -104,18 +114,21 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         label: "Imagen 3 Fast",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
+        maxInputImages: 0,
       },
       {
         modelId: "imagen-3.0-generate-002",
         label: "Imagen 3",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
+        maxInputImages: 0,
       },
       {
         modelId: "imagen-4.0-generate-preview-06-06",
         label: "Imagen 4 Preview",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
+        maxInputImages: 0,
       },
     ],
   },
