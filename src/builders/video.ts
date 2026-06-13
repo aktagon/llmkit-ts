@@ -53,10 +53,21 @@ export class VideoHandle {
 
   raw: boolean;
 
-  constructor(id: string, provider: Provider, raw: boolean = false) {
+
+
+
+  model: string;
+
+  constructor(
+    id: string,
+    provider: Provider,
+    raw: boolean = false,
+    model: string = "",
+  ) {
     this.id = id;
     this.provider = provider;
     this.raw = raw;
+    this.model = model;
   }
 
 
@@ -84,14 +95,38 @@ export class VideoHandle {
     //
     //
     //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
     const sigV4 = cfg.authScheme === "SigV4";
-    const pollUrl = sigV4
-      ? base + vgCfg.pollEndpoint.replace("{id}", pathEscapeSegment(this.id))
-      : appendVideoAuth(
-          videoPollURL(vgCfg.pollEndpoint, base, this.id),
-          this.provider,
-          cfg,
-        );
+    const vertexPoll = vgCfg.wireShape === "VideoVertexVeo";
+    let pollUrl: string;
+    let vertexPollBody = "";
+    if (sigV4) {
+      pollUrl =
+        base + vgCfg.pollEndpoint.replace("{id}", pathEscapeSegment(this.id));
+    } else if (vertexPoll) {
+      pollUrl = appendVideoAuth(
+        base + vgCfg.pollEndpoint.replace("{model}", this.model),
+        this.provider,
+        cfg,
+      );
+      vertexPollBody = JSON.stringify({ operationName: this.id });
+    } else {
+      pollUrl = appendVideoAuth(
+        videoPollURL(vgCfg.pollEndpoint, base, this.id),
+        this.provider,
+        cfg,
+      );
+    }
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const timeout = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     const wantRaw = !!options.raw || this.raw;
@@ -107,7 +142,9 @@ export class VideoHandle {
       }
       const respText = sigV4
         ? await sigV4Get(pollUrl, this.provider, cfg)
-        : await fetchText(pollUrl, headers);
+        : vertexPoll
+          ? await postJsonText(pollUrl, vertexPollBody, headers)
+          : await fetchText(pollUrl, headers);
       const raw = JSON.parse(respText) as unknown;
       const result = parseVideoPoll(vgCfg, raw);
       if (result) {
@@ -240,7 +277,7 @@ export async function videoSubmit(
       ...baseEvent,
       duration: performance.now() - start,
     });
-    return new VideoHandle(requestId, provider, !!b._raw);
+    return new VideoHandle(requestId, provider, !!b._raw, b._model);
   } catch (err) {
     firePost(b._middleware as MiddlewareFn[], {
       ...baseEvent,
@@ -288,7 +325,11 @@ async function dispatchVideoSubmit(
     //
     //
     postHeaders = { ...headers, "X-DashScope-Async": "enable" };
-  } else if (vgCfg.wireShape === "VideoVeo") {
+  } else if (
+    vgCfg.wireShape === "VideoVeo" ||
+    vgCfg.wireShape === "VideoVertexVeo"
+  ) {
+    //
     //
     //
     //
@@ -484,6 +525,36 @@ function parseVideoPoll(
         throw new APIError(
           0,
           "video generation: operation done but carried no video uri",
+          false,
+        );
+      }
+      return result;
+    }
+    case "VideoVertexVeo": {
+      //
+      //
+      //
+      const root = raw as {
+        done?: unknown;
+        error?: { message?: unknown };
+      };
+      if (root.done !== true) {
+        return null;
+      }
+      if (root.error && typeof root.error === "object") {
+        const msg =
+          typeof root.error.message === "string" && root.error.message
+            ? root.error.message
+            : "operation failed";
+        throw new APIError(0, `video generation failed: ${msg}`, false);
+      }
+      //
+      //
+      const result = videoResultFromVertexVeo(vgCfg, raw);
+      if (result.videos.length === 0 || !result.videos[0]!.bytes?.length) {
+        throw new APIError(
+          0,
+          "video generation: operation done but carried no video bytes",
           false,
         );
       }
@@ -719,6 +790,43 @@ function videoResultFromVeo(
 //
 //
 //
+//
+function videoResultFromVertexVeo(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  let mime = videoFallbackMime(vgCfg);
+  const root = raw as { response?: { videos?: unknown } };
+  const videos = Array.isArray(root.response?.videos)
+    ? root.response.videos
+    : [];
+  if (videos.length === 0) {
+    return buildVideoResponse([]);
+  }
+  const first = videos[0] as {
+    mimeType?: unknown;
+    bytesBase64Encoded?: unknown;
+  };
+  if (typeof first.mimeType === "string" && first.mimeType) {
+    mime = first.mimeType;
+  }
+  const b64 =
+    typeof first.bytesBase64Encoded === "string"
+      ? first.bytesBase64Encoded
+      : "";
+  if (!b64) {
+    return buildVideoResponse([]);
+  }
+  return buildVideoResponse([{ mimeType: mime, bytes: base64ToBytes(b64) }]);
+}
+
+//
+//
+//
+//
+//
+//
+//
 function videoResultFromBedrock(
   vgCfg: VideoGenDef,
   raw: unknown,
@@ -849,6 +957,30 @@ async function postJson(
   return text;
 }
 
+//
+//
+//
+async function postJsonText(
+  url: string,
+  jsonBody: string,
+  headers: Record<string, string>,
+): Promise<string> {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: jsonBody,
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return text;
+}
+
 async function fetchText(
   url: string,
   headers: Record<string, string>,
@@ -948,6 +1080,15 @@ async function sigV4Get(
     );
   }
   return text;
+}
+
+//
+//
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
 }
 
 function sleep(ms: number): Promise<void> {

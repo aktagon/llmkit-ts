@@ -375,6 +375,11 @@ export interface VideoHandle {
 
 
   raw?: boolean;
+
+
+
+
+  model?: string;
 }
 
 

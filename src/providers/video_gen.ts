@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 //
 //
-export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo" | "VideoBedrock";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo" | "VideoBedrock" | "VideoVertexVeo";
 
 //
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -154,6 +154,26 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["720p"],
+      },
+    ],
+  },
+  vertex: {
+    wireShape: "VideoVertexVeo",
+    outputDelivery: "DeliveryDownload",
+    videoBaseUrl: "",
+    genEndpoint: "/{model}:predictLongRunning",
+    pollEndpoint: "/{model}:fetchPredictOperation",
+    fileEndpoint: "",
+    submitHandleField: "name",
+    requiresOutputUri: false,
+    models: [
+      {
+        modelId: "veo-3.1-generate-preview",
+        label: "Veo 3.1",
+        supportsImageToVideo: true,
+        maxDurationSeconds: 8,
+        outputMime: "video/mp4",
+        resolutions: ["1080p", "720p"],
       },
     ],
   },
