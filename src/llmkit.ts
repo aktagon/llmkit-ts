@@ -94,6 +94,8 @@ export type {
   VideoWireShape,
   VideoOutputDelivery,
 } from "./providers/video_gen.ts";
+export { musicGenConfig } from "./providers/music_gen.ts";
+export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export {
