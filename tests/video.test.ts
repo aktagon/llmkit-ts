@@ -1,9 +1,17 @@
 import { describe, test, expect } from "bun:test";
 import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
-import { APIError, ValidationError } from "../src/llmkit.ts";
-import { videoGenConfig } from "../src/providers/video_gen.ts";
-import { imageGenConfig } from "../src/providers/image_gen.ts";
+// Import the config accessors from the PACKAGE BOUNDARY (../src/llmkit.ts),
+// the way a consumer of @aktagon/llmkit-ts does — NOT from the internal
+// ../src/providers module. A test that imports the internal path validates a
+// door the consumer can't open (the bug genai-composer hit: the symbols were
+// defined but never re-exported at the boundary).
+import {
+  APIError,
+  ValidationError,
+  videoGenConfig,
+  imageGenConfig,
+} from "../src/llmkit.ts";
 
 const grokVideoModel = "grok-imagine-video";
 
@@ -1243,24 +1251,25 @@ describe("Video.submit — middleware", () => {
   });
 });
 
-// BUG-011: maxInputImages is advisory per-model metadata, queryable through the
-// exported config so a consumer can pre-validate (gray out "+ image") instead
-// of hardcoding limits. Per-MODEL — the old provider-level maxInputCount could
-// not express Nano Banana 2 (14) vs Pro (11). Not enforced; the provider is the
-// source of truth on volume.
-describe("maxInputImages — advisory per-model cap (BUG-011)", () => {
-  test("video: grok-imagine-video seed cap is queryable (1)", () => {
+// BUG-011: maxInputImages is the number of images llmkit serializes when the
+// WIRE SHAPE fixes the count (e.g. Grok's single-seed image-to-video slot) —
+// an llmkit-side arity fact, queryable through the boundary-exported config so
+// a consumer can gate seeds. 0 means no llmkit-imposed limit: the provider
+// decides input volume (we do NOT assert unverified provider policy numbers
+// like an image-edit total, which drift — that is the provider's truth).
+describe("maxInputImages — llmkit serialization arity (BUG-011)", () => {
+  test("video: Grok's single-seed slot is queryable (1)", () => {
     const m = videoGenConfig("grok")?.models.find(
       (x) => x.modelId === "grok-imagine-video",
     );
     expect(m?.maxInputImages).toBe(1);
   });
 
-  test("image: per-model caps differ within one provider (flash 14, pro 11)", () => {
+  test("image: no llmkit-imposed cap (0) — image-edit takes an array, provider decides", () => {
     const models = imageGenConfig("google")?.models ?? [];
     const flash = models.find((x) => x.modelId === "gemini-3.1-flash-image-preview");
     const pro = models.find((x) => x.modelId === "gemini-3-pro-image-preview");
-    expect(flash?.maxInputImages).toBe(14);
-    expect(pro?.maxInputImages).toBe(11);
+    expect(flash?.maxInputImages).toBe(0);
+    expect(pro?.maxInputImages).toBe(0);
   });
 });

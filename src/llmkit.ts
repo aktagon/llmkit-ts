@@ -75,6 +75,25 @@ export type {
   AudioData,
   MusicOptions,
 } from "./music.ts";
+// Per-model capability introspection (BUG-011): query the supported models and
+// their advisory caps (maxInputImages, supportsImageToVideo, ...) so a consumer
+// can gate input — e.g. how many seed/reference images a model accepts —
+// before issuing a call. These live in the generated providers module, which
+// is not its own package entry point, so they MUST be re-exported here.
+export { imageGenConfig } from "./providers/image_gen.ts";
+export type {
+  ImageGenDef,
+  ImageModelDef,
+  ImageInputMode,
+  ImageOutputMode,
+} from "./providers/image_gen.ts";
+export { videoGenConfig } from "./providers/video_gen.ts";
+export type {
+  VideoGenDef,
+  VideoModelDef,
+  VideoWireShape,
+  VideoOutputDelivery,
+} from "./providers/video_gen.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export {
