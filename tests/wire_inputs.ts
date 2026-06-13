@@ -92,5 +92,7 @@ export const wireVideoQwenModel = "wan2.2-t2v-plus";
 export const wireVideoQwenPrompt = "A drone shot sweeping over snow-capped alpine peaks at sunrise";
 export const wireVideoTogetherModel = "minimax/video-01-director";
 export const wireVideoTogetherPrompt = "A drone shot sweeping over snow-capped alpine peaks at sunrise";
+export const wireVideoVertexModel = "veo-3.1-generate-preview";
+export const wireVideoVertexPrompt = "A drone shot sweeping over snow-capped alpine peaks at sunrise";
 export const wireVideoZhipuModel = "cogvideox-3";
 export const wireVideoZhipuPrompt = "A drone shot sweeping over snow-capped alpine peaks at sunrise";

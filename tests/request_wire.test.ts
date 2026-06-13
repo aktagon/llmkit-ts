@@ -516,4 +516,22 @@ describe("request wire — cross-capability", () => {
     }
     assertWireGolden("video-bedrock", m.body());
   });
+
+  // ADR-034 delivery-mode phase: Vertex Veo video-submit body is the nested
+  // {instances:[{prompt}]} shape — byte-identical to the Veo golden (model in
+  // the PATH, not the body). The POST-poll lifecycle (:fetchPredictOperation,
+  // inline-base64 download delivery) is covered by the unit tests.
+  test("video submit (Vertex Veo) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.vertex, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoVertexModel)
+        .submit(wi.wireVideoVertexPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-vertex", m.body());
+  });
 });

@@ -714,6 +714,188 @@ describe("Video.submit + wait — Veo (VideoVeo, download delivery)", () => {
   });
 });
 
+const vertexOperationName =
+  "projects/test-project/locations/us-central1/operations/op-1";
+
+// vertexVideoServer serves the Vertex Veo predictLongRunning +
+// fetchPredictOperation endpoints. Vertex is the FIRST POST-poll provider
+// (every other provider GETs the poll): the operation is fetched with a POST to
+// {model}:fetchPredictOperation carrying {operationName}. Delivery is download
+// with NO fetch hop — the bytes arrive inline as base64 in the poll body
+// (response.videos[0].bytesBase64Encoded). The poll returns done=false for the
+// first pendingPolls calls, then either the finished video (videoBytes) or,
+// when failOp is set, a done op carrying an error. When omitBytes is set the
+// done op carries a video with no decodable bytes.
+function vertexVideoServer(
+  pendingPolls: number,
+  videoBytes: Uint8Array,
+  failOp: boolean,
+  omitBytes: boolean,
+  onSubmit?: (body: Record<string, unknown>, auth: string) => void,
+  onPoll?: (body: Record<string, unknown>, auth: string) => void,
+) {
+  let polls = 0;
+  return Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      const auth = req.headers.get("authorization") ?? "";
+      if (
+        req.method === "POST" &&
+        url.pathname.endsWith(
+          "/veo-3.1-generate-preview:predictLongRunning",
+        )
+      ) {
+        const body = (await req.json()) as Record<string, unknown>;
+        onSubmit?.(body, auth);
+        return new Response(JSON.stringify({ name: vertexOperationName }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (
+        req.method === "POST" &&
+        url.pathname.endsWith(
+          "/veo-3.1-generate-preview:fetchPredictOperation",
+        )
+      ) {
+        const body = (await req.json()) as Record<string, unknown>;
+        onPoll?.(body, auth);
+        if (failOp) {
+          return new Response(
+            JSON.stringify({
+              done: true,
+              error: { code: 3, message: "prompt blocked by safety filter" },
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        polls += 1;
+        if (polls <= pendingPolls) {
+          return new Response(JSON.stringify({ done: false }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        const video: Record<string, unknown> = { mimeType: "video/mp4" };
+        if (!omitBytes) {
+          video.bytesBase64Encoded = Buffer.from(videoBytes).toString(
+            "base64",
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            done: true,
+            response: { videos: [video] },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+}
+
+describe("Video.submit + wait — Vertex Veo (VideoVertexVeo, inline-base64 download)", () => {
+  test("POST poll -> done -> inline base64 bytes, url empty, handle carries model", async () => {
+    const wantBytes = new TextEncoder().encode(
+      "\x00\x00\x00\x18ftypmp42 fake vertex mp4 payload",
+    );
+    let submitBody: Record<string, unknown> | undefined;
+    let submitAuth = "";
+    let pollBody: Record<string, unknown> | undefined;
+    let pollAuth = "";
+    const server = vertexVideoServer(
+      2,
+      wantBytes,
+      false,
+      false,
+      (body, auth) => {
+        submitBody = body;
+        submitAuth = auth;
+      },
+      (body, auth) => {
+        pollBody = body;
+        pollAuth = auth;
+      },
+    );
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+
+      const handle = await c.video
+        .model(veoVideoModel)
+        .submit("a drone shot over the alps at sunrise");
+      expect(handle.id).toBe(vertexOperationName);
+      // The handle carries the model so wait() can template the
+      // fetchPredictOperation poll URL.
+      expect(handle.model).toBe(veoVideoModel);
+      // Bearer auth; submit body has instances[0].prompt and NO model field.
+      expect(submitAuth).toBe("Bearer test-token");
+      expect(submitBody!.model).toBeUndefined();
+      const instances = submitBody!.instances as Array<{ prompt: string }>;
+      expect(instances).toHaveLength(1);
+      expect(instances[0]!.prompt).toBe(
+        "a drone shot over the alps at sunrise",
+      );
+
+      const resp = await handle.wait(FAST_WAIT);
+      // POST poll carrying {operationName} and bearer auth.
+      expect(pollAuth).toBe("Bearer test-token");
+      expect(pollBody!.operationName).toBe(vertexOperationName);
+      expect(resp.videos).toHaveLength(1);
+      expect(new TextDecoder().decode(resp.videos[0]!.bytes)).toBe(
+        new TextDecoder().decode(wantBytes),
+      );
+      // Download delivery (inline) leaves url empty (source-XOR, VID-004).
+      expect(resp.videos[0]!.url).toBeUndefined();
+      expect(resp.videos[0]!.mimeType).toBe("video/mp4");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("done op with error throws the operation message", async () => {
+    const server = vertexVideoServer(0, new Uint8Array(), true, false);
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video.model(veoVideoModel).submit("blocked prompt");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+      expect((err as APIError).message).toContain(
+        "prompt blocked by safety filter",
+      );
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("done op carrying no video bytes throws the no-bytes guard", async () => {
+    const server = vertexVideoServer(0, new Uint8Array(), false, true);
+    try {
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video
+        .model(veoVideoModel)
+        .submit("a quiet harbour at dawn");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+      expect((err as APIError).message).toContain("no video bytes");
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 const novaReelModel = "amazon.nova-reel-v1:0";
 const novaReelARN =
   "arn:aws:bedrock:us-east-1:123456789012:async-invoke/abc123def456";

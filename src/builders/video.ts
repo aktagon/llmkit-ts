@@ -52,11 +52,22 @@ export class VideoHandle {
   /** ADR-014: remembered so handle.wait() inherits the .raw() opt-in the
    * user set on the *Video builder that produced the handle. */
   raw: boolean;
+  /** The submitted model id, carried so wait() can build a model-templated
+   * poll URL (Vertex Veo polls POST /{model}:fetchPredictOperation). Submit
+   * sets it from the request; "" for providers whose poll endpoint does not
+   * template the model. */
+  model: string;
 
-  constructor(id: string, provider: Provider, raw: boolean = false) {
+  constructor(
+    id: string,
+    provider: Provider,
+    raw: boolean = false,
+    model: string = "",
+  ) {
     this.id = id;
     this.provider = provider;
     this.raw = raw;
+    this.model = model;
   }
 
   /**
@@ -80,18 +91,42 @@ export class VideoHandle {
 
     const base = videoBaseUrl(this.provider, cfg, vgCfg);
     const headers = buildAuthHeaders(this.provider, cfg);
-    // Bedrock (SigV4) signs the poll GET and carries the handle ARN as a single
-    // percent-encoded path segment (its ':' and '/' must not split into extra
-    // segments). Every other provider uses the verbatim {id} substitution and
-    // the bearer/query-param auth path.
+    // Poll dispatch has three arms, selected here once before the loop:
+    //   - sigV4 (Bedrock): signs the poll GET and carries the handle ARN as a
+    //     single percent-encoded path segment (its ':' and '/' must not split
+    //     into extra segments).
+    //   - vertexPoll (Vertex Veo): the ONLY POST-poll shape — fetches the
+    //     operation with a POST to {model}:fetchPredictOperation carrying
+    //     {operationName}. The model is templated from the handle; the
+    //     operation name goes in the body, not the URL.
+    //   - default: the verbatim {id} substitution and a GET on the bearer/
+    //     query-param auth path (every other provider).
+    //
+    // The arms are config-disjoint by design: sigV4 keys off authScheme and
+    // vertexPoll off wireShape, and no A-Box pairs SigV4 with VideoVertexVeo
+    // (Bedrock is SigV4+VideoBedrock; Vertex is bearer+VideoVertexVeo). sigV4 is
+    // matched first so a hypothetical both-true misconfig would poll as SigV4.
     const sigV4 = cfg.authScheme === "SigV4";
-    const pollUrl = sigV4
-      ? base + vgCfg.pollEndpoint.replace("{id}", pathEscapeSegment(this.id))
-      : appendVideoAuth(
-          videoPollURL(vgCfg.pollEndpoint, base, this.id),
-          this.provider,
-          cfg,
-        );
+    const vertexPoll = vgCfg.wireShape === "VideoVertexVeo";
+    let pollUrl: string;
+    let vertexPollBody = "";
+    if (sigV4) {
+      pollUrl =
+        base + vgCfg.pollEndpoint.replace("{id}", pathEscapeSegment(this.id));
+    } else if (vertexPoll) {
+      pollUrl = appendVideoAuth(
+        base + vgCfg.pollEndpoint.replace("{model}", this.model),
+        this.provider,
+        cfg,
+      );
+      vertexPollBody = JSON.stringify({ operationName: this.id });
+    } else {
+      pollUrl = appendVideoAuth(
+        videoPollURL(vgCfg.pollEndpoint, base, this.id),
+        this.provider,
+        cfg,
+      );
+    }
     const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const timeout = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     const wantRaw = !!options.raw || this.raw;
@@ -107,7 +142,9 @@ export class VideoHandle {
       }
       const respText = sigV4
         ? await sigV4Get(pollUrl, this.provider, cfg)
-        : await fetchText(pollUrl, headers);
+        : vertexPoll
+          ? await postJsonText(pollUrl, vertexPollBody, headers)
+          : await fetchText(pollUrl, headers);
       const raw = JSON.parse(respText) as unknown;
       const result = parseVideoPoll(vgCfg, raw);
       if (result) {
@@ -240,7 +277,7 @@ export async function videoSubmit(
       ...baseEvent,
       duration: performance.now() - start,
     });
-    return new VideoHandle(requestId, provider, !!b._raw);
+    return new VideoHandle(requestId, provider, !!b._raw, b._model);
   } catch (err) {
     firePost(b._middleware as MiddlewareFn[], {
       ...baseEvent,
@@ -288,11 +325,15 @@ async function dispatchVideoSubmit(
     // DashScope's async submit requires this header; set per-request only so
     // it never leaks into the shared auth-header map.
     postHeaders = { ...headers, "X-DashScope-Async": "enable" };
-  } else if (vgCfg.wireShape === "VideoVeo") {
-    // Veo carries the model in the submit PATH (:predictLongRunning), not the
-    // body — so the body has no model field. The prompt nests under
-    // instances[]; the optional parameters object is omitted on the prompt-
-    // only hot path.
+  } else if (
+    vgCfg.wireShape === "VideoVeo" ||
+    vgCfg.wireShape === "VideoVertexVeo"
+  ) {
+    // Veo (Gemini API) and Vertex Veo share the submit body: the model is in
+    // the submit PATH (:predictLongRunning), not the body — so the body has no
+    // model field. The prompt nests under instances[]; the optional parameters
+    // object ({aspectRatio, resolution} for Gemini; {sampleCount, storageUri}
+    // for Vertex) is omitted on the prompt-only hot path.
     body = { instances: [{ prompt: joinPromptText(parts) }] };
   } else if (vgCfg.wireShape === "VideoBedrock") {
     // Nova Reel carries the model in the BODY (modelId, unlike the Converse
@@ -484,6 +525,36 @@ function parseVideoPoll(
         throw new APIError(
           0,
           "video generation: operation done but carried no video uri",
+          false,
+        );
+      }
+      return result;
+    }
+    case "VideoVertexVeo": {
+      // Vertex Veo operation poll (fetchPredictOperation): same done/error LRO
+      // shape as Gemini Veo, but the finished video arrives as inline base64 in
+      // the poll body (response.videos[0].bytesBase64Encoded), not a fetch URI.
+      const root = raw as {
+        done?: unknown;
+        error?: { message?: unknown };
+      };
+      if (root.done !== true) {
+        return null;
+      }
+      if (root.error && typeof root.error === "object") {
+        const msg =
+          typeof root.error.message === "string" && root.error.message
+            ? root.error.message
+            : "operation failed";
+        throw new APIError(0, `video generation failed: ${msg}`, false);
+      }
+      // Mirror the Veo done+no-uri guard: a done op carrying no decodable bytes
+      // must surface as an error, not a silent zero-byte success.
+      const result = videoResultFromVertexVeo(vgCfg, raw);
+      if (result.videos.length === 0 || !result.videos[0]!.bytes?.length) {
+        throw new APIError(
+          0,
+          "video generation: operation done but carried no video bytes",
           false,
         );
       }
@@ -712,6 +783,43 @@ function videoResultFromVeo(
   return buildVideoResponse([{ mimeType: mime, url: uri }]);
 }
 
+// videoResultFromVertexVeo extracts the finished video from a Vertex Veo
+// fetchPredictOperation poll response. Unlike Gemini Veo (which returns a fetch
+// URI), Vertex Veo returns the bytes inline as base64 at
+// response.videos[0].bytesBase64Encoded with the mime at .mimeType. This is
+// download delivery with NO fetch hop: the bytes are decoded straight into
+// VideoData.bytes here and VideoData.url stays empty, so the wait() download
+// step (downloadVideoBytes) finds no url and no-ops — the source-XOR contract
+// holds (VID-004: download delivery returns bytes, never a url).
+function videoResultFromVertexVeo(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  let mime = videoFallbackMime(vgCfg);
+  const root = raw as { response?: { videos?: unknown } };
+  const videos = Array.isArray(root.response?.videos)
+    ? root.response.videos
+    : [];
+  if (videos.length === 0) {
+    return buildVideoResponse([]);
+  }
+  const first = videos[0] as {
+    mimeType?: unknown;
+    bytesBase64Encoded?: unknown;
+  };
+  if (typeof first.mimeType === "string" && first.mimeType) {
+    mime = first.mimeType;
+  }
+  const b64 =
+    typeof first.bytesBase64Encoded === "string"
+      ? first.bytesBase64Encoded
+      : "";
+  if (!b64) {
+    return buildVideoResponse([]);
+  }
+  return buildVideoResponse([{ mimeType: mime, bytes: base64ToBytes(b64) }]);
+}
+
 // videoResultFromBedrock extracts the finished video reference from a Bedrock
 // Nova Reel poll response. Bedrock uses output-uri delivery: the provider wrote
 // the mp4 to the caller's own S3 bucket and the finished poll echoes the S3 URI
@@ -849,6 +957,30 @@ async function postJson(
   return text;
 }
 
+// postJsonText POSTs a pre-serialised JSON body string (the Vertex Veo poll
+// carries {operationName} as the request body). Mirrors postJson but takes the
+// already-stringified body so the poll body is built once before the loop.
+async function postJsonText(
+  url: string,
+  jsonBody: string,
+  headers: Record<string, string>,
+): Promise<string> {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: jsonBody,
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return text;
+}
+
 async function fetchText(
   url: string,
   headers: Record<string, string>,
@@ -948,6 +1080,15 @@ async function sigV4Get(
     );
   }
   return text;
+}
+
+// base64ToBytes decodes a base64 string to bytes, mirroring the image/music
+// inline-media decode path (Vertex Veo returns the video inline as base64).
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
 }
 
 function sleep(ms: number): Promise<void> {
