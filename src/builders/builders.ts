@@ -269,14 +269,15 @@ export class Music {
 export class Video {
  client: Client;
  _middleware: MiddlewareFn[] = [];
+ _parts: Part[] = [];
  _model: string = "";
  _outputURI: string = "";
  _raw: boolean = false;
- _parts: Part[] = [];
 
   constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Video { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  image(mime: string, data: Uint8Array): Video { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   model(name: string): Video { const out = clone(this); out._model = name; return out; }
   outputURI(uri: string): Video { const out = clone(this); out._outputURI = uri; return out; }
   raw(): Video { const out = clone(this); out._raw = true; return out; }

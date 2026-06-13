@@ -23,6 +23,7 @@ import { buildAuthHeaders } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
 import type { Part } from "../image.ts";
+import type { MediaRef } from "../structs.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
 import type { VideoData, VideoResponse } from "../structs.ts";
@@ -206,23 +207,6 @@ export async function videoSubmit(
 
   const requestParts: Part[] = msg ? [...b._parts, { text: msg }] : b._parts;
   const parts = normalizeVideoParts(requestParts);
-  parts.forEach((part, i) => {
-    if ("lyrics" in part) {
-      throw new ValidationError(
-        `parts[${i}]`,
-        "video generation does not accept lyrics parts",
-      );
-    }
-    if ("image" in part) {
-      throw new ValidationError(
-        `parts[${i}]`,
-        "image-to-video is not yet wired (slice 1 is text-to-video)",
-      );
-    }
-    if (!("text" in part) || !part.text) {
-      throw new ValidationError(`parts[${i}]`, "must have text set");
-    }
-  });
 
   const vgCfg = videoGenConfig(provider.name);
   if (!vgCfg) {
@@ -238,6 +222,30 @@ export async function videoSubmit(
       `${b._model} is not a known video-generation model for ${provider.name}`,
     );
   }
+
+  parts.forEach((part, i) => {
+    if ("lyrics" in part) {
+      throw new ValidationError(
+        `parts[${i}]`,
+        "video generation does not accept lyrics parts",
+      );
+    }
+    if ("image" in part) {
+      //
+      //
+      //
+      if (!model.supportsImageToVideo) {
+        throw new ValidationError(
+          `parts[${i}]`,
+          `${b._model} is a text-to-video-only model and does not accept image parts`,
+        );
+      }
+      return;
+    }
+    if (!("text" in part) || !part.text) {
+      throw new ValidationError(`parts[${i}]`, "must have text set");
+    }
+  });
 
   //
   //
@@ -352,6 +360,13 @@ async function dispatchVideoSubmit(
     };
   } else {
     body = { model, prompt: joinPromptText(parts) };
+    //
+    //
+    //
+    //
+    //
+    const seed = videoSeedImageURL(parts);
+    if (seed) body.image = { url: seed };
   }
   //
   //
@@ -927,6 +942,43 @@ function joinPromptText(parts: Part[]): string {
     .filter((p): p is { text: string } => "text" in p && !!p.text)
     .map((p) => p.text)
     .join("\n");
+}
+
+//
+//
+//
+//
+//
+//
+//
+//
+function videoSeedImageURL(parts: Part[]): string {
+  const images = parts.filter(
+    (p): p is { image: MediaRef } => "image" in p,
+  );
+  if (images.length === 0) return "";
+  if (images.length > 1) {
+    throw new ValidationError(
+      "parts",
+      "image-to-video conditions on a single seed frame; pass one image part",
+    );
+  }
+  const img = images[0]!.image;
+  const mime = img.mimeType || "image/png";
+  return `data:${mime};base64,${bytesToBase64(img.bytes)}`;
+}
+
+//
+//
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(
+      ...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)),
+    );
+  }
+  return btoa(binary);
 }
 
 function findVideoModel(
