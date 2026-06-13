@@ -50,7 +50,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
       {
         modelId: "amazon.nova-reel-v1:0",
         label: "Nova Reel",
-        supportsImageToVideo: true,
+        supportsImageToVideo: false,
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["720p"],
@@ -70,7 +70,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
       {
         modelId: "veo-3.1-generate-preview",
         label: "Veo 3.1",
-        supportsImageToVideo: true,
+        supportsImageToVideo: false,
         maxDurationSeconds: 8,
         outputMime: "video/mp4",
         resolutions: ["1080p", "720p"],
@@ -110,7 +110,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
       {
         modelId: "MiniMax-Hailuo-2.3",
         label: "MiniMax Hailuo 2.3",
-        supportsImageToVideo: true,
+        supportsImageToVideo: false,
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["1080p", "768p"],
@@ -130,7 +130,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
       {
         modelId: "wan2.2-t2v-plus",
         label: "Wan 2.2 T2V Plus",
-        supportsImageToVideo: true,
+        supportsImageToVideo: false,
         maxDurationSeconds: 5,
         outputMime: "video/mp4",
         resolutions: ["720p"],
@@ -150,7 +150,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
       {
         modelId: "minimax/video-01-director",
         label: "MiniMax Video 01 Director (Together)",
-        supportsImageToVideo: true,
+        supportsImageToVideo: false,
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["720p"],
@@ -170,7 +170,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
       {
         modelId: "veo-3.1-generate-preview",
         label: "Veo 3.1",
-        supportsImageToVideo: true,
+        supportsImageToVideo: false,
         maxDurationSeconds: 8,
         outputMime: "video/mp4",
         resolutions: ["1080p", "720p"],
@@ -190,7 +190,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
       {
         modelId: "cogvideox-3",
         label: "CogVideoX-3",
-        supportsImageToVideo: true,
+        supportsImageToVideo: false,
         maxDurationSeconds: 10,
         outputMime: "video/mp4",
         resolutions: ["1080p", "4k", "720p"],
