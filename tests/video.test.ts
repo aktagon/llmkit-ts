@@ -154,6 +154,59 @@ describe("Video.submit + wait — Grok (VideoGrok)", () => {
   });
 });
 
+// The fixed 1x1 PNG seed frame (single brick-red pixel), shared with the
+// image-edit wire fixture; the bytes the image-to-video path inlines as a
+// data URL.
+const grokSeedPngBase64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4YWQEAALyAS2saifrAAAAAElFTkSuQmCC";
+const grokSeedPngBytes = Uint8Array.from(atob(grokSeedPngBase64), (c) =>
+  c.charCodeAt(0),
+);
+
+describe("Video.submit — Grok image-to-video (BUG-010)", () => {
+  test("image() seed inlines as image.url data URL, round-trips to done", async () => {
+    let receivedBody: Record<string, unknown> | undefined;
+    const done = {
+      status: "done",
+      video: { url: "https://vidgen.x.ai/i2v/out.mp4", duration: 6 },
+    };
+    const server = grokVideoServer(1, done, (body) => {
+      receivedBody = body;
+    });
+    try {
+      const c = newClient(Providers.grok, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video
+        .model(grokVideoModel)
+        .image("image/png", grokSeedPngBytes)
+        .submit("animate the still: slow push-in");
+      expect(
+        (receivedBody!.image as { url: string }).url,
+      ).toBe(`data:image/png;base64,${grokSeedPngBase64}`);
+      const resp = await handle.wait(FAST_WAIT);
+      expect(resp.videos[0]!.url).toBe("https://vidgen.x.ai/i2v/out.mp4");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("more than one seed frame rejects with the single-seed message", async () => {
+    const c = newClient(Providers.grok, "test-token");
+    let err: unknown;
+    try {
+      await c.video
+        .model(grokVideoModel)
+        .image("image/png", grokSeedPngBytes)
+        .image("image/png", grokSeedPngBytes)
+        .submit("animate this");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as Error).message).toContain("single seed frame");
+  });
+});
+
 const zhipuVideoModel = "cogvideox-3";
 
 // zhipuVideoServer serves the Zhipu CogVideoX submit + async-result endpoints.
@@ -1132,21 +1185,20 @@ describe("Video.submit — pre-flight validation", () => {
     expect((err as ValidationError).message).toContain("lyrics");
   });
 
-  test("rejects image parts (image-to-video not yet wired)", async () => {
-    const c = newClient(Providers.grok, "test-token");
+  test("rejects image parts on a text-to-video-only model (BUG-010 gate)", async () => {
+    const c = newClient(Providers.zhipu, "test-token");
     c.provider.baseUrl = "http://unused";
     let err: unknown;
     try {
-      const builder: any = c.video.model(grokVideoModel);
-      builder._parts = [
-        { image: { mimeType: "image/png", bytes: new Uint8Array([0x89]) } },
-      ];
-      await builder.submit("");
+      await c.video
+        .model("cogvideox-3")
+        .image("image/png", new Uint8Array([0x89]))
+        .submit("animate this");
     } catch (e) {
       err = e;
     }
     expect(err).toBeInstanceOf(ValidationError);
-    expect((err as ValidationError).message).toContain("image-to-video");
+    expect((err as ValidationError).message).toContain("text-to-video-only");
   });
 
   test("rejects when neither parts accumulator nor submit msg is set", async () => {

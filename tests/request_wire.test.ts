@@ -410,6 +410,27 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("video-grok", m.body());
   });
 
+  // BUG-010: Grok image-to-video submit body {model, prompt, image:{url}}. The
+  // seed frame inlines as a data URL at image.url (the same encoding the Grok
+  // image-EDIT path uses); the text-to-video golden above has no image field.
+  test("video submit (Grok, image-to-video) matches shared golden", async () => {
+    const seed = Uint8Array.from(atob(wi.wireVideoGrokI2vImageBase64), (c) =>
+      c.charCodeAt(0),
+    );
+    const m = startMock();
+    try {
+      const c = newClient(Providers.grok, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoGrokI2vModel)
+        .image(wi.wireVideoGrokI2vImageMime, seed)
+        .submit(wi.wireVideoGrokI2vPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-grok-i2v", m.body());
+  });
+
   // ADR-034 fan-out: Zhipu CogVideoX video-submit body {model, prompt} —
   // structurally identical to Grok's (the shared {model, prompt} arm); the
   // lifecycle divergence is delivery-side, covered by the unit tests.
