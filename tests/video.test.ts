@@ -2,6 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 import { APIError, ValidationError } from "../src/llmkit.ts";
+import { videoGenConfig } from "../src/providers/video_gen.ts";
+import { imageGenConfig } from "../src/providers/image_gen.ts";
 
 const grokVideoModel = "grok-imagine-video";
 
@@ -1238,5 +1240,27 @@ describe("Video.submit — middleware", () => {
     } finally {
       server.stop(true);
     }
+  });
+});
+
+// BUG-011: maxInputImages is advisory per-model metadata, queryable through the
+// exported config so a consumer can pre-validate (gray out "+ image") instead
+// of hardcoding limits. Per-MODEL — the old provider-level maxInputCount could
+// not express Nano Banana 2 (14) vs Pro (11). Not enforced; the provider is the
+// source of truth on volume.
+describe("maxInputImages — advisory per-model cap (BUG-011)", () => {
+  test("video: grok-imagine-video seed cap is queryable (1)", () => {
+    const m = videoGenConfig("grok")?.models.find(
+      (x) => x.modelId === "grok-imagine-video",
+    );
+    expect(m?.maxInputImages).toBe(1);
+  });
+
+  test("image: per-model caps differ within one provider (flash 14, pro 11)", () => {
+    const models = imageGenConfig("google")?.models ?? [];
+    const flash = models.find((x) => x.modelId === "gemini-3.1-flash-image-preview");
+    const pro = models.find((x) => x.modelId === "gemini-3-pro-image-preview");
+    expect(flash?.maxInputImages).toBe(14);
+    expect(pro?.maxInputImages).toBe(11);
   });
 });
