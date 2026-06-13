@@ -17,6 +17,9 @@ export interface VideoModelDef {
   maxDurationSeconds: number;
   outputMime: string;
   resolutions: string[];
+
+
+  maxInputImages: number;
 }
 
 export interface VideoGenDef {
@@ -54,6 +57,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["720p"],
+        maxInputImages: 0,
       },
     ],
   },
@@ -74,6 +78,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 8,
         outputMime: "video/mp4",
         resolutions: ["1080p", "720p"],
+        maxInputImages: 0,
       },
     ],
   },
@@ -94,6 +99,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["480p", "720p"],
+        maxInputImages: 1,
       },
     ],
   },
@@ -114,6 +120,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["1080p", "768p"],
+        maxInputImages: 0,
       },
     ],
   },
@@ -134,6 +141,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 5,
         outputMime: "video/mp4",
         resolutions: ["720p"],
+        maxInputImages: 0,
       },
     ],
   },
@@ -154,6 +162,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["720p"],
+        maxInputImages: 0,
       },
     ],
   },
@@ -174,6 +183,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 8,
         outputMime: "video/mp4",
         resolutions: ["1080p", "720p"],
+        maxInputImages: 0,
       },
     ],
   },
@@ -194,6 +204,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 10,
         outputMime: "video/mp4",
         resolutions: ["1080p", "4k", "720p"],
+        maxInputImages: 0,
       },
     ],
   },
