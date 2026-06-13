@@ -75,6 +75,25 @@ export type {
   AudioData,
   MusicOptions,
 } from "./music.ts";
+//
+//
+//
+//
+//
+export { imageGenConfig } from "./providers/image_gen.ts";
+export type {
+  ImageGenDef,
+  ImageModelDef,
+  ImageInputMode,
+  ImageOutputMode,
+} from "./providers/image_gen.ts";
+export { videoGenConfig } from "./providers/video_gen.ts";
+export type {
+  VideoGenDef,
+  VideoModelDef,
+  VideoWireShape,
+  VideoOutputDelivery,
+} from "./providers/video_gen.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export {

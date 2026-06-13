@@ -19,6 +19,7 @@ export interface VideoModelDef {
   resolutions: string[];
 
 
+
   maxInputImages: number;
 }
 

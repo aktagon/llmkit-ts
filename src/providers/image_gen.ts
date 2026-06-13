@@ -13,6 +13,7 @@ export interface ImageModelDef {
   imageSizes: string[];
 
 
+
   maxInputImages: number;
 }
 
@@ -38,14 +39,14 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         label: "Nano Banana Pro",
         aspectRatios: ["16:9", "1:1", "21:9", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16"],
         imageSizes: ["1K", "2K", "4K"],
-        maxInputImages: 11,
+        maxInputImages: 0,
       },
       {
         modelId: "gemini-3.1-flash-image-preview",
         label: "Nano Banana 2",
         aspectRatios: ["16:9", "1:1", "1:4", "1:8", "21:9", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16"],
         imageSizes: ["1K", "2K", "4K", "512"],
-        maxInputImages: 14,
+        maxInputImages: 0,
       },
     ],
   },
