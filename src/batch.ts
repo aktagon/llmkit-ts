@@ -1,4 +1,4 @@
-import { PROVIDERS, type ProviderConfig } from "./providers/providers.ts";
+import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
   type BatchDef,
   type BatchLifecycle,
@@ -211,7 +211,7 @@ async function fetchBatchResults(
 async function buildBatchBody(
   requests: PromptRequest[],
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   bc: BatchDef,
   options: BatchOptions,
 ): Promise<Record<string, unknown>> {
@@ -237,7 +237,7 @@ async function buildBatchBody(
 async function buildBatchJsonl(
   requests: PromptRequest[],
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   bc: BatchDef,
   options: BatchOptions,
 ): Promise<Uint8Array> {
