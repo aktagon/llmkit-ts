@@ -54,7 +54,6 @@ export type {
   ToolCall,
   ToolResult,
 } from "./types.ts";
-export { Providers } from "./providers/providers.ts";
 // Capability vocabulary (ADR-019 catalogue filter + ADR-030
 // Client.supports query).
 export { Capabilities } from "./types.ts";
@@ -96,6 +95,15 @@ export type {
 } from "./providers/video_gen.ts";
 export { musicGenConfig } from "./providers/music_gen.ts";
 export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
+// Provider metadata (ADR-038): the narrow public per-provider catalogue
+// (name/envVar/defaultModel/baseUrl) — a projection of provider facts, NOT the
+// internal wire/transform spec. Exposed as the static `providers` namespace
+// (providers.info(name) / providers.list()), keyless (no client needed — the
+// headline use case is "which env var holds the key?", asked before a client
+// exists). This replaces the rejected re-export of the full internal registry
+// (BUG-012): renaming an internal wire path can never break a consumer.
+export * as providers from "./providers/provider_info.ts";
+export type { ProviderInfo } from "./providers/provider_info.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export {
