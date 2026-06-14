@@ -3,7 +3,7 @@
 
 import {
   PROVIDERS,
-  type ProviderConfig,
+  type ProviderSpec,
   type ProviderName,
   structuredOutput,
 } from "./providers/providers.ts";
@@ -28,7 +28,7 @@ import type { Message, ToolCall, ToolResult } from "./structs.ts";
 // resolution point dispatches on. Local daemons declare no default — what a
 // daemon serves is runtime inventory, not a registry fact — so both empty
 // throws instead of guessing a model the daemon may not have pulled.
-export function resolveModel(provider: Provider, cfg: ProviderConfig): string {
+export function resolveModel(provider: Provider, cfg: ProviderSpec): string {
   if (provider.model) return provider.model;
   if (!cfg.defaultModel) {
     throw new ValidationError(
@@ -42,7 +42,7 @@ export function resolveModel(provider: Provider, cfg: ProviderConfig): string {
 export function buildRequest(
   provider: Provider,
   request: PromptRequest,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   options: PromptOptions,
   tools: Tool[] = [],
   // headersOut, when supplied, collects request headers produced during body
@@ -421,7 +421,7 @@ export function validateOptions(
   }
 }
 
-export function isBedrock(cfg: ProviderConfig): boolean {
+export function isBedrock(cfg: ProviderSpec): boolean {
   return cfg.wrapsOptionsIn === "inferenceConfig" && cfg.authScheme === "SigV4";
 }
 
@@ -495,7 +495,7 @@ function toMessageList(request: PromptRequest): Msg[] {
 
 function buildBedrockMessages(
   msgs: Msg[],
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
   return msgs.map((m): Record<string, unknown> => {
     switch (m.kind) {
@@ -535,7 +535,7 @@ function buildBedrockMessages(
 
 function buildGoogleContents(
   msgs: Msg[],
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
   return msgs.map((m): Record<string, unknown> => {
     switch (m.kind) {
@@ -576,7 +576,7 @@ function buildGoogleContents(
 function buildMessages(
   msgs: Msg[],
   system: string,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
 
@@ -619,7 +619,7 @@ function buildMessages(
 function attachToolDefs(
   body: Record<string, unknown>,
   tools: Tool[],
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): void {
   if (isBedrock(cfg)) {
     body.toolConfig = {
@@ -676,7 +676,7 @@ function attachToolDefs(
 
 function toolCallMsg(
   calls: ToolCall[],
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): Record<string, unknown> {
   if (cfg.systemPlacement === "TopLevelField") {
     return {
@@ -704,7 +704,7 @@ function toolCallMsg(
 
 function toolResultMsg(
   result: ToolResult,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): Record<string, unknown> {
   if (cfg.systemPlacement === "TopLevelField") {
     return {
@@ -727,7 +727,7 @@ function toolResultMsg(
 
 export async function executeRequest(
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   body: Record<string, unknown>,
   options: PromptOptions,
   extraHeaders?: Record<string, string>,
@@ -775,7 +775,7 @@ export async function executeRequest(
 
 export function buildAuthHeaders(
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
   switch (cfg.authScheme) {
@@ -795,7 +795,7 @@ export function buildAuthHeaders(
 export function buildUrl(
   base: string,
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): string {
   const model = resolveModel(provider, cfg);
   let url = base.replaceAll("{model}", model);

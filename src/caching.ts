@@ -7,7 +7,7 @@
 
 import { type CachingDef, cachingConfig } from "./providers/caching.ts";
 import {
-  type ProviderConfig,
+  type ProviderSpec,
   type ProviderName,
 } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
@@ -20,7 +20,7 @@ import type { Provider, PromptOptions } from "./types.ts";
 export async function applyCaching(
   body: Record<string, unknown>,
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   options: PromptOptions = {},
 ): Promise<void> {
   const cc = cachingConfig(provider.name);
@@ -42,7 +42,7 @@ export async function applyCaching(
 function applyExplicit(
   body: Record<string, unknown>,
   cc: CachingDef,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): void {
   const controlType = cc.controlType || "ephemeral";
 
@@ -84,7 +84,7 @@ function applyExplicit(
 async function applyResource(
   body: Record<string, unknown>,
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   cc: CachingDef,
   options: PromptOptions,
 ): Promise<void> {
