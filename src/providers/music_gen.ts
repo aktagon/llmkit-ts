@@ -13,6 +13,10 @@ export interface MusicModelDef {
   supportsLyrics: boolean;
   maxDurationSeconds: number;
   outputMime: string;
+
+
+  sampleRateHz: number;
+  availableOutputFormats: string[];
 }
 
 export interface MusicGenDef {
@@ -33,6 +37,8 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
         supportsLyrics: true,
         maxDurationSeconds: 30,
         outputMime: "audio/mpeg",
+        sampleRateHz: 0,
+        availableOutputFormats: ["audio/mpeg"],
       },
       {
         modelId: "lyria-3-pro-preview",
@@ -40,6 +46,8 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
         supportsLyrics: true,
         maxDurationSeconds: 120,
         outputMime: "audio/mpeg",
+        sampleRateHz: 0,
+        availableOutputFormats: ["audio/mpeg"],
       },
     ],
   },
@@ -53,6 +61,8 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
         supportsLyrics: true,
         maxDurationSeconds: 0,
         outputMime: "audio/mpeg",
+        sampleRateHz: 44100,
+        availableOutputFormats: ["audio/mpeg", "audio/wav"],
       },
     ],
   },
@@ -66,6 +76,8 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
         supportsLyrics: false,
         maxDurationSeconds: 30,
         outputMime: "audio/wav",
+        sampleRateHz: 48000,
+        availableOutputFormats: ["audio/wav"],
       },
     ],
   },
