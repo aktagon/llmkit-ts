@@ -54,7 +54,6 @@ export type {
   ToolCall,
   ToolResult,
 } from "./types.ts";
-export { Providers } from "./providers/providers.ts";
 //
 //
 export { Capabilities } from "./types.ts";
@@ -96,6 +95,15 @@ export type {
 } from "./providers/video_gen.ts";
 export { musicGenConfig } from "./providers/music_gen.ts";
 export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
+//
+//
+//
+//
+//
+//
+//
+export * as providers from "./providers/provider_info.ts";
+export type { ProviderInfo } from "./providers/provider_info.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export {
