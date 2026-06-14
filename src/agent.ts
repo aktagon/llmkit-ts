@@ -7,7 +7,7 @@
 //   they are surfaced as `"error: ..."` tool-result content so the LLM
 //   can recover (matches Go behaviour at go/agent.go:189).
 
-import { PROVIDERS, type ProviderConfig } from "./providers/providers.ts";
+import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractIntPath, extractFloatPath, extractPath } from "./paths.ts";
 import {
@@ -269,7 +269,7 @@ export class Agent {
   }
 }
 
-function extractToolCalls(raw: unknown, cfg: ProviderConfig): ToolCall[] {
+function extractToolCalls(raw: unknown, cfg: ProviderSpec): ToolCall[] {
   if (isBedrock(cfg)) return extractBedrockToolCalls(raw);
   if (cfg.systemPlacement === "TopLevelField") {
     return extractAnthropicToolCalls(raw);

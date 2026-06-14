@@ -6,7 +6,7 @@
 // determines the request body, the response audio path, AND the byte encoding
 // (base64 for Vertex/Gemini, hex for MiniMax).
 
-import { PROVIDERS, type ProviderConfig } from "./providers/providers.ts";
+import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
   type MusicGenDef,
   type MusicModelDef,
@@ -178,7 +178,7 @@ export async function generateMusic(
 //     absolute genEndpoint; audio at data.audio (hex).
 function dispatchMusicHTTP(
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   mgCfg: MusicGenDef,
   model: string,
   parts: Part[],
@@ -282,7 +282,7 @@ function joinLyricsText(parts: Part[]): string {
 // query auth key for query-param-key providers (Google).
 function buildMusicURL(
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   mgCfg: MusicGenDef,
   model: string,
 ): string {
