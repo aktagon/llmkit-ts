@@ -93,17 +93,40 @@ describe("Music.generate — Vertex Lyria 2 (MusicPredict)", () => {
     }
   });
 
-  test("rejects lyrics on instrumental-only model", async () => {
-    const c = newClient(Providers.vertex, "test-token");
-    c.provider.baseUrl = "http://unused";
-    let err: unknown;
+  // ADR-037 (MUS-008): supportsLyrics is advisory, not a gate. Lyrics on the
+  // instrumental-only Lyria 2 fold into the :predict prompt instead of being
+  // rejected.
+  test("folds lyrics into the prompt on an instrumental-only model", async () => {
+    const encoded = bytesToBase64(fakeAudio);
+    let receivedBody: any;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(
+          JSON.stringify({
+            predictions: [{ audioContent: encoded, mimeType: "audio/wav" }],
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      },
+    });
     try {
-      await c.music.model(vertexModel).lyrics("la la la").generate("a song");
-    } catch (e) {
-      err = e;
+      const c = newClient(Providers.vertex, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.music
+        .model(vertexModel)
+        .lyrics("[verse] neon lights")
+        .generate("ambient");
+
+      expect(receivedBody.instances).toHaveLength(1);
+      expect(receivedBody.instances[0].prompt).toBe(
+        "ambient\n[verse] neon lights",
+      );
+      expect(resp.audio.length).toBe(1);
+    } finally {
+      server.stop(true);
     }
-    expect(err).toBeInstanceOf(ValidationError);
-    expect((err as ValidationError).field).toBe("parts");
   });
 });
 
