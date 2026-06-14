@@ -10,7 +10,11 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { newClient, Providers } from "../src/llmkit.ts";
+import { newClient } from "../src/llmkit.ts";
+// Providers (the slug map) is no longer on the public barrel (ADR-038 PMD-005,
+// superseded by ProviderName); the request-wire driver reads it from the
+// internal providers module.
+import { Providers } from "../src/providers/providers.ts";
 import * as wi from "./wire_inputs.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
