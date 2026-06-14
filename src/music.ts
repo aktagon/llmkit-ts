@@ -32,6 +32,7 @@ import type { AudioData, MusicResponse } from "./structs.ts";
 
 
 
+
 export interface MusicRequest {
   model: string;
   prompt?: string;
@@ -65,13 +66,11 @@ export async function generateMusic(
   }
 
   const parts = normalizeMusicParts(request);
-  let hasLyrics = false;
   parts.forEach((part, i) => {
     let set = 0;
     if ("text" in part && part.text) set++;
     if ("lyrics" in part && part.lyrics) {
       set++;
-      hasLyrics = true;
     }
     if ("image" in part) {
       throw new ValidationError(
@@ -101,12 +100,9 @@ export async function generateMusic(
       `${request.model} is not a known music-generation model for ${provider.name}`,
     );
   }
-  if (hasLyrics && !model.supportsLyrics) {
-    throw new ValidationError(
-      "parts",
-      `${request.model} is instrumental-only and does not accept lyrics`,
-    );
-  }
+  //
+  //
+  //
 
   const baseEvent: Event = {
     op: "music_generation",
@@ -213,9 +209,15 @@ function dispatchMusicHTTP(
 //
 //
 //
+//
 function buildVertexMusicBody(parts: Part[]): Record<string, unknown> {
+  let prompt = joinPromptText(parts);
+  const lyrics = joinLyricsText(parts);
+  if (lyrics) {
+    prompt = prompt ? prompt + "\n" + lyrics : lyrics;
+  }
   return {
-    instances: [{ prompt: joinPromptText(parts) }],
+    instances: [{ prompt }],
     parameters: { sampleCount: 1 },
   };
 }
