@@ -30,7 +30,8 @@ import type { AudioData, MusicResponse } from "./structs.ts";
  *    never carries image parts; the runtime rejects them pre-flight.
  *
  * Pre-flight validation requires exactly one of prompt or parts to be set
- * (XOR). Lyrics parts are rejected for instrumental-only models.
+ * (XOR). Lyrics on an instrumental-only model are advisory, not rejected
+ * (ADR-037 MUS-008): they fold into the prompt for the Predict shape.
  */
 export interface MusicRequest {
   model: string;
@@ -65,13 +66,11 @@ export async function generateMusic(
   }
 
   const parts = normalizeMusicParts(request);
-  let hasLyrics = false;
   parts.forEach((part, i) => {
     let set = 0;
     if ("text" in part && part.text) set++;
     if ("lyrics" in part && part.lyrics) {
       set++;
-      hasLyrics = true;
     }
     if ("image" in part) {
       throw new ValidationError(
@@ -101,12 +100,9 @@ export async function generateMusic(
       `${request.model} is not a known music-generation model for ${provider.name}`,
     );
   }
-  if (hasLyrics && !model.supportsLyrics) {
-    throw new ValidationError(
-      "parts",
-      `${request.model} is instrumental-only and does not accept lyrics`,
-    );
-  }
+  // ADR-037 (MUS-008): supportsLyrics is advisory metadata, not a gate.
+  // Lyrics on an instrumental-only model fold into the prompt (for the
+  // single-prompt Predict shape) and the model ignores or honors them.
 
   const baseEvent: Event = {
     op: "music_generation",
@@ -211,11 +207,17 @@ function dispatchMusicHTTP(
 }
 
 // buildVertexMusicBody assembles the Vertex AI Lyria :predict request body.
-// Lyria 2 is instrumental-only, so only text prompt parts are sent. The
+// Lyria 2 has no lyrics wire-slot, so any lyrics parts fold into the prompt
+// text (ADR-037 MUS-008); the instrumental model ignores vocal content. The
 // instances/parameters envelope mirrors Vertex Imagen.
 function buildVertexMusicBody(parts: Part[]): Record<string, unknown> {
+  let prompt = joinPromptText(parts);
+  const lyrics = joinLyricsText(parts);
+  if (lyrics) {
+    prompt = prompt ? prompt + "\n" + lyrics : lyrics;
+  }
   return {
-    instances: [{ prompt: joinPromptText(parts) }],
+    instances: [{ prompt }],
     parameters: { sampleCount: 1 },
   };
 }
