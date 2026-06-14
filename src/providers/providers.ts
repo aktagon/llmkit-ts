@@ -36,7 +36,7 @@ export const Providers = {
 
 export type ProviderName = typeof Providers[keyof typeof Providers];
 
-export interface ProviderConfig {
+export interface ProviderSpec {
   name: string;
   baseUrl: string;
   endpoint: string;
@@ -74,7 +74,7 @@ export interface ProviderConfig {
   toolParamsWireField: string;
 }
 
-export const PROVIDERS: Record<ProviderName, ProviderConfig> = {
+export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
   ai21: {
     name: "ai21",
     baseUrl: "https://api.ai21.com",

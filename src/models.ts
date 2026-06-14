@@ -11,7 +11,7 @@ import {
 import type { Models, ScopedModels } from "./builders/catalogue.ts";
 import {
   PROVIDERS,
-  type ProviderConfig,
+  type ProviderSpec,
   type ProviderName,
 } from "./providers/providers.ts";
 import { buildAuthHeaders } from "./request.ts";
@@ -225,7 +225,7 @@ export async function catalogueRunGet(
 async function fetchCataloguePage(
   reqUrl: string,
   provider: Provider,
-  pcfg: ProviderConfig,
+  pcfg: ProviderSpec,
   parserKind: string,
 ): Promise<ParsedModelsPage> {
   const headers = {
@@ -299,7 +299,7 @@ function appendCursor(
 
 function buildCatalogueUrl(
   provider: Provider,
-  pcfg: ProviderConfig,
+  pcfg: ProviderSpec,
   endpoint: string,
 ): string {
   const base = provider.baseUrl || pcfg.baseUrl;
