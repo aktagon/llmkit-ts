@@ -6,7 +6,7 @@
 //
 //
 
-import { PROVIDERS, type ProviderConfig } from "./providers/providers.ts";
+import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
   type MusicGenDef,
   type MusicModelDef,
@@ -178,7 +178,7 @@ export async function generateMusic(
 //
 function dispatchMusicHTTP(
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   mgCfg: MusicGenDef,
   model: string,
   parts: Part[],
@@ -282,7 +282,7 @@ function joinLyricsText(parts: Part[]): string {
 //
 function buildMusicURL(
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   mgCfg: MusicGenDef,
   model: string,
 ): string {

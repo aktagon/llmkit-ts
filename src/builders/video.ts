@@ -12,7 +12,7 @@
 //
 
 import { PROVIDERS } from "../providers/providers.ts";
-import type { ProviderConfig } from "../providers/providers.ts";
+import type { ProviderSpec } from "../providers/providers.ts";
 import {
   type VideoGenDef,
   type VideoModelDef,
@@ -319,7 +319,7 @@ async function dispatchVideoSubmit(
   baseUrl: string,
   headers: Record<string, string>,
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   model: string,
   outputUri: string,
   parts: Part[],
@@ -402,7 +402,7 @@ async function dispatchVideoSubmit(
 //
 function videoBaseUrl(
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   vgCfg: VideoGenDef,
 ): string {
   if (provider.baseUrl) return provider.baseUrl;
@@ -874,7 +874,7 @@ function pathEscapeSegment(s: string): string {
 function appendVideoAuth(
   url: string,
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): string {
   if (cfg.authScheme !== "QueryParamKey" || !cfg.authQueryParam) {
     return url;
@@ -891,7 +891,7 @@ function appendVideoAuth(
 //
 async function downloadVideoBytes(
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
   resp: VideoResponse,
 ): Promise<VideoResponse> {
   const headers = buildAuthHeaders(provider, cfg);
@@ -1073,7 +1073,7 @@ async function sigV4PostJson(
   url: string,
   body: Record<string, unknown>,
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): Promise<string> {
   const { signSigV4 } = await import("../sigv4.ts");
   const jsonBody = JSON.stringify(body);
@@ -1106,7 +1106,7 @@ async function sigV4PostJson(
 async function sigV4Get(
   url: string,
   provider: Provider,
-  cfg: ProviderConfig,
+  cfg: ProviderSpec,
 ): Promise<string> {
   const { signSigV4 } = await import("../sigv4.ts");
   const region = process.env[cfg.regionEnvVar] || "";
