@@ -76,6 +76,7 @@ export function buildPromptArgs(
   } else if (user) {
     request.user = user;
   }
+  if (b._files.length > 0) request.files = b._files;
   if (b._schema) request.schema = b._schema;
 
   const options: PromptOptions = {};
