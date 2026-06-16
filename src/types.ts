@@ -2,7 +2,7 @@
 
 import type { ProviderName } from "./providers/providers.ts";
 import type { MiddlewareFn } from "./providers/middleware.ts";
-import type { Message } from "./structs.ts";
+import type { File, Message } from "./structs.ts";
 
 //
 //
@@ -55,6 +55,7 @@ export interface Request {
   system?: string;
   user?: string;
   messages?: Message[];
+  files?: File[];
   schema?: string;
 }
 
