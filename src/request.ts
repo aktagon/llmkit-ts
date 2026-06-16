@@ -22,7 +22,7 @@ import type {
   PromptOptions,
   Tool,
 } from "./types.ts";
-import type { Message, ToolCall, ToolResult } from "./structs.ts";
+import type { File, Message, ToolCall, ToolResult } from "./structs.ts";
 
 // ADR-031 honest no-default contract: the single predicate every model
 // resolution point dispatches on. Local daemons declare no default — what a
@@ -87,7 +87,12 @@ export function buildRequest(
     }
     body.contents = buildGoogleContents(msgs, cfg);
   } else {
-    body.messages = buildMessages(msgs, request.system ?? "", cfg);
+    body.messages = buildMessages(
+      msgs,
+      request.system ?? "",
+      cfg,
+      request.files ?? [],
+    );
     if (cfg.systemPlacement === "TopLevelField" && request.system) {
       body.system = request.system;
     }
@@ -573,10 +578,35 @@ function buildGoogleContents(
   });
 }
 
+// buildFlatContentParts builds the OpenAI/Anthropic user-message content array
+// when files are attached, mirroring the Go/Python/Rust _build_flat_content_parts
+// (BUG-014). File blocks come first, then the prompt text last. The document vs
+// file block is selected by systemPlacement (Anthropic = TopLevelField), never by
+// provider name. Images on the text path are a separate deferred gap (ADR-008
+// OQ-2) and are not attached here.
+function buildFlatContentParts(
+  text: string,
+  files: File[],
+  cfg: ProviderSpec,
+): Array<Record<string, unknown>> {
+  const isAnthropic = cfg.systemPlacement === "TopLevelField";
+  const parts: Array<Record<string, unknown>> = [];
+  for (const f of files) {
+    parts.push(
+      isAnthropic
+        ? { type: "document", source: { type: "file", file_id: f.id } }
+        : { type: "file", file: { file_id: f.id } },
+    );
+  }
+  parts.push({ type: "text", text });
+  return parts;
+}
+
 function buildMessages(
   msgs: Msg[],
   system: string,
   cfg: ProviderSpec,
+  files: File[] = [],
 ): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
 
@@ -596,9 +626,15 @@ function buildMessages(
         out.push(toolCallMsg(m.calls, cfg));
         break;
       case "text":
+        // Attach files only on the degenerate single-turn user path, matching
+        // Go's `len(msgs)==0 && req.User != ""` media branch — history turns
+        // carry plain-string content.
         out.push({
           role: cfg.roleMappings[m.role] ?? m.role,
-          content: m.text,
+          content:
+            files.length > 0 && m.role === "user" && msgs.length === 1
+              ? buildFlatContentParts(m.text, files, cfg)
+              : m.text,
         });
         break;
       default: {
