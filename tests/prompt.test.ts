@@ -287,3 +287,84 @@ describe("Text.prompt — safety settings", () => {
     }
   });
 });
+
+describe("Text.file — document block (BUG-014)", () => {
+  // text.file(id) was a no-op on the TS text path: the builder stored _files
+  // but buildRequest never emitted a document/file block (Go/Python/Rust did).
+  // These lock the per-provider block onto the single-turn user content array.
+
+  test("Anthropic: file id emits a document block before the prompt text", async () => {
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: "ok" }],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        );
+      },
+    });
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.text
+        .model("claude-opus-4-8")
+        .file("file_011CMZq8h5Vn")
+        .prompt("Summarize the attached document.");
+      expect(resp.text).toBe("ok");
+      expect(receivedBody.messages).toEqual([
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "file", file_id: "file_011CMZq8h5Vn" },
+            },
+            { type: "text", text: "Summarize the attached document." },
+          ],
+        },
+      ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("OpenAI: file id emits a file block before the prompt text", async () => {
+    let receivedBody: any = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "ok" } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1 },
+          }),
+        );
+      },
+    });
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.text
+        .model("gpt-4o")
+        .file("file-9aXr2")
+        .prompt("Summarize the attached document.");
+      expect(resp.text).toBe("ok");
+      expect(receivedBody.messages).toEqual([
+        {
+          role: "user",
+          content: [
+            { type: "file", file: { file_id: "file-9aXr2" } },
+            { type: "text", text: "Summarize the attached document." },
+          ],
+        },
+      ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
