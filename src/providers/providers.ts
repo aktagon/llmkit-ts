@@ -36,6 +36,9 @@ export const Providers = {
 
 export type ProviderName = typeof Providers[keyof typeof Providers];
 
+// ProviderSpec is HOW the library talks to a provider [PRIVATE]: the
+// internal wire/transform spec consumed only by the runtime. Volatile;
+// not exported from the package barrel.
 export interface ProviderSpec {
   name: string;
   baseUrl: string;

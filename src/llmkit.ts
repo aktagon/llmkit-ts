@@ -104,6 +104,8 @@ export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
 // (BUG-012): renaming an internal wire path can never break a consumer.
 export * as providers from "./providers/provider_info.ts";
 export type { ProviderInfo } from "./providers/provider_info.ts";
+// Typed provider identity (ADR-040), for consumers annotating providers.parse.
+export type { ProviderName } from "./providers/providers.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 export {
