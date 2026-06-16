@@ -76,7 +76,15 @@ export function catalogueLookup(id: string): ModelInfo | undefined {
  *  WithCapability composes post-fetch. Errors land in result.errors as
  *  typed ProviderError per Amendment 1. */
 export async function catalogueRunLive(models: Models): Promise<LiveResult> {
-  const configured = models.client.providers.list();
+  // The secret-free ProviderInfo list reports WHICH providers are eligible;
+  // the live fetch needs credentials, which the Client carries for its one
+  // provider. Pair each eligible entry with the Client's own credentials.
+  const cfg = models.client.provider;
+  const configured: Provider[] = models.client.providers.list().map((p) => ({
+    name: p.id,
+    apiKey: cfg.apiKey,
+    baseUrl: cfg.baseUrl,
+  }));
   const all: ModelInfo[] = [];
   const errors: Record<string, ProviderError> = {};
 
