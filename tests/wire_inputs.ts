@@ -4,6 +4,9 @@
 // from ontology/wire-fixtures.ttl. Consumed by the request-wire
 // conformance drivers; codegen/lint_wire_witness.py derives witness
 // coverage from the same facts.
+export const wireAnthropicTextDocumentModel = "claude-opus-4-8";
+export const wireAnthropicTextDocumentPrompt = "Summarize the attached document in three sentences.";
+export const wireAnthropicTextDocumentFileId = "file_011CMZq8h5VnVe8jL3qK7p2R";
 export const wireCachingPrompt = "hi";
 export const wireCachingSystem = "a long stable system prefix";
 export const wireImageEditGoogleFlashModel = "gemini-3.1-flash-image-preview";
@@ -25,6 +28,9 @@ export const wireImageGenOpenaiCount = 1;
 export const wireImageGenOpenaiImageSize = "1024x1024";
 export const wireImageGenOpenaiOutputFormat = "png";
 export const wireImageGenOpenaiQuality = "low";
+export const wireOpenaiTextDocumentModel = "gpt-4o";
+export const wireOpenaiTextDocumentPrompt = "Summarize the attached document in three sentences.";
+export const wireOpenaiTextDocumentFileId = "file-9aXr2bQ7m1Tn";
 export const wireOptionsAnthropicModel = "claude-sonnet-4-6";
 export const wireOptionsAnthropicPrompt = "Explain in one sentence why the sky appears blue at noon, then write END_OF_ANSWER.";
 export const wireOptionsAnthropicMaxTokens = 2048;

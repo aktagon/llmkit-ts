@@ -144,6 +144,36 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("structured-output-anthropic", m.body());
   });
 
+  test("text + document (Anthropic) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireAnthropicTextDocumentModel)
+        .file(wi.wireAnthropicTextDocumentFileId)
+        .prompt(wi.wireAnthropicTextDocumentPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("anthropic-text-document", m.body());
+  });
+
+  test("text + document (OpenAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireOpenaiTextDocumentModel)
+        .file(wi.wireOpenaiTextDocumentFileId)
+        .prompt(wi.wireOpenaiTextDocumentPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("openai-text-document", m.body());
+  });
+
   // === Plan 039: nested-schema fixtures — the recursive normalization walk
   // (witness-lint first catch; see the Go drivers for the rationale). ===
 
