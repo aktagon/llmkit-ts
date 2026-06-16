@@ -62,20 +62,13 @@ describe("Providers.list", () => {
     const c = anthropic("test-key");
     const got = c.providers.list();
     expect(got.length).toBe(1);
-    expect(got[0]!.name).toBe("anthropic");
+    expect(got[0]!.id).toBe("anthropic");
+    expect(got[0]!.slug).toBe("anthropic");
   });
 
   test("returns empty when the provider has no models endpoint", () => {
     const c = cohere("test-key");
     expect(c.providers.list().length).toBe(0);
-  });
-});
-
-describe("Providers.supported", () => {
-  test("returns the full SDK roster", () => {
-    const c = anthropic("test-key");
-    const supported = c.providers.supported();
-    expect(supported.length).toBeGreaterThanOrEqual(10);
   });
 });
 

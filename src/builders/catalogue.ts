@@ -6,6 +6,7 @@
 
 import type { Capability, Provider } from "../types.ts";
 import type { LiveResult, ModelInfo } from "../structs.ts";
+import type { ProviderInfo } from "../providers/provider_info.ts";
 import type { Client } from "./builders.ts";
 import {
   catalogueFilter,
@@ -14,10 +15,7 @@ import {
   catalogueRunList,
   catalogueRunGet,
 } from "../models.ts";
-import {
-  catalogueProvidersList,
-  catalogueProvidersSupported,
-} from "../providers.ts";
+import { catalogueProvidersList } from "../providers.ts";
 
 /**
  * Models is the catalogue builder. Chain methods are immutable; list/get
@@ -95,9 +93,10 @@ export class ScopedModels {
 }
 
 /**
- * Providers is the providers-namespace prototype. list() returns
+ * Providers is the providers-namespace prototype. list() returns the
  * providers with both credentials configured and llm:hasModelsEndpoint
- * declared; supported() returns the SDK roster.
+ * declared, as secret-free ProviderInfo (ADR-040 PSR-005). The static
+ * roster of every supported provider is the `providers.list()` namespace.
  */
 export class Providers {
   /** @internal */ readonly client: Client;
@@ -106,11 +105,7 @@ export class Providers {
     this.client = client;
   }
 
-  list(): Provider[] {
+  list(): ProviderInfo[] {
     return catalogueProvidersList(this.client);
-  }
-
-  supported(): Provider[] {
-    return catalogueProvidersSupported();
   }
 }

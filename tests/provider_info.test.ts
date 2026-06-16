@@ -5,25 +5,34 @@ import { describe, test, expect } from "bun:test";
 // `export * as providers` re-export fails this import at compile time.
 import { providers, type ProviderInfo } from "../src/llmkit.ts";
 
-describe("providers namespace (ADR-038)", () => {
+describe("providers namespace (ADR-038/040)", () => {
   test("info projects anthropic metadata from the registry", () => {
     const info: ProviderInfo = providers.info("anthropic");
-    expect(info.name).toBe("anthropic");
+    expect(info.id).toBe("anthropic");
+    expect(info.slug).toBe("anthropic");
     expect(info.envVar).toBe("ANTHROPIC_API_KEY");
     expect(info.defaultModel).toBe("claude-sonnet-4-6");
     expect(info.baseUrl).toBe("https://api.anthropic.com");
   });
 
-  test("info projects exactly the four contract fields (guards against widening)", () => {
+  test("info projects exactly the contract fields (guards against widening)", () => {
     const keys = Object.keys(providers.info("openai")).sort();
-    expect(keys).toEqual(["baseUrl", "defaultModel", "envVar", "name"]);
+    expect(keys).toEqual(["baseUrl", "defaultModel", "envVar", "id", "slug"]);
   });
 
-  test("list enumerates every provider, sorted by name", () => {
+  test("list enumerates every provider, sorted by slug", () => {
     const all = providers.list();
-    // anthropic is among them and the list is sorted ascending by name.
-    expect(all.some((p) => p.name === "anthropic")).toBe(true);
-    const names = all.map((p) => p.name);
-    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    // anthropic is among them and the list is sorted ascending by slug.
+    expect(all.some((p) => p.id === "anthropic")).toBe(true);
+    const slugs = all.map((p) => p.slug);
+    expect(slugs).toEqual([...slugs].sort((a, b) => a.localeCompare(b)));
+  });
+
+  test("parse round-trips a known slug to its typed id and rejects unknown", () => {
+    const id = providers.parse("anthropic");
+    expect(id).toBe("anthropic");
+    // round-trip back through info: the typed id projects the same slug.
+    expect(providers.info(id!).slug).toBe("anthropic");
+    expect(providers.parse("not-a-provider")).toBeUndefined();
   });
 });

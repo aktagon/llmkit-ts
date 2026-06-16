@@ -40,7 +40,7 @@ import {
 describe("Every per-provider factory constructs a Client", () => {
   test("every factory + newClient escape hatch", () => {
     const clients: Client[] = [
-      newClient("custom", "k"),
+      newClient("ai21", "k"),
       ai21("k"),
       anthropic("k"),
       azure("k"),
