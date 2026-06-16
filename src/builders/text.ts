@@ -10,11 +10,11 @@
 // without duplicating ~150 LOC of provider-specific request shaping.
 //
 // Limitations carried over from slice 1:
-//  - `_files` is ignored (legacy TS Request has no `files` field).
 //  - Image parts in `_parts` are ignored (legacy TS Request has no
 //    `images` field). Text parts are concatenated, then `finalText`
 //    is appended as the last text segment if non-empty.
-// Both gaps are tracked under ADR-008 OQ-2.
+// Tracked under ADR-008 OQ-2. (`_files` is now threaded to the wire
+// document block — BUG-014.)
 
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -76,6 +76,7 @@ export function buildPromptArgs(
   } else if (user) {
     request.user = user;
   }
+  if (b._files.length > 0) request.files = b._files;
   if (b._schema) request.schema = b._schema;
 
   const options: PromptOptions = {};
