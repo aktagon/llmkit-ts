@@ -6,6 +6,7 @@
 
 import type { Capability, Provider } from "../types.ts";
 import type { LiveResult, ModelInfo } from "../structs.ts";
+import type { ProviderInfo } from "../providers/provider_info.ts";
 import type { Client } from "./builders.ts";
 import {
   catalogueFilter,
@@ -14,10 +15,7 @@ import {
   catalogueRunList,
   catalogueRunGet,
 } from "../models.ts";
-import {
-  catalogueProvidersList,
-  catalogueProvidersSupported,
-} from "../providers.ts";
+import { catalogueProvidersList } from "../providers.ts";
 
 
 
@@ -99,6 +97,7 @@ export class ScopedModels {
 
 
 
+
 export class Providers {
  readonly client: Client;
 
@@ -106,11 +105,7 @@ export class Providers {
     this.client = client;
   }
 
-  list(): Provider[] {
+  list(): ProviderInfo[] {
     return catalogueProvidersList(this.client);
-  }
-
-  supported(): Provider[] {
-    return catalogueProvidersSupported();
   }
 }

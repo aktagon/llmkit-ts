@@ -76,7 +76,15 @@ export function catalogueLookup(id: string): ModelInfo | undefined {
 
 
 export async function catalogueRunLive(models: Models): Promise<LiveResult> {
-  const configured = models.client.providers.list();
+  //
+  //
+  //
+  const cfg = models.client.provider;
+  const configured: Provider[] = models.client.providers.list().map((p) => ({
+    name: p.id,
+    apiKey: cfg.apiKey,
+    baseUrl: cfg.baseUrl,
+  }));
   const all: ModelInfo[] = [];
   const errors: Record<string, ProviderError> = {};
 

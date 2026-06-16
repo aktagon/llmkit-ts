@@ -17,6 +17,7 @@
 import { anthropic, type Client } from "../src/builders/index.ts";
 import { Capabilities } from "../src/types.ts";
 import type { Provider } from "../src/types.ts";
+import * as providers from "../src/providers/provider_info.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");
@@ -33,9 +34,9 @@ export async function main(c?: Client): Promise<void> {
   console.log(`chat-capable non-empty: ${chat.length > 0}`);
 
   //
-  const configured = client.providers.list().map((p) => p.name);
+  const configured = client.providers.list().map((p) => p.slug);
   console.log(`configured: [${configured.join(", ")}]`);
-  console.log(`supported >= 1: ${client.providers.supported().length > 0}`);
+  console.log(`supported >= 1: ${providers.list().length > 0}`);
 
   //
   const p: Provider = {

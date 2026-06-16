@@ -57,7 +57,7 @@ export class Client {
   models: Models;
   providers: Providers;
 
-  constructor(name: string, apiKey: string) {
+  constructor(name: ProviderName, apiKey: string) {
     this.provider = { name, apiKey };
     this.text = new Text(this);
     this.image = new Image(this);
@@ -102,7 +102,7 @@ export class Client {
   }
 }
 
-export function newClient(name: string, apiKey: string): Client {
+export function newClient(name: ProviderName, apiKey: string): Client {
   return new Client(name, apiKey);
 }
 

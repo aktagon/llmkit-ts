@@ -1,29 +1,19 @@
 //
 //
 
-import type { Provider } from "./types.ts";
 import type { Client } from "./builders/builders.ts";
 import { catalogueByProvider } from "./catalogue.ts";
-import {
-  Providers as ProviderRegistry,
-  type ProviderName,
-} from "./providers/providers.ts";
+import { info, parse, type ProviderInfo } from "./providers/provider_info.ts";
 
 
 
 
 
-export function catalogueProvidersList(client: Client): Provider[] {
-  const p = client.provider;
-  if (!catalogueByProvider[p.name]) return [];
-  return [
-    { name: p.name as ProviderName, apiKey: p.apiKey, baseUrl: p.baseUrl },
-  ];
-}
 
-
-
-export function catalogueProvidersSupported(): Provider[] {
-  const names = Object.values(ProviderRegistry).sort();
-  return names.map((name) => ({ name, apiKey: "" }));
+export function catalogueProvidersList(client: Client): ProviderInfo[] {
+  const slug = client.provider.name;
+  if (!catalogueByProvider[slug]) return [];
+  const id = parse(slug);
+  if (id === undefined) return [];
+  return [info(id)];
 }
