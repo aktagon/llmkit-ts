@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-06-17
+
+### Fixed
+
+- Cloudflare Workers / workerd compatibility: the bundled `dist/` no longer emits an eager `createRequire(import.meta.url)` shim, which crashed at module load on workerd (where `import.meta.url` is `undefined`) and broke both `wrangler dev` and deploys for any Worker importing the package. Root cause was `bun build --target node` injecting CJS-interop for a guarded `await import("node:fs/promises")`; the build now uses `--target browser`, leaving `node:` builtins as native dynamic imports with no interop shim. Verified under both Node and Bun, and guarded by a regression test (`tests/dist_no_createrequire.test.ts`) that reads the build target and asserts the output is free of the shim.
+
 ## [1.1.0] — 2026-06-09
 
 ### Added
