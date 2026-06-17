@@ -393,23 +393,23 @@ export function validateOptions(
   const supported = new Set(supportedOptions(name).map((o) => o.key));
   const overrides = new Map(optionOverrides(name).map((o) => [o.key, o]));
 
-  const require = (key: OptionKey, field: string): void => {
+  const requireOption = (key: OptionKey, field: string): void => {
     if (!supported.has(key)) {
       throw new ValidationError(field, `not supported by ${name}`);
     }
   };
-  if (options.topK !== undefined) require(OptionKeys.TOP_K, "topK");
-  if (options.seed !== undefined) require(OptionKeys.SEED, "seed");
+  if (options.topK !== undefined) requireOption(OptionKeys.TOP_K, "topK");
+  if (options.seed !== undefined) requireOption(OptionKeys.SEED, "seed");
   if (options.stopSequences && options.stopSequences.length > 0)
-    require(OptionKeys.STOP_SEQUENCES, "stopSequences");
+    requireOption(OptionKeys.STOP_SEQUENCES, "stopSequences");
   if (options.frequencyPenalty !== undefined)
-    require(OptionKeys.FREQUENCY_PENALTY, "frequencyPenalty");
+    requireOption(OptionKeys.FREQUENCY_PENALTY, "frequencyPenalty");
   if (options.presencePenalty !== undefined)
-    require(OptionKeys.PRESENCE_PENALTY, "presencePenalty");
+    requireOption(OptionKeys.PRESENCE_PENALTY, "presencePenalty");
   if (options.thinkingBudget !== undefined)
-    require(OptionKeys.THINKING_BUDGET, "thinkingBudget");
+    requireOption(OptionKeys.THINKING_BUDGET, "thinkingBudget");
   if (options.reasoningEffort)
-    require(OptionKeys.REASONING_EFFORT, "reasoningEffort");
+    requireOption(OptionKeys.REASONING_EFFORT, "reasoningEffort");
 
   if (options.reasoningEffort) {
     const ov = overrides.get(OptionKeys.REASONING_EFFORT);
