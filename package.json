@@ -56,7 +56,7 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target node --format esm --splitting --sourcemap=external && bun run build:types",
+    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target browser --format esm --splitting --sourcemap=external && bun run build:types",
     "build:types": "tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
