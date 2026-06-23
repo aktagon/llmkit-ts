@@ -815,6 +815,20 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
       jsonKey: "top_p",
     },
   ],
+  workersai: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+    {
+      key: OptionKeys.TEMPERATURE,
+      jsonKey: "temperature",
+    },
+    {
+      key: OptionKeys.TOP_P,
+      jsonKey: "top_p",
+    },
+  ],
   yi: [
     {
       key: OptionKeys.MAX_TOKENS,
@@ -938,6 +952,8 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   ],
   vllm: [
   ],
+  workersai: [
+  ],
   yi: [
   ],
   zhipu: [
@@ -1019,6 +1035,8 @@ const MODEL_OPTION_OVERRIDES: Record<ProviderName, readonly ModelOptionOverrideD
   vertex: [
   ],
   vllm: [
+  ],
+  workersai: [
   ],
   yi: [
   ],
