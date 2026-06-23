@@ -212,6 +212,13 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "",
     baseUrl: "http://localhost:8000",
   },
+  workersai: {
+    id: "workersai",
+    slug: "workersai",
+    envVar: "CLOUDFLARE_API_TOKEN",
+    defaultModel: "@cf/meta/llama-3.1-8b-instruct",
+    baseUrl: "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
+  },
   yi: {
     id: "yi",
     slug: "yi",
