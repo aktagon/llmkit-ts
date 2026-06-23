@@ -252,6 +252,42 @@ describe("prompt — finishReason / finishMessage", () => {
   });
 });
 
+// Prompt 043: Cloudflare Workers AI returns the standard OpenAI chat shape
+// over its /ai/v1/ compat shim, so the config-driven parser reads text, usage,
+// and finish_reason with zero provider-specific code.
+describe("prompt — Workers AI", () => {
+  test("parses OpenAI-shaped text, usage, and finish_reason", async () => {
+    const server = startMockServer(
+      () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: { content: "Red, green, blue" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 12, completion_tokens: 4 },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    try {
+      const c = newClient(Providers.workersai, "cf-token");
+      c.provider.baseUrl = server.url;
+      const resp = await c.text.prompt(
+        "List three primary colors as a comma-separated list.",
+      );
+      expect(resp.text).toBe("Red, green, blue");
+      expect(resp.usage.input).toBe(12);
+      expect(resp.usage.output).toBe(4);
+      expect(resp.finishReason).toBe("stop");
+    } finally {
+      server.stop();
+    }
+  });
+});
+
 describe("Text.prompt — safety settings", () => {
   // The Google safetySettings top-level wire-field body assert migrated to
   // the options-google wire fixture (ADR-028 M2, falsification class f).

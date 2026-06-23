@@ -589,4 +589,25 @@ describe("request wire — cross-capability", () => {
     }
     assertWireGolden("video-vertex", m.body());
   });
+
+  // Prompt 043: Cloudflare Workers AI's OpenAI-compatible chat-completions body
+  // {model, messages, max_tokens, temperature, top_p} — structurally identical
+  // to the gpt-4o options golden (OpenAI ArgsFormat, system-in-messages); the
+  // novel bit (account-id-in-URL) is delivery-side, not request-body-side.
+  test("workersai (OpenAI-compatible chat) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.workersai, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireWorkersaiModel)
+        .maxTokens(wi.wireWorkersaiMaxTokens)
+        .temperature(wi.wireWorkersaiTemperature)
+        .topP(wi.wireWorkersaiTopP)
+        .prompt(wi.wireWorkersaiPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("workersai", m.body());
+  });
 });

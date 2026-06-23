@@ -33,6 +33,7 @@ import {
   together,
   vertex,
   vllm,
+  workersai,
   yi,
   zhipu,
 } from "../src/builders/index.ts";
@@ -69,6 +70,7 @@ describe("Every per-provider factory constructs a Client", () => {
       together("k"),
       vertex("k"),
       vllm("k"),
+      workersai("k"),
       yi("k"),
       zhipu("k"),
     ];
@@ -76,6 +78,6 @@ describe("Every per-provider factory constructs a Client", () => {
       expect(c).toBeInstanceOf(Client);
       expect(c.provider.apiKey).toBe("k");
     }
-    expect(clients).toHaveLength(31);
+    expect(clients).toHaveLength(32);
   });
 });
