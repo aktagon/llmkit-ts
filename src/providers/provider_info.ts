@@ -107,6 +107,13 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "llama-3.3-70b-versatile",
     baseUrl: "https://api.groq.com/openai",
   },
+  inworld: {
+    id: "inworld",
+    slug: "inworld",
+    envVar: "INWORLD_API_KEY",
+    defaultModel: "inworld-tts-2",
+    baseUrl: "https://api.inworld.ai",
+  },
   jan: {
     id: "jan",
     slug: "jan",
