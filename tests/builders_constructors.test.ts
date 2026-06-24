@@ -18,6 +18,7 @@ import {
   google,
   grok,
   groq,
+  inworld,
   jan,
   llamacpp,
   lmstudio,
@@ -58,6 +59,7 @@ describe("Every per-provider factory constructs a Client", () => {
       google("k"),
       grok("k"),
       groq("k"),
+      inworld("k"),
       jan("k"),
       llamacpp("k"),
       lmstudio("k"),
@@ -84,6 +86,6 @@ describe("Every per-provider factory constructs a Client", () => {
       expect(c).toBeInstanceOf(Client);
       expect(c.provider.apiKey).toBe("k");
     }
-    expect(clients).toHaveLength(35);
+    expect(clients).toHaveLength(36);
   });
 });

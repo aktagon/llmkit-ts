@@ -449,6 +449,12 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
       jsonKey: "top_p",
     },
   ],
+  inworld: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+  ],
   jan: [
     {
       key: OptionKeys.MAX_TOKENS,
@@ -933,6 +939,8 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   ],
   groq: [
   ],
+  inworld: [
+  ],
   jan: [
   ],
   llamacpp: [
@@ -1017,6 +1025,8 @@ const MODEL_OPTION_OVERRIDES: Record<ProviderName, readonly ModelOptionOverrideD
   grok: [
   ],
   groq: [
+  ],
+  inworld: [
   ],
   jan: [
   ],

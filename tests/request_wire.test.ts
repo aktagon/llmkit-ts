@@ -77,6 +77,7 @@ function startMock(): {
           ],
           content: [{ type: "text", text: "done" }],
           data: [{ b64_json: wi.wireImageEditGoogleFlashImageBase64 }],
+          audioContent: wi.wireImageEditGoogleFlashImageBase64, // SpeechInworld: base64 synthesized audio
           usage: { input_tokens: 2000, output_tokens: 5 },
           usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3 },
         }),
@@ -515,6 +516,21 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("video-vidu", m.body());
+  });
+
+  test("speech generate (Inworld) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.inworld, "key");
+      c.provider.baseUrl = m.url;
+      await c.speech
+        .model(wi.wireSpeechInworldModel)
+        .voice(wi.wireSpeechInworldVoice)
+        .generate(wi.wireSpeechInworldPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("speech-inworld", m.body());
   });
 
   // ADR-034 fan-out: PixVerse video-submit body {model, prompt, duration,
