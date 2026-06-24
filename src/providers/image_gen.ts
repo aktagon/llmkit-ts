@@ -3,7 +3,7 @@
 
 import type { ProviderName } from "./providers.ts";
 
-export type ImageInputMode = "InlineParts" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict";
+export type ImageInputMode = "InlineParts" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict" | "JSONGenerations";
 export type ImageOutputMode = "Base64Inline" | "URLOrBase64";
 
 export interface ImageModelDef {
@@ -97,6 +97,29 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
       {
         modelId: "gpt-image-2",
         label: "GPT Image 2",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+      },
+    ],
+  },
+  recraft: {
+    inputMode: "JSONGenerations",
+    outputMode: "Base64Inline",
+    maxInputCount: 0,
+    genEndpoint: "/v1/images/generations",
+    editEndpoint: "",
+    models: [
+      {
+        modelId: "recraftv3",
+        label: "Recraft V3",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+      },
+      {
+        modelId: "recraftv3_vector",
+        label: "Recraft V3 (vector / SVG)",
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
