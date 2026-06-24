@@ -184,6 +184,13 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "qwen-plus",
     baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode",
   },
+  recraft: {
+    id: "recraft",
+    slug: "recraft",
+    envVar: "RECRAFT_API_TOKEN",
+    defaultModel: "recraftv3",
+    baseUrl: "https://external.api.recraft.ai",
+  },
   sambanova: {
     id: "sambanova",
     slug: "sambanova",
