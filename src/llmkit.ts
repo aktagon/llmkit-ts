@@ -74,6 +74,11 @@ export type {
   AudioData,
   MusicOptions,
 } from "./music.ts";
+export type {
+  SpeechRequest,
+  SpeechResponse,
+  SpeechOptions,
+} from "./speech.ts";
 // Per-model capability introspection (BUG-011): query the supported models and
 // their advisory caps (maxInputImages, supportsImageToVideo, ...) so a consumer
 // can gate input — e.g. how many seed/reference images a model accepts —
@@ -95,6 +100,8 @@ export type {
 } from "./providers/video_gen.ts";
 export { musicGenConfig } from "./providers/music_gen.ts";
 export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
+export { speechGenConfig } from "./providers/speech_gen.ts";
+export type { SpeechGenDef, SpeechModelDef } from "./providers/speech_gen.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
 // (name/envVar/defaultModel/baseUrl) — a projection of provider facts, NOT the
 // internal wire/transform spec. Exposed as the static `providers` namespace
