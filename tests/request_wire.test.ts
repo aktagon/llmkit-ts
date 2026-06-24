@@ -11,6 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { newClient } from "../src/llmkit.ts";
+import type { Tool } from "../src/types.ts";
 // Providers (the slug map) is no longer on the public barrel (ADR-038 PMD-005,
 // superseded by ProviderName); the request-wire driver reads it from the
 // internal providers module.
@@ -661,5 +662,89 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("workersai", m.body());
+  });
+
+  // === TASK-002: tool-definition fixtures across the four chat wire families.
+  // wireToolDef builds the single canonical tool from the generated wire-input
+  // consts (ontology/wire-fixtures.ttl single source). The run stub is never
+  // invoked: the mock returns a plain text response, so the agent loop makes
+  // one request (carrying the tool defs) and terminates. See the Go drivers
+  // (the minting reference). NOT live-anchored — parity held by the cross-SDK
+  // comparator + mock body, like the keyless providers. ===
+
+  function wireToolDef(): Tool {
+    return {
+      name: wi.wireToolToolName,
+      description: wi.wireToolToolDescription,
+      schema: JSON.parse(wi.wireToolToolSchema),
+      run: () => "",
+    };
+  }
+
+  test("tool def (OpenAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = m.url;
+      await c.agent.addTool(wireToolDef()).prompt(wi.wireToolPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("tooldef-openai", m.body());
+  });
+
+  test("tool def (Anthropic) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.agent.addTool(wireToolDef()).prompt(wi.wireToolPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("tooldef-anthropic", m.body());
+  });
+
+  test("tool def (Google) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.google, "key");
+      c.provider.baseUrl = m.url;
+      await c.agent.addTool(wireToolDef()).prompt(wi.wireToolPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("tooldef-google", m.body());
+  });
+
+  test("tool def (Bedrock) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.bedrock, "key");
+      c.provider.baseUrl = m.url;
+      await c.agent.addTool(wireToolDef()).prompt(wi.wireToolPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("tooldef-bedrock", m.body());
+  });
+
+  // Bedrock Converse message body (no tools) — the ChatBedrock message-transform
+  // arm that had no chat golden before TASK-002 (only video-bedrock existed).
+  test("bedrock chat (no tools) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.bedrock, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .maxTokens(wi.wireBedrockChatMaxTokens)
+        .temperature(wi.wireBedrockChatTemperature)
+        .topP(wi.wireBedrockChatTopP)
+        .stopSequences(wi.wireBedrockChatStopSequences)
+        .prompt(wi.wireBedrockChatPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("bedrock-chat", m.body());
   });
 });
