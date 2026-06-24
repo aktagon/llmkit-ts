@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 // Video wire-shape discriminators. Each selects the submit-body build,
 // poll mechanism, and result-extraction transform.
-export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo" | "VideoBedrock" | "VideoVertexVeo" | "VideoVidu";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo" | "VideoBedrock" | "VideoVertexVeo" | "VideoVidu" | "VideoPixVerse";
 
 // Output-delivery modes: download bytes | return URL | caller S3 URI.
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -121,6 +121,45 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["1080p", "768p"],
+        maxInputImages: 0,
+      },
+    ],
+  },
+  pixverse: {
+    wireShape: "VideoPixVerse",
+    outputDelivery: "DeliveryURL",
+    videoBaseUrl: "",
+    genEndpoint: "/openapi/v2/video/text/generate",
+    pollEndpoint: "/openapi/v2/video/result/{id}",
+    fileEndpoint: "",
+    submitHandleField: "Resp.video_id",
+    requiresOutputUri: false,
+    models: [
+      {
+        modelId: "v4.5",
+        label: "PixVerse v4.5",
+        supportsImageToVideo: false,
+        maxDurationSeconds: 8,
+        outputMime: "video/mp4",
+        resolutions: [],
+        maxInputImages: 0,
+      },
+      {
+        modelId: "v5",
+        label: "PixVerse v5",
+        supportsImageToVideo: false,
+        maxDurationSeconds: 8,
+        outputMime: "video/mp4",
+        resolutions: [],
+        maxInputImages: 0,
+      },
+      {
+        modelId: "v6",
+        label: "PixVerse v6",
+        supportsImageToVideo: false,
+        maxDurationSeconds: 15,
+        outputMime: "video/mp4",
+        resolutions: [],
         maxInputImages: 0,
       },
     ],
