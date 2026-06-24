@@ -212,6 +212,13 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "imagen-3.0-generate-002",
     baseUrl: "https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models",
   },
+  vidu: {
+    id: "vidu",
+    slug: "vidu",
+    envVar: "VIDU_API_KEY",
+    defaultModel: "viduq3-pro",
+    baseUrl: "https://api.vidu.com",
+  },
   vllm: {
     id: "vllm",
     slug: "vllm",
