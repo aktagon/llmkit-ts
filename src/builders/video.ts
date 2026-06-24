@@ -514,6 +514,32 @@ function parseVideoPoll(
           return null; // PROCESSING (or any non-terminal status)
       }
     }
+    case "VideoVidu": {
+      //
+      //
+      //
+      const root = raw as {
+        state?: unknown;
+        err_code?: unknown;
+        message?: unknown;
+      };
+      const state = typeof root.state === "string" ? root.state : "";
+      switch (state) {
+        case "success":
+          return videoResultFromVidu(vgCfg, raw);
+        case "failed": {
+          let msg = "operation failed";
+          if (typeof root.err_code === "string" && root.err_code) {
+            msg = root.err_code;
+          } else if (typeof root.message === "string" && root.message) {
+            msg = root.message;
+          }
+          throw new APIError(0, `video generation failed: ${msg}`, false);
+        }
+        default:
+          return null; // created, queueing, processing (or any non-terminal state)
+      }
+    }
     case "VideoVeo": {
       //
       //
@@ -677,6 +703,25 @@ function videoResultFromZhipu(
     return buildVideoResponse([]);
   }
   const first = results[0] as { url?: unknown };
+  const url = typeof first.url === "string" ? first.url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+//
+//
+//
+//
+function videoResultFromVidu(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { creations?: unknown };
+  const creations = Array.isArray(root.creations) ? root.creations : [];
+  if (creations.length === 0) {
+    return buildVideoResponse([]);
+  }
+  const first = creations[0] as { url?: unknown };
   const url = typeof first.url === "string" ? first.url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
