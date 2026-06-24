@@ -300,6 +300,26 @@ export interface Response {
 
 
 
+export interface SpeechResponse {
+
+
+
+  audio: AudioData;
+
+
+
+
+  usage: Usage;
+
+
+
+
+  finishReason?: string;
+}
+
+
+
+
 export interface ToolCall {
 
 

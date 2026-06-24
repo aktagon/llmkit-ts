@@ -74,6 +74,11 @@ export type {
   AudioData,
   MusicOptions,
 } from "./music.ts";
+export type {
+  SpeechRequest,
+  SpeechResponse,
+  SpeechOptions,
+} from "./speech.ts";
 //
 //
 //
@@ -95,6 +100,8 @@ export type {
 } from "./providers/video_gen.ts";
 export { musicGenConfig } from "./providers/music_gen.ts";
 export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
+export { speechGenConfig } from "./providers/speech_gen.ts";
+export type { SpeechGenDef, SpeechModelDef } from "./providers/speech_gen.ts";
 //
 //
 //
