@@ -63,6 +63,7 @@ function startMock(): {
           invocationArn: "arn:aws:bedrock:test:async-invoke/vid_test", // VideoBedrock submit handle
           name: "models/veo-test/operations/op_test", // VideoVeo: operation-name submit handle
           output: { task_id: "vid_test", task_status: "PENDING" }, // VideoQwen: output.task_id submit handle
+          Resp: { video_id: 318633193768896 }, // VideoPixVerse: Resp.video_id submit handle (numeric)
           candidates: [
             {
               content: {
@@ -513,6 +514,24 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("video-vidu", m.body());
+  });
+
+  // ADR-034 fan-out: PixVerse video-submit body {model, prompt, duration,
+  // quality, aspect_ratio} — the dedicated PixVerse arm (all five fields
+  // required); the dynamic Ai-trace-id header is omitted from the golden (it
+  // is a per-request UUID) and asserted in the lifecycle unit tests.
+  test("video submit (PixVerse) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.pixverse, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoPixverseModel)
+        .submit(wi.wireVideoPixversePrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-pixverse", m.body());
   });
 
   // ADR-034 fan-out: Together video-submit body {model, prompt} —

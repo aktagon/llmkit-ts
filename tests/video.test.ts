@@ -442,6 +442,169 @@ describe("Video.submit + wait — Vidu (VideoVidu)", () => {
   });
 });
 
+const pixverseVideoModel = "v4.5";
+const pixverseVideoId = 318633193768896;
+
+// pixverseVideoServer serves the PixVerse submit + result-poll endpoints.
+// Submit POSTs /openapi/v2/video/text/generate and returns the poll handle as
+// the numeric Resp.video_id; the poll GET /openapi/v2/video/result/{id}
+// returns Resp.status=5 (generating) until the supplied done body. PixVerse
+// authenticates with the API-KEY header and requires a unique Ai-trace-id
+// header on BOTH submit and poll.
+function pixverseVideoServer(
+  pendingPolls: number,
+  doneBody: Record<string, unknown>,
+  onSubmit?: (
+    body: Record<string, unknown>,
+    apiKey: string,
+    traceId: string,
+  ) => void,
+  onPoll?: (apiKey: string, traceId: string) => void,
+) {
+  let polls = 0;
+  return Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      const apiKey = req.headers.get("api-key") ?? "";
+      const traceId = req.headers.get("ai-trace-id") ?? "";
+      if (
+        req.method === "POST" &&
+        url.pathname === "/openapi/v2/video/text/generate"
+      ) {
+        const body = (await req.json()) as Record<string, unknown>;
+        onSubmit?.(body, apiKey, traceId);
+        return new Response(
+          JSON.stringify({
+            ErrCode: 0,
+            ErrMsg: "success",
+            Resp: { video_id: pixverseVideoId },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname === `/openapi/v2/video/result/${pixverseVideoId}`
+      ) {
+        onPoll?.(apiKey, traceId);
+        polls += 1;
+        if (polls <= pendingPolls) {
+          return new Response(
+            JSON.stringify({ ErrCode: 0, Resp: { status: 5 } }),
+            { headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify(doneBody), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+}
+
+describe("Video.submit + wait — PixVerse (VideoPixVerse)", () => {
+  test("happy path: numeric Resp.video_id handle, API-KEY + Ai-trace-id, Resp.url delivery", async () => {
+    let receivedBody: Record<string, unknown> | undefined;
+    let submitKey = "";
+    let submitTrace = "";
+    let pollKey = "";
+    let pollTrace = "";
+    const done = {
+      ErrCode: 0,
+      ErrMsg: "success",
+      Resp: {
+        id: pixverseVideoId,
+        status: 1,
+        url: "https://media.pixverse.ai/abc/v.mp4",
+      },
+    };
+    const server = pixverseVideoServer(
+      2,
+      done,
+      (body, apiKey, traceId) => {
+        receivedBody = body;
+        submitKey = apiKey;
+        submitTrace = traceId;
+      },
+      (apiKey, traceId) => {
+        pollKey = apiKey;
+        pollTrace = traceId;
+      },
+    );
+    try {
+      const c = newClient(Providers.pixverse, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+
+      const handle = await c.video
+        .model(pixverseVideoModel)
+        .submit("a drone shot over the alps");
+      // The numeric video_id is formatted to its integer string form.
+      expect(handle.id).toBe("318633193768896");
+      expect(receivedBody!.model).toBe(pixverseVideoModel);
+      expect(typeof receivedBody!.prompt).toBe("string");
+      expect(receivedBody!.prompt).toBeTruthy();
+      // All three required reference-anchored defaults are present.
+      expect(receivedBody!.duration).toBe(5);
+      expect(receivedBody!.quality).toBe("540p");
+      expect(receivedBody!.aspect_ratio).toBe("16:9");
+      expect(submitKey).toBe("test-token");
+      expect(submitTrace).not.toBe("");
+
+      const resp = await handle.wait(FAST_WAIT);
+      expect(pollKey).toBe("test-token");
+      expect(pollTrace).not.toBe("");
+      expect(resp.videos).toHaveLength(1);
+      expect(resp.videos[0]!.url).toBe(
+        "https://media.pixverse.ai/abc/v.mp4",
+      );
+      expect(resp.videos[0]!.mimeType).toBe("video/mp4");
+      expect(resp.videos[0]!.bytes).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("failed status (8) throws", async () => {
+    const server = pixverseVideoServer(0, {
+      ErrCode: 0,
+      Resp: { status: 8 },
+    });
+    try {
+      const c = newClient(Providers.pixverse, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video.model(pixverseVideoModel).submit("blocked");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+      expect((err as APIError).message).toContain("status 8");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("rejects image parts on a text-to-video-only model (BUG-010 gate)", async () => {
+    const c = newClient(Providers.pixverse, "test-token");
+    c.provider.baseUrl = "http://unused";
+    let err: unknown;
+    try {
+      await c.video
+        .model(pixverseVideoModel)
+        .image("image/png", new Uint8Array([0x89]))
+        .submit("animate this");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).message).toContain("text-to-video-only");
+  });
+});
+
 const togetherVideoModel = "minimax/video-01-director";
 
 // togetherVideoServer serves the Together submit + poll endpoints. Submit

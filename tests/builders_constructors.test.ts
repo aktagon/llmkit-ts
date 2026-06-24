@@ -28,6 +28,7 @@ import {
   openai,
   openrouter,
   perplexity,
+  pixverse,
   qwen,
   recraft,
   sambanova,
@@ -67,6 +68,7 @@ describe("Every per-provider factory constructs a Client", () => {
       openai("k"),
       openrouter("k"),
       perplexity("k"),
+      pixverse("k"),
       qwen("k"),
       recraft("k"),
       sambanova("k"),
@@ -82,6 +84,6 @@ describe("Every per-provider factory constructs a Client", () => {
       expect(c).toBeInstanceOf(Client);
       expect(c.provider.apiKey).toBe("k");
     }
-    expect(clients).toHaveLength(34);
+    expect(clients).toHaveLength(35);
   });
 });
