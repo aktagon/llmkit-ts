@@ -131,6 +131,7 @@ export function openai(apiKey: string): Client { return new Client("openai", api
 export function openrouter(apiKey: string): Client { return new Client("openrouter", apiKey); }
 export function perplexity(apiKey: string): Client { return new Client("perplexity", apiKey); }
 export function qwen(apiKey: string): Client { return new Client("qwen", apiKey); }
+export function recraft(apiKey: string): Client { return new Client("recraft", apiKey); }
 export function sambanova(apiKey: string): Client { return new Client("sambanova", apiKey); }
 export function together(apiKey: string): Client { return new Client("together", apiKey); }
 export function vertex(apiKey: string): Client { return new Client("vertex", apiKey); }

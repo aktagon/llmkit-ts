@@ -723,6 +723,12 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
       jsonKey: "top_p",
     },
   ],
+  recraft: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+  ],
   sambanova: [
     {
       key: OptionKeys.MAX_TOKENS,
@@ -944,6 +950,8 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   ],
   qwen: [
   ],
+  recraft: [
+  ],
   sambanova: [
   ],
   together: [
@@ -1027,6 +1035,8 @@ const MODEL_OPTION_OVERRIDES: Record<ProviderName, readonly ModelOptionOverrideD
   perplexity: [
   ],
   qwen: [
+  ],
+  recraft: [
   ],
   sambanova: [
   ],

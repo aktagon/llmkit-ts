@@ -417,6 +417,22 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("image-gen-openai", m.body());
   });
 
+  // Recraft generations JSON body (JSONGenerations shape): {model, prompt,
+  // size, n} plus the forced response_format=b64_json (Recraft defaults to
+  // URL delivery; the SDK forces b64_json for a uniform decode path).
+  test("image gen (Recraft) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.recraft, "key");
+      c.provider.baseUrl = m.url;
+      await c.image.model(wi.wireImageGenRecraftModel).imageSize(wi.wireImageGenRecraftImageSize).count(wi.wireImageGenRecraftCount)
+        .generate(wi.wireImageGenRecraftPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("image-gen-recraft", m.body());
+  });
+
   test("image edit (Google Flash, inline reference) matches shared golden", async () => {
     const m = startMock();
     try {

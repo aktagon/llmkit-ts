@@ -249,6 +249,41 @@ export async function generateImage(
         "safety_settings",
         `not supported by ${provider.name}; use safetyFilter for Vertex Imagen`,
       );
+  } else if (imgCfg.inputMode === "JSONGenerations") {
+    // Recraft (text-to-image only). The flat generations body carries only
+    // size (-> `size`) and count (-> `n`); aspect_ratio is not a Recraft
+    // wire field (it sizes by an explicit WxH `size`), and the gpt-image /
+    // safety knobs are OpenAI / Google / Vertex only. Image parts are
+    // rejected upstream by the maxInputCount==0 gate.
+    if (options.aspectRatio !== undefined)
+      throw new ValidationError(
+        "aspect_ratio",
+        `not supported by ${provider.name}; use imageSize (Recraft sizes by WxH)`,
+      );
+    if (options.quality !== undefined)
+      throw new ValidationError("quality", `not supported by ${provider.name}`);
+    if (options.outputFormat !== undefined)
+      throw new ValidationError(
+        "output_format",
+        `not supported by ${provider.name}`,
+      );
+    if (options.background !== undefined)
+      throw new ValidationError(
+        "background",
+        `not supported by ${provider.name}`,
+      );
+    if (options.mask !== undefined)
+      throw new ValidationError("mask", `not supported by ${provider.name}`);
+    if (options.safetyFilter !== undefined)
+      throw new ValidationError(
+        "safety_filter",
+        `not supported by ${provider.name}`,
+      );
+    if (options.safetySettings && options.safetySettings.length > 0)
+      throw new ValidationError(
+        "safety_settings",
+        `not supported by ${provider.name}`,
+      );
   }
 
   const baseEvent: Event = {
@@ -297,6 +332,14 @@ export async function generateImage(
           signal: options.signal,
         });
       }
+    } else if (imgCfg.inputMode === "JSONGenerations") {
+      const body = buildRecraftGenBody(parts, request.model, options);
+      httpResp = await fetch(baseUrl + imgCfg.genEndpoint, {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
     } else if (imgCfg.inputMode === "JSONPredict") {
       const body = buildVertexBody(parts, options);
       const endpoint = (cfg.endpoint || "").replaceAll(
@@ -340,9 +383,20 @@ export async function generateImage(
         ? parseImageResponseDataArray(raw, "input_tokens", "output_tokens")
         : provider.name === "grok"
           ? parseImageResponseDataArray(raw, "", "")
-          : provider.name === "vertex"
-            ? parseVertexImageResponse(raw)
-            : parseImageResponse(raw, cfg.usageInputPath, cfg.usageOutputPath);
+          : provider.name === "recraft"
+            ? // Recraft returns the same data[].b64_json shape as OpenAI/xAI
+              // (the SDK forces response_format=b64_json) but carries no usage
+              // object, so token paths are empty (zero tokens — no fabricated
+              // values). SVG bytes (vector models) are sniffed to
+              // image/svg+xml inside parseImageResponseDataArray.
+              parseImageResponseDataArray(raw, "", "")
+            : provider.name === "vertex"
+              ? parseVertexImageResponse(raw)
+              : parseImageResponse(
+                  raw,
+                  cfg.usageInputPath,
+                  cfg.usageOutputPath,
+                );
     if (options.raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
@@ -581,6 +635,33 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
   return out;
 }
 
+/**
+ * buildRecraftGenBody assembles the JSON body for Recraft's text-to-image
+ * /v1/images/generations endpoint. imageSize maps to `size`; count maps to
+ * `n`. response_format is forced to b64_json because Recraft defaults to URL
+ * delivery — forcing it keeps the response shape uniform (data[].b64_json).
+ * Vector/SVG output is selected by a vector model id (recraftv3_vector), not
+ * a body flag, so the body shape is identical for raster and vector. Style
+ * and other Recraft-specific knobs ride extraFields.
+ */
+function buildRecraftGenBody(
+  parts: Part[],
+  model: string,
+  options: ImageOptions,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model,
+    prompt: joinTextParts(parts),
+    response_format: "b64_json",
+  };
+  if (options.imageSize) body.size = options.imageSize;
+  if (options.count !== undefined) body.n = options.count;
+  if (options.extraFields) {
+    for (const [k, v] of Object.entries(options.extraFields)) body[k] = v;
+  }
+  return body;
+}
+
 function joinTextParts(parts: Part[]): string {
   return parts
     .filter((p): p is { text: string } => "text" in p && !!p.text)
@@ -708,14 +789,20 @@ function parseImageResponseDataArray(
   const revised: string[] = [];
   for (const entry of root?.data ?? []) {
     if (typeof entry?.b64_json === "string" && entry.b64_json.length > 0) {
-      const echoed =
+      let mime =
         typeof entry.mime_type === "string" && entry.mime_type
           ? entry.mime_type
           : "image/png";
-      images.push({
-        mimeType: echoed,
-        bytes: base64ToBytes(entry.b64_json),
-      });
+      const bytes = base64ToBytes(entry.b64_json);
+      // Vector providers (Recraft recraftv3_vector) return SVG bytes in the
+      // same b64_json slot without echoing a mime_type. Sniff the leading
+      // bytes so SVG is labeled image/svg+xml rather than the image/png
+      // default. Raster bytes (PNG/JPEG/WebP) never start with '<', so the
+      // sniff is a no-op for them.
+      if (mime === "image/png" && looksLikeSVG(bytes)) {
+        mime = "image/svg+xml";
+      }
+      images.push({ mimeType: mime, bytes });
     }
     if (typeof entry?.revised_prompt === "string" && entry.revised_prompt) {
       revised.push(entry.revised_prompt);
@@ -782,6 +869,21 @@ function extractGoogleImageParts(raw: unknown): {
     }
   }
   return { images, text: textParts.join(""), finishReason, finishMessage };
+}
+
+/**
+ * looksLikeSVG reports whether the decoded image bytes are an SVG document.
+ * SVG is XML text starting (after optional whitespace) with an XML prolog
+ * (<?xml) or the root <svg element. Used to label vector-model output
+ * (Recraft) correctly when the provider does not echo a mime type.
+ */
+function looksLikeSVG(data: Uint8Array): boolean {
+  let s = "";
+  for (let i = 0; i < Math.min(data.length, 64); i++) {
+    s += String.fromCharCode(data[i]!);
+  }
+  s = s.replace(/^[\s﻿]+/, "");
+  return s.startsWith("<?xml") || s.startsWith("<svg");
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

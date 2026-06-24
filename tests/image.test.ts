@@ -1335,3 +1335,105 @@ describe("Image.generate — safetySettings (Google InlineParts)", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 });
+
+const recraftV3 = "recraftv3";
+const recraftV3Vector = "recraftv3_vector";
+const fakeSVG = new TextEncoder().encode(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>',
+);
+
+describe("Image.generate — Recraft", () => {
+  test("generations: forces response_format=b64_json, raster defaults to image/png, zero usage", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    let receivedPath = "";
+    let receivedAuth = "";
+    let receivedBody: any;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedPath = new URL(req.url).pathname;
+        receivedAuth = req.headers.get("authorization") ?? "";
+        receivedBody = await req.json();
+        return new Response(JSON.stringify({ data: [{ b64_json: encoded }] }));
+      },
+    });
+    try {
+      const c = newClient(Providers.recraft, "test-key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image
+        .model(recraftV3)
+        .imageSize("1024x1024")
+        .generate("A red circle");
+
+      expect(receivedPath).toBe("/v1/images/generations");
+      expect(receivedAuth).toBe("Bearer test-key");
+      expect(receivedBody.model).toBe(recraftV3);
+      expect(receivedBody.prompt).toBe("A red circle");
+      expect(receivedBody.response_format).toBe("b64_json");
+      expect(receivedBody.size).toBe("1024x1024");
+      expect(receivedBody.image).toBeUndefined();
+      expect(receivedBody.images).toBeUndefined();
+
+      expect(resp.images.length).toBe(1);
+      expect(Array.from(resp.images[0]!.bytes)).toEqual(Array.from(fakePNG));
+      expect(resp.images[0]!.mimeType).toBe("image/png");
+      expect(resp.usage.input).toBe(0);
+      expect(resp.usage.output).toBe(0);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("vector model: SVG bytes (no echoed mime) sniff to image/svg+xml", async () => {
+    const encoded = bytesToBase64(fakeSVG);
+    let receivedBody: any;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return new Response(JSON.stringify({ data: [{ b64_json: encoded }] }));
+      },
+    });
+    try {
+      const c = newClient(Providers.recraft, "test-key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.image
+        .model(recraftV3Vector)
+        .generate("A sailboat logo");
+
+      expect(receivedBody.model).toBe(recraftV3Vector);
+      expect(resp.images.length).toBe(1);
+      expect(Array.from(resp.images[0]!.bytes)).toEqual(Array.from(fakeSVG));
+      expect(resp.images[0]!.mimeType).toBe("image/svg+xml");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("rejects image parts (text-to-image only)", async () => {
+    const c = newClient(Providers.recraft, "test-key");
+    let err: unknown;
+    try {
+      await c.image
+        .model(recraftV3)
+        .image("image/png", fakePNG)
+        .generate("edit this");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).field).toBe("parts");
+  });
+
+  test("rejects aspect_ratio (Recraft sizes by WxH)", async () => {
+    const c = newClient(Providers.recraft, "test-key");
+    let err: unknown;
+    try {
+      await c.image.model(recraftV3).aspectRatio("16:9").generate("A red circle");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).field).toBe("aspect_ratio");
+  });
+});

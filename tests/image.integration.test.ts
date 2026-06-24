@@ -121,6 +121,38 @@ describe("image integration \u2014 openai gpt-image-2", () => {
   );
 });
 
+describe("image integration \u2014 recraft recraftv3", () => {
+  test.skipIf(!process.env.RECRAFT_API_TOKEN)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.recraft, process.env.RECRAFT_API_TOKEN!);
+      const resp = await c.image
+        .model("recraftv3")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
+describe("image integration \u2014 recraft recraftv3_vector", () => {
+  test.skipIf(!process.env.RECRAFT_API_TOKEN)(
+    "generates a 1x1 image with usage tokens",
+    async () => {
+      const c = newClient(Providers.recraft, process.env.RECRAFT_API_TOKEN!);
+      const resp = await c.image
+        .model("recraftv3_vector")
+        .generate("A simple red circle on a white background.");
+      expect(resp.images.length).toBeGreaterThan(0);
+      expect(resp.images[0]!.bytes.length).toBeGreaterThan(0);
+      expect(resp.usage.output).toBeGreaterThan(0);
+    },
+    60_000,
+  );
+});
+
 describe("image integration \u2014 vertex imagen-3.0-fast-generate-001", () => {
   test.skipIf(!process.env.VERTEX_BEARER_TOKEN)(
     "generates a 1x1 image with usage tokens",
