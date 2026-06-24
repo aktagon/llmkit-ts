@@ -91,7 +91,14 @@ export class VideoHandle {
     }
 
     const base = videoBaseUrl(this.provider, cfg, vgCfg);
-    const headers = buildAuthHeaders(this.provider, cfg);
+    let headers = buildAuthHeaders(this.provider, cfg);
+    //
+    //
+    //
+    //
+    if (vgCfg.wireShape === "VideoPixVerse") {
+      headers = { ...headers, "Ai-trace-id": newVideoTraceID() };
+    }
     //
     //
     //
@@ -333,6 +340,20 @@ async function dispatchVideoSubmit(
     //
     //
     postHeaders = { ...headers, "X-DashScope-Async": "enable" };
+  } else if (vgCfg.wireShape === "VideoPixVerse") {
+    //
+    //
+    //
+    //
+    //
+    body = {
+      model,
+      prompt: joinPromptText(parts),
+      duration: 5,
+      quality: "540p",
+      aspect_ratio: "16:9",
+    };
+    postHeaders = { ...headers, "Ai-trace-id": newVideoTraceID() };
   } else if (
     vgCfg.wireShape === "VideoVeo" ||
     vgCfg.wireShape === "VideoVertexVeo"
@@ -434,7 +455,19 @@ function lookupHandleField(
     if (typeof cur !== "object" || cur === null) return "";
     cur = (cur as Record<string, unknown>)[seg];
   }
-  return typeof cur === "string" ? cur : "";
+  //
+  //
+  //
+  if (typeof cur === "string") return cur;
+  if (typeof cur === "number") return String(Math.trunc(cur));
+  return "";
+}
+
+//
+//
+//
+function newVideoTraceID(): string {
+  return crypto.randomUUID();
 }
 
 //
@@ -538,6 +571,29 @@ function parseVideoPoll(
         }
         default:
           return null; // created, queueing, processing (or any non-terminal state)
+      }
+    }
+    case "VideoPixVerse": {
+      //
+      //
+      //
+      const root = raw as { Resp?: { status?: unknown } };
+      const status =
+        root.Resp && typeof root.Resp.status === "number"
+          ? root.Resp.status
+          : -1;
+      switch (status) {
+        case 1:
+          return videoResultFromPixVerse(vgCfg, raw);
+        case 7:
+        case 8:
+          throw new APIError(
+            0,
+            `video generation failed (status ${status})`,
+            false,
+          );
+        default:
+          return null; // 5 (generating) or any non-terminal status
       }
     }
     case "VideoVeo": {
@@ -723,6 +779,24 @@ function videoResultFromVidu(
   }
   const first = creations[0] as { url?: unknown };
   const url = typeof first.url === "string" ? first.url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+//
+//
+//
+//
+function videoResultFromPixVerse(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { Resp?: { url?: unknown } };
+  const resp = root.Resp;
+  if (!resp || typeof resp !== "object") {
+    return buildVideoResponse([]);
+  }
+  const url = typeof resp.url === "string" ? resp.url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
