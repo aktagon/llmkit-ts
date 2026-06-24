@@ -249,6 +249,41 @@ export async function generateImage(
         "safety_settings",
         `not supported by ${provider.name}; use safetyFilter for Vertex Imagen`,
       );
+  } else if (imgCfg.inputMode === "JSONGenerations") {
+    //
+    //
+    //
+    //
+    //
+    if (options.aspectRatio !== undefined)
+      throw new ValidationError(
+        "aspect_ratio",
+        `not supported by ${provider.name}; use imageSize (Recraft sizes by WxH)`,
+      );
+    if (options.quality !== undefined)
+      throw new ValidationError("quality", `not supported by ${provider.name}`);
+    if (options.outputFormat !== undefined)
+      throw new ValidationError(
+        "output_format",
+        `not supported by ${provider.name}`,
+      );
+    if (options.background !== undefined)
+      throw new ValidationError(
+        "background",
+        `not supported by ${provider.name}`,
+      );
+    if (options.mask !== undefined)
+      throw new ValidationError("mask", `not supported by ${provider.name}`);
+    if (options.safetyFilter !== undefined)
+      throw new ValidationError(
+        "safety_filter",
+        `not supported by ${provider.name}`,
+      );
+    if (options.safetySettings && options.safetySettings.length > 0)
+      throw new ValidationError(
+        "safety_settings",
+        `not supported by ${provider.name}`,
+      );
   }
 
   const baseEvent: Event = {
@@ -297,6 +332,14 @@ export async function generateImage(
           signal: options.signal,
         });
       }
+    } else if (imgCfg.inputMode === "JSONGenerations") {
+      const body = buildRecraftGenBody(parts, request.model, options);
+      httpResp = await fetch(baseUrl + imgCfg.genEndpoint, {
+        method: "POST",
+        headers: { ...authHeaders, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
     } else if (imgCfg.inputMode === "JSONPredict") {
       const body = buildVertexBody(parts, options);
       const endpoint = (cfg.endpoint || "").replaceAll(
@@ -340,9 +383,20 @@ export async function generateImage(
         ? parseImageResponseDataArray(raw, "input_tokens", "output_tokens")
         : provider.name === "grok"
           ? parseImageResponseDataArray(raw, "", "")
-          : provider.name === "vertex"
-            ? parseVertexImageResponse(raw)
-            : parseImageResponse(raw, cfg.usageInputPath, cfg.usageOutputPath);
+          : provider.name === "recraft"
+            ? // Recraft returns the same data[].b64_json shape as OpenAI/xAI
+              //
+              //
+              //
+              //
+              parseImageResponseDataArray(raw, "", "")
+            : provider.name === "vertex"
+              ? parseVertexImageResponse(raw)
+              : parseImageResponse(
+                  raw,
+                  cfg.usageInputPath,
+                  cfg.usageOutputPath,
+                );
     if (options.raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
@@ -581,6 +635,33 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
   return out;
 }
 
+
+
+
+
+
+
+
+
+
+function buildRecraftGenBody(
+  parts: Part[],
+  model: string,
+  options: ImageOptions,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model,
+    prompt: joinTextParts(parts),
+    response_format: "b64_json",
+  };
+  if (options.imageSize) body.size = options.imageSize;
+  if (options.count !== undefined) body.n = options.count;
+  if (options.extraFields) {
+    for (const [k, v] of Object.entries(options.extraFields)) body[k] = v;
+  }
+  return body;
+}
+
 function joinTextParts(parts: Part[]): string {
   return parts
     .filter((p): p is { text: string } => "text" in p && !!p.text)
@@ -708,14 +789,20 @@ function parseImageResponseDataArray(
   const revised: string[] = [];
   for (const entry of root?.data ?? []) {
     if (typeof entry?.b64_json === "string" && entry.b64_json.length > 0) {
-      const echoed =
+      let mime =
         typeof entry.mime_type === "string" && entry.mime_type
           ? entry.mime_type
           : "image/png";
-      images.push({
-        mimeType: echoed,
-        bytes: base64ToBytes(entry.b64_json),
-      });
+      const bytes = base64ToBytes(entry.b64_json);
+      //
+      //
+      //
+      //
+      //
+      if (mime === "image/png" && looksLikeSVG(bytes)) {
+        mime = "image/svg+xml";
+      }
+      images.push({ mimeType: mime, bytes });
     }
     if (typeof entry?.revised_prompt === "string" && entry.revised_prompt) {
       revised.push(entry.revised_prompt);
@@ -782,6 +869,21 @@ function extractGoogleImageParts(raw: unknown): {
     }
   }
   return { images, text: textParts.join(""), finishReason, finishMessage };
+}
+
+
+
+
+
+
+
+function looksLikeSVG(data: Uint8Array): boolean {
+  let s = "";
+  for (let i = 0; i < Math.min(data.length, 64); i++) {
+    s += String.fromCharCode(data[i]!);
+  }
+  s = s.replace(/^[\s﻿]+/, "");
+  return s.startsWith("<?xml") || s.startsWith("<svg");
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
