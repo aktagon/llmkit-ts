@@ -498,6 +498,23 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("video-zhipu", m.body());
   });
 
+  // ADR-034 fan-out: Vidu (Shengshu) video-submit body {model, prompt} —
+  // structurally identical to Grok's/Zhipu's (the shared {model, prompt} arm);
+  // the lifecycle divergence is delivery-side, covered by the unit tests.
+  test("video submit (Vidu) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.vidu, "key");
+      c.provider.baseUrl = m.url;
+      await c.video
+        .model(wi.wireVideoViduModel)
+        .submit(wi.wireVideoViduPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("video-vidu", m.body());
+  });
+
   // ADR-034 fan-out: Together video-submit body {model, prompt} —
   // structurally identical to Grok's/Zhipu's (the shared {model, prompt} arm);
   // the lifecycle divergence is delivery-side, covered by the unit tests.

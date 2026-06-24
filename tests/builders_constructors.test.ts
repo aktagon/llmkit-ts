@@ -33,6 +33,7 @@ import {
   sambanova,
   together,
   vertex,
+  vidu,
   vllm,
   workersai,
   yi,
@@ -71,6 +72,7 @@ describe("Every per-provider factory constructs a Client", () => {
       sambanova("k"),
       together("k"),
       vertex("k"),
+      vidu("k"),
       vllm("k"),
       workersai("k"),
       yi("k"),
@@ -80,6 +82,6 @@ describe("Every per-provider factory constructs a Client", () => {
       expect(c).toBeInstanceOf(Client);
       expect(c.provider.apiKey).toBe("k");
     }
-    expect(clients).toHaveLength(33);
+    expect(clients).toHaveLength(34);
   });
 });

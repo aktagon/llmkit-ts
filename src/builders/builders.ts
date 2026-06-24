@@ -135,6 +135,7 @@ export function recraft(apiKey: string): Client { return new Client("recraft", a
 export function sambanova(apiKey: string): Client { return new Client("sambanova", apiKey); }
 export function together(apiKey: string): Client { return new Client("together", apiKey); }
 export function vertex(apiKey: string): Client { return new Client("vertex", apiKey); }
+export function vidu(apiKey: string): Client { return new Client("vidu", apiKey); }
 export function vllm(apiKey: string): Client { return new Client("vllm", apiKey); }
 export function workersai(apiKey: string): Client { return new Client("workersai", apiKey); }
 export function yi(apiKey: string): Client { return new Client("yi", apiKey); }

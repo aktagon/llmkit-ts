@@ -320,6 +320,128 @@ describe("Video.submit + wait — Zhipu (VideoZhipu)", () => {
   });
 });
 
+const viduVideoModel = "viduq3-pro";
+
+// viduVideoServer serves the Vidu (Shengshu) submit + task-creations poll
+// endpoints. Submit POSTs /ent/v2/text2video and returns the poll handle as the
+// top-level `task_id`; the poll GET /ent/v2/tasks/{id}/creations returns
+// state=processing until the supplied done body. Vidu authenticates with the
+// "Token" scheme (Authorization: Token <key>), not Bearer.
+function viduVideoServer(
+  pendingPolls: number,
+  doneBody: Record<string, unknown>,
+  onSubmit?: (body: Record<string, unknown>, auth: string) => void,
+) {
+  let polls = 0;
+  return Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      const auth = req.headers.get("authorization") ?? "";
+      if (
+        req.method === "POST" &&
+        url.pathname.endsWith("/ent/v2/text2video")
+      ) {
+        const body = (await req.json()) as Record<string, unknown>;
+        onSubmit?.(body, auth);
+        return new Response(
+          JSON.stringify({ task_id: "vidu-task-1", state: "created" }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname === "/ent/v2/tasks/vidu-task-1/creations"
+      ) {
+        polls += 1;
+        if (polls <= pendingPolls) {
+          return new Response(JSON.stringify({ state: "processing" }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify(doneBody), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected " + url.pathname, { status: 500 });
+    },
+  });
+}
+
+describe("Video.submit + wait — Vidu (VideoVidu)", () => {
+  test("happy path: task_id handle, Token auth, creations[0].url delivery", async () => {
+    let receivedBody: Record<string, unknown> | undefined;
+    let receivedAuth = "";
+    const done = {
+      state: "success",
+      creations: [{ url: "https://api.vidu.com/creations/abc/v.mp4" }],
+    };
+    const server = viduVideoServer(2, done, (body, auth) => {
+      receivedBody = body;
+      receivedAuth = auth;
+    });
+    try {
+      const c = newClient(Providers.vidu, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+
+      const handle = await c.video
+        .model(viduVideoModel)
+        .submit("a drone shot over the alps");
+      expect(handle.id).toBe("vidu-task-1");
+      expect(receivedBody!.model).toBe(viduVideoModel);
+      expect(receivedAuth).toBe("Token test-token");
+
+      const resp = await handle.wait(FAST_WAIT);
+      expect(resp.videos).toHaveLength(1);
+      expect(resp.videos[0]!.url).toBe(
+        "https://api.vidu.com/creations/abc/v.mp4",
+      );
+      expect(resp.videos[0]!.mimeType).toBe("video/mp4");
+      expect(resp.videos[0]!.bytes).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("failed state throws", async () => {
+    const server = viduVideoServer(0, {
+      state: "failed",
+      err_code: "content_moderation",
+    });
+    try {
+      const c = newClient(Providers.vidu, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const handle = await c.video.model(viduVideoModel).submit("blocked");
+      let err: unknown;
+      try {
+        await handle.wait(FAST_WAIT);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(APIError);
+      expect((err as APIError).message).toContain("content_moderation");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("rejects image parts on a text-to-video-only model (BUG-010 gate)", async () => {
+    const c = newClient(Providers.vidu, "test-token");
+    c.provider.baseUrl = "http://unused";
+    let err: unknown;
+    try {
+      await c.video
+        .model(viduVideoModel)
+        .image("image/png", new Uint8Array([0x89]))
+        .submit("animate this");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).message).toContain("text-to-video-only");
+  });
+});
+
 const togetherVideoModel = "minimax/video-01-director";
 
 // togetherVideoServer serves the Together submit + poll endpoints. Submit

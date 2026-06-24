@@ -787,6 +787,12 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
       jsonKey: "max_tokens",
     },
   ],
+  vidu: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+  ],
   vllm: [
     {
       key: OptionKeys.FREQUENCY_PENALTY,
@@ -958,6 +964,8 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   ],
   vertex: [
   ],
+  vidu: [
+  ],
   vllm: [
   ],
   workersai: [
@@ -1043,6 +1051,8 @@ const MODEL_OPTION_OVERRIDES: Record<ProviderName, readonly ModelOptionOverrideD
   together: [
   ],
   vertex: [
+  ],
+  vidu: [
   ],
   vllm: [
   ],
