@@ -10,6 +10,7 @@
 import type { Capability, File, Message, Response, SafetySetting, Tool } from "../types.ts";
 import type { ImageData, ImageResponse, MediaRef, Part } from "../image.ts";
 import type { AudioData, MusicResponse } from "../music.ts";
+import type { SpeechResponse } from "../speech.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { batchConfig } from "../providers/batch.ts";
 import { cachingConfig } from "../providers/caching.ts";
@@ -19,7 +20,7 @@ import { fileUploadConfig } from "../providers/upload.ts";
 import { BatchHandle } from "./batch.ts";
 import { VideoHandle } from "./video.ts";
 
-export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, AudioData, MusicResponse, MiddlewareFn };
+export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, AudioData, MusicResponse, SpeechResponse, MiddlewareFn };
 export { BatchHandle, VideoHandle };
 
 export interface ProviderConfig {
@@ -37,6 +38,7 @@ import { agentMessages, agentPrompt, agentReset } from "./agent.ts";
 import { textBatch, textSubmitBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
 import { musicGenerate } from "./music.ts";
+import { speechGenerate } from "./speech.ts";
 import { textStream } from "./stream.ts";
 import { textPrompt } from "./text.ts";
 import { uploadRun } from "./upload.ts";
@@ -51,6 +53,7 @@ export class Client {
   text: Text;
   image: Image;
   music: Music;
+  speech: Speech;
   video: Video;
   agent: Agent;
   upload: Upload;
@@ -62,6 +65,7 @@ export class Client {
     this.text = new Text(this);
     this.image = new Image(this);
     this.music = new Music(this);
+    this.speech = new Speech(this);
     this.video = new Video(this);
     this.agent = new Agent(this);
     this.upload = new Upload(this);
@@ -120,6 +124,7 @@ export function fireworks(apiKey: string): Client { return new Client("fireworks
 export function google(apiKey: string): Client { return new Client("google", apiKey); }
 export function grok(apiKey: string): Client { return new Client("grok", apiKey); }
 export function groq(apiKey: string): Client { return new Client("groq", apiKey); }
+export function inworld(apiKey: string): Client { return new Client("inworld", apiKey); }
 export function jan(apiKey: string): Client { return new Client("jan", apiKey); }
 export function llamacpp(apiKey: string): Client { return new Client("llamacpp", apiKey); }
 export function lmstudio(apiKey: string): Client { return new Client("lmstudio", apiKey); }
@@ -265,6 +270,22 @@ export class Music {
   text(s: string): Music { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   async generate(msg: string): Promise<MusicResponse> {
     return musicGenerate(this, msg);
+  }
+}
+
+//
+
+export class Speech {
+ client: Client;
+ _model: string = "";
+ _voice: string = "";
+
+  constructor(client: Client) { this.client = client; }
+
+  model(name: string): Speech { const out = clone(this); out._model = name; return out; }
+  voice(id: string): Speech { const out = clone(this); out._voice = id; return out; }
+  async generate(msg: string): Promise<SpeechResponse> {
+    return speechGenerate(this, msg);
   }
 }
 
