@@ -514,6 +514,32 @@ function parseVideoPoll(
           return null; // PROCESSING (or any non-terminal status)
       }
     }
+    case "VideoVidu": {
+      // Vidu (Shengshu) task poll: state success terminal-success, failed
+      // terminal-error, created/queueing/processing pending. The finished
+      // video URL sits at creations[0].url (url delivery, single-hop).
+      const root = raw as {
+        state?: unknown;
+        err_code?: unknown;
+        message?: unknown;
+      };
+      const state = typeof root.state === "string" ? root.state : "";
+      switch (state) {
+        case "success":
+          return videoResultFromVidu(vgCfg, raw);
+        case "failed": {
+          let msg = "operation failed";
+          if (typeof root.err_code === "string" && root.err_code) {
+            msg = root.err_code;
+          } else if (typeof root.message === "string" && root.message) {
+            msg = root.message;
+          }
+          throw new APIError(0, `video generation failed: ${msg}`, false);
+        }
+        default:
+          return null; // created, queueing, processing (or any non-terminal state)
+      }
+    }
     case "VideoVeo": {
       // Operation-based LRO: poll until done=true (the long-running-operation
       // done flag, not a status string). A done op carrying an error object is
@@ -677,6 +703,25 @@ function videoResultFromZhipu(
     return buildVideoResponse([]);
   }
   const first = results[0] as { url?: unknown };
+  const url = typeof first.url === "string" ? first.url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+// videoResultFromVidu extracts the finished video from a Vidu (Shengshu) poll
+// response. Vidu uses url delivery: the finished video sits at
+// creations[0].url, so VideoData.url carries the temporary Vidu-hosted URL and
+// bytes stays empty.
+function videoResultFromVidu(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { creations?: unknown };
+  const creations = Array.isArray(root.creations) ? root.creations : [];
+  if (creations.length === 0) {
+    return buildVideoResponse([]);
+  }
+  const first = creations[0] as { url?: unknown };
   const url = typeof first.url === "string" ? first.url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
