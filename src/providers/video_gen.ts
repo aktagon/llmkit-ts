@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 // Video wire-shape discriminators. Each selects the submit-body build,
 // poll mechanism, and result-extraction transform.
-export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo" | "VideoBedrock" | "VideoVertexVeo";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoVeo" | "VideoBedrock" | "VideoVertexVeo" | "VideoVidu";
 
 // Output-delivery modes: download bytes | return URL | caller S3 URI.
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -184,6 +184,45 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 8,
         outputMime: "video/mp4",
         resolutions: ["1080p", "720p"],
+        maxInputImages: 0,
+      },
+    ],
+  },
+  vidu: {
+    wireShape: "VideoVidu",
+    outputDelivery: "DeliveryURL",
+    videoBaseUrl: "",
+    genEndpoint: "/ent/v2/text2video",
+    pollEndpoint: "/ent/v2/tasks/{id}/creations",
+    fileEndpoint: "",
+    submitHandleField: "task_id",
+    requiresOutputUri: false,
+    models: [
+      {
+        modelId: "viduq1",
+        label: "Vidu Q1",
+        supportsImageToVideo: false,
+        maxDurationSeconds: 16,
+        outputMime: "video/mp4",
+        resolutions: [],
+        maxInputImages: 0,
+      },
+      {
+        modelId: "viduq2",
+        label: "Vidu Q2",
+        supportsImageToVideo: false,
+        maxDurationSeconds: 16,
+        outputMime: "video/mp4",
+        resolutions: [],
+        maxInputImages: 0,
+      },
+      {
+        modelId: "viduq3-pro",
+        label: "Vidu Q3 Pro",
+        supportsImageToVideo: false,
+        maxDurationSeconds: 16,
+        outputMime: "video/mp4",
+        resolutions: [],
         maxInputImages: 0,
       },
     ],
