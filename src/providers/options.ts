@@ -697,6 +697,12 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
       jsonKey: "top_p",
     },
   ],
+  pixverse: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+  ],
   qwen: [
     {
       key: OptionKeys.MAX_TOKENS,
@@ -954,6 +960,8 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
   ],
   perplexity: [
   ],
+  pixverse: [
+  ],
   qwen: [
   ],
   recraft: [
@@ -1041,6 +1049,8 @@ const MODEL_OPTION_OVERRIDES: Record<ProviderName, readonly ModelOptionOverrideD
   openrouter: [
   ],
   perplexity: [
+  ],
+  pixverse: [
   ],
   qwen: [
   ],

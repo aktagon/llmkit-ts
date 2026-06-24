@@ -177,6 +177,13 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "sonar-pro",
     baseUrl: "https://api.perplexity.ai",
   },
+  pixverse: {
+    id: "pixverse",
+    slug: "pixverse",
+    envVar: "PIXVERSE_API_KEY",
+    defaultModel: "v4.5",
+    baseUrl: "https://app-api.pixverse.ai",
+  },
   qwen: {
     id: "qwen",
     slug: "qwen",

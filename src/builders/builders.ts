@@ -130,6 +130,7 @@ export function ollama(apiKey: string): Client { return new Client("ollama", api
 export function openai(apiKey: string): Client { return new Client("openai", apiKey); }
 export function openrouter(apiKey: string): Client { return new Client("openrouter", apiKey); }
 export function perplexity(apiKey: string): Client { return new Client("perplexity", apiKey); }
+export function pixverse(apiKey: string): Client { return new Client("pixverse", apiKey); }
 export function qwen(apiKey: string): Client { return new Client("qwen", apiKey); }
 export function recraft(apiKey: string): Client { return new Client("recraft", apiKey); }
 export function sambanova(apiKey: string): Client { return new Client("sambanova", apiKey); }
