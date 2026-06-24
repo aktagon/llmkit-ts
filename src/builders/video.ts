@@ -91,7 +91,14 @@ export class VideoHandle {
     }
 
     const base = videoBaseUrl(this.provider, cfg, vgCfg);
-    const headers = buildAuthHeaders(this.provider, cfg);
+    let headers = buildAuthHeaders(this.provider, cfg);
+    // PixVerse requires the per-request Ai-trace-id header on the poll GET too
+    // (not just submit); one trace id per wait() call is sufficient —
+    // uniqueness is an anti-cache measure on the generation, and the poll is a
+    // read.
+    if (vgCfg.wireShape === "VideoPixVerse") {
+      headers = { ...headers, "Ai-trace-id": newVideoTraceID() };
+    }
     // Poll dispatch has three arms, selected here once before the loop:
     //   - sigV4 (Bedrock): signs the poll GET and carries the handle ARN as a
     //     single percent-encoded path segment (its ':' and '/' must not split
@@ -333,6 +340,20 @@ async function dispatchVideoSubmit(
     // DashScope's async submit requires this header; set per-request only so
     // it never leaks into the shared auth-header map.
     postHeaders = { ...headers, "X-DashScope-Async": "enable" };
+  } else if (vgCfg.wireShape === "VideoPixVerse") {
+    // PixVerse requires all five fields; the generic surface is prompt-only, so
+    // duration/quality/aspect_ratio are sent as reference-anchored defaults
+    // (valid across the recorded models). The per-request Ai-trace-id header
+    // (UUID, unique per request) is PixVerse's anti-cache key; set per-request
+    // only so it never leaks into the shared auth-header map.
+    body = {
+      model,
+      prompt: joinPromptText(parts),
+      duration: 5,
+      quality: "540p",
+      aspect_ratio: "16:9",
+    };
+    postHeaders = { ...headers, "Ai-trace-id": newVideoTraceID() };
   } else if (
     vgCfg.wireShape === "VideoVeo" ||
     vgCfg.wireShape === "VideoVertexVeo"
@@ -423,7 +444,7 @@ function videoPollURL(pollEndpoint: string, base: string, id: string): string {
 }
 
 // lookupHandleField descends a dotted path (e.g. "id", "output.task_id")
-// through the decoded submit response, returning the string leaf or "".
+// through the decoded submit response, returning the leaf or "".
 function lookupHandleField(
   raw: Record<string, unknown>,
   path: string,
@@ -434,7 +455,19 @@ function lookupHandleField(
     if (typeof cur !== "object" || cur === null) return "";
     cur = (cur as Record<string, unknown>)[seg];
   }
-  return typeof cur === "string" ? cur : "";
+  // The leaf is usually a string handle, but some providers return a numeric
+  // job id (PixVerse's Resp.video_id is an integer) — format it back to its
+  // integer string form.
+  if (typeof cur === "string") return cur;
+  if (typeof cur === "number") return String(Math.trunc(cur));
+  return "";
+}
+
+// newVideoTraceID returns an RFC-4122 v4 UUID string, used for providers that
+// require a unique per-request trace header (PixVerse's Ai-trace-id, an
+// anti-cache key). crypto.randomUUID is available in Bun and modern runtimes.
+function newVideoTraceID(): string {
+  return crypto.randomUUID();
 }
 
 // parseVideoPoll decodes one poll response per wire shape. Returns the
@@ -538,6 +571,29 @@ function parseVideoPoll(
         }
         default:
           return null; // created, queueing, processing (or any non-terminal state)
+      }
+    }
+    case "VideoPixVerse": {
+      // PixVerse status poll: the status is an INTEGER code nested under Resp.
+      // 1=success (terminal), 7/8=failed (terminal-error), 5=generating
+      // (pending). The finished video URL sits at Resp.url (url delivery).
+      const root = raw as { Resp?: { status?: unknown } };
+      const status =
+        root.Resp && typeof root.Resp.status === "number"
+          ? root.Resp.status
+          : -1;
+      switch (status) {
+        case 1:
+          return videoResultFromPixVerse(vgCfg, raw);
+        case 7:
+        case 8:
+          throw new APIError(
+            0,
+            `video generation failed (status ${status})`,
+            false,
+          );
+        default:
+          return null; // 5 (generating) or any non-terminal status
       }
     }
     case "VideoVeo": {
@@ -723,6 +779,24 @@ function videoResultFromVidu(
   }
   const first = creations[0] as { url?: unknown };
   const url = typeof first.url === "string" ? first.url : "";
+  return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+// videoResultFromPixVerse extracts the finished video from a PixVerse poll
+// response. PixVerse uses url delivery: the finished video sits at Resp.url
+// (nested under the Resp envelope), so VideoData.url carries the temporary
+// PixVerse-hosted URL and bytes stays empty.
+function videoResultFromPixVerse(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const root = raw as { Resp?: { url?: unknown } };
+  const resp = root.Resp;
+  if (!resp || typeof resp !== "object") {
+    return buildVideoResponse([]);
+  }
+  const url = typeof resp.url === "string" ? resp.url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
