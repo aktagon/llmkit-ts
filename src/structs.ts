@@ -355,6 +355,66 @@ export interface ToolResult {
 
 
 
+export interface TranscriptSegment {
+
+
+
+  text: string;
+
+
+
+
+  start: number;
+
+
+
+
+  end: number;
+
+
+
+
+  speaker?: string;
+}
+
+
+
+
+export interface TranscriptionHandle {
+
+
+
+  id: string;
+
+
+
+
+  provider: Provider;
+}
+
+
+
+
+export interface TranscriptionResponse {
+
+
+
+  text: string;
+
+
+
+
+  segments: TranscriptSegment[];
+
+
+
+
+  usage: Usage;
+}
+
+
+
+
 export interface VideoData {
 
 

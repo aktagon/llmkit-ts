@@ -30,10 +30,33 @@ import type { MediaRef } from "./structs.ts";
 
 
 
+
+
 export type Part =
   | { text: string }
   | { image: MediaRef }
-  | { lyrics: string };
+  | { lyrics: string }
+  | { audio: string }
+  | { audioBytes: MediaRef };
+
+
+
+
+
+
+export function audio(url: string): Part {
+  return { audio: url };
+}
+
+
+
+
+
+
+
+export function audioBytes(mime: string, raw: Uint8Array): Part {
+  return { audioBytes: { mimeType: mime, bytes: raw } };
+}
 
 export type { ImageData } from "./structs.ts";
 import type { ImageData } from "./structs.ts";

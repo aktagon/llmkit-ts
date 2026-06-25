@@ -139,6 +139,12 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
       jsonKey: "top_p",
     },
   ],
+  assemblyai: [
+    {
+      key: OptionKeys.MAX_TOKENS,
+      jsonKey: "max_tokens",
+    },
+  ],
   azure: [
     {
       key: OptionKeys.FREQUENCY_PENALTY,
@@ -910,6 +916,8 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
       rootExtraFieldsJson: "",
     },
   ],
+  assemblyai: [
+  ],
   azure: [
   ],
   bedrock: [
@@ -1003,6 +1011,8 @@ const MODEL_OPTION_OVERRIDES: Record<ProviderName, readonly ModelOptionOverrideD
   ai21: [
   ],
   anthropic: [
+  ],
+  assemblyai: [
   ],
   azure: [
   ],
