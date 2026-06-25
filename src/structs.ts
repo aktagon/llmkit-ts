@@ -353,6 +353,66 @@ export interface ToolResult {
 }
 
 /**
+ * TranscriptSegment is one timed span of transcript (ADR-048). Slice-1 segments carry text + millisecond offsets + an optional diarized speaker label; confidence (a float) is deferred until the struct-field type table gains a float type (ADR-048 OQ-4).
+ */
+export interface TranscriptSegment {
+  /**
+   * text is the segment text.
+   */
+  text: string;
+
+  /**
+   * start is the segment start offset in milliseconds.
+   */
+  start: number;
+
+  /**
+   * end is the segment end offset in milliseconds.
+   */
+  end: number;
+
+  /**
+   * speaker is the diarized speaker label, when the provider reports one. Empty otherwise.
+   */
+  speaker?: string;
+}
+
+/**
+ * TranscriptionHandle is a value struct identifying a submitted transcription job, modeled on VideoHandle / BatchHandle (ADR-014 / ADR-034). Cross-process resume works by persisting the fields and reconstructing the handle; the poll loop (Wait) is hand-written runtime, not part of the generated value.
+ */
+export interface TranscriptionHandle {
+  /**
+   * id is the provider-assigned transcript id returned by the submit endpoint (AssemblyAI: id). Opaque to the SDK; round-tripped to the poll endpoint verbatim.
+   */
+  id: string;
+
+  /**
+   * provider is the Provider config used to submit the job. Carried on the handle so Wait knows where to poll without re-parameterising the client.
+   */
+  provider: Provider;
+}
+
+/**
+ * TranscriptionResponse is the universal speech-to-text response container returned by TranscriptionHandle.Wait. Carries the full transcript text, the timed transcript segments, and the provider-reported usage. The container is text-shaped, NOT a media *Data container — the structural divergence from video (ADR-048).
+ */
+export interface TranscriptionResponse {
+  /**
+   * text is the full transcript text.
+   */
+  text: string;
+
+  /**
+   * segments are the timed transcript segments (start/end offsets in milliseconds). Empty when the provider returns no word-level timing.
+   */
+  segments: TranscriptSegment[];
+
+  /**
+   * usage holds provider-reported usage. AssemblyAI bills by audio duration, not tokens; this stays zero unless a provider surfaces a token axis (ADR-048 OQ-2).
+   */
+  usage: Usage;
+}
+
+/**
  * VideoData is one finished video returned in a VideoResponse. Models bytes (downloaded payload) XOR url (a provider link or caller S3 URI) — the source-XOR pattern (VID-004). url-delivery and output-uri providers set url; download-delivery providers set bytes.
  */
 export interface VideoData {
