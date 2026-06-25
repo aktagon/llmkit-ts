@@ -68,6 +68,16 @@ export type {
   Part,
   ImageOptions,
 } from "./image.ts";
+// Standalone Part constructors for varargs terminals (transcription, ADR-048).
+export { audio, audioBytes } from "./image.ts";
+// Transcription (speech-to-text, ADR-048): the async handle class and its
+// result containers. TranscriptionHandle is the method-bearing promotion of the
+// generated value struct (poll loop in builders/transcription.ts).
+export { TranscriptionHandle } from "./builders/transcription.ts";
+export type {
+  TranscriptionResponse,
+  TranscriptSegment,
+} from "./structs.ts";
 export type {
   MusicRequest,
   MusicResponse,

@@ -11,6 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { newClient } from "../src/llmkit.ts";
+import { audio } from "../src/image.ts";
 import type { Tool } from "../src/types.ts";
 // Providers (the slug map) is no longer on the public barrel (ADR-038 PMD-005,
 // superseded by ProviderName); the request-wire driver reads it from the
@@ -58,7 +59,7 @@ function startMock(): {
       // extend the canned response, don't add capture helpers).
       return new Response(
         JSON.stringify({
-          id: "msgbatch_test",
+          id: "msgbatch_test", // also AssemblyAI transcription submit handle id
           request_id: "vid_test", // VID-007: Grok video-submit handle id
           task_id: "vid_test", // VideoMinimax: top-level task_id submit handle
           invocationArn: "arn:aws:bedrock:test:async-invoke/vid_test", // VideoBedrock submit handle
@@ -531,6 +532,22 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("speech-inworld", m.body());
+  });
+
+  // ADR-048: transcription submit body {audio_url} — the AssemblyAI
+  // speech-to-text submit. The async TranscriptionHandle is discarded; only the
+  // outbound submit bytes are asserted. The upload hop is bytes-only and is not
+  // exercised here (URL part skips it).
+  test("transcription submit (AssemblyAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.assemblyai, "key");
+      c.provider.baseUrl = m.url;
+      await c.transcription.submit(audio(wi.wireTranscriptionAssemblyaiAudioURL));
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("transcription-assemblyai", m.body());
   });
 
   // ADR-034 fan-out: PixVerse video-submit body {model, prompt, duration,

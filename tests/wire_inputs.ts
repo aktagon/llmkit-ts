@@ -102,6 +102,7 @@ export const wireToolPrompt = "What is the weather in Helsinki right now?";
 export const wireToolToolName = "get_weather";
 export const wireToolToolDescription = "Get the current weather for a city.";
 export const wireToolToolSchema = "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}";
+export const wireTranscriptionAssemblyaiAudioURL = "https://storage.example.com/meeting-2026-06-24.mp3";
 export const wireVideoBedrockModel = "amazon.nova-reel-v1:0";
 export const wireVideoBedrockPrompt = "A drone shot sweeping over snow-capped alpine peaks at sunrise";
 export const wireVideoGoogleModel = "veo-3.1-generate-preview";

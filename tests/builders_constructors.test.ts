@@ -7,6 +7,7 @@ import {
   newClient,
   ai21,
   anthropic,
+  assemblyai,
   azure,
   bedrock,
   cerebras,
@@ -48,6 +49,7 @@ describe("Every per-provider factory constructs a Client", () => {
       newClient("ai21", "k"),
       ai21("k"),
       anthropic("k"),
+      assemblyai("k"),
       azure("k"),
       bedrock("k"),
       cerebras("k"),
@@ -86,6 +88,6 @@ describe("Every per-provider factory constructs a Client", () => {
       expect(c).toBeInstanceOf(Client);
       expect(c.provider.apiKey).toBe("k");
     }
-    expect(clients).toHaveLength(36);
+    expect(clients).toHaveLength(37);
   });
 });
