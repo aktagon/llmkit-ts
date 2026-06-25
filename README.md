@@ -6,6 +6,13 @@ No runtime dependencies. Runs on Node ≥18, Bun, Deno, Cloudflare Workers, or a
 
 Also available for Go, Python, and Rust.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aktagon/llmkit-ts/master/assets/logos/llmkit-languages.svg" alt="Go, TypeScript, Python, Rust" height="26">
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aktagon/llmkit-ts/master/assets/logos/llmkit-providers.svg" alt="Anthropic, OpenAI, Google, and 20+ more providers" height="26">
+</p>
+
 ## Install
 
 From npm:
