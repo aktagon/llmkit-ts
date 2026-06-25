@@ -307,7 +307,7 @@ export interface SpeechResponse {
   audio: AudioData;
 
   /**
-   * usage holds provider-reported usage. Inworld reports characters processed (usage.processedCharactersCount); surfaced minimally through the Usage carrier without inventing a token axis (ADR-049 OQ-3).
+   * usage holds provider-reported usage. Inworld returns usage.processedCharactersCount, but the SDK does not yet surface it: the Usage carrier has no characters axis and OQ-3 declined to overload a token axis, so this stays zero pending a typed characters dimension (ADR-049 OQ-3, deferred).
    */
   usage: Usage;
 
