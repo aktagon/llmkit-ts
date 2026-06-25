@@ -19,9 +19,10 @@ import type { ProviderName } from "../providers/providers.ts";
 import { fileUploadConfig } from "../providers/upload.ts";
 import { BatchHandle } from "./batch.ts";
 import { VideoHandle } from "./video.ts";
+import { TranscriptionHandle } from "./transcription.ts";
 
 export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, AudioData, MusicResponse, SpeechResponse, MiddlewareFn };
-export { BatchHandle, VideoHandle };
+export { BatchHandle, VideoHandle, TranscriptionHandle };
 
 export interface ProviderConfig {
   name: string;
@@ -41,6 +42,7 @@ import { musicGenerate } from "./music.ts";
 import { speechGenerate } from "./speech.ts";
 import { textStream } from "./stream.ts";
 import { textPrompt } from "./text.ts";
+import { transcriptionSubmit } from "./transcription.ts";
 import { uploadRun } from "./upload.ts";
 import { videoSubmit } from "./video.ts";
 import type { AgentState } from "./agent.ts";
@@ -54,6 +56,7 @@ export class Client {
   image: Image;
   music: Music;
   speech: Speech;
+  transcription: Transcription;
   video: Video;
   agent: Agent;
   upload: Upload;
@@ -66,6 +69,7 @@ export class Client {
     this.image = new Image(this);
     this.music = new Music(this);
     this.speech = new Speech(this);
+    this.transcription = new Transcription(this);
     this.video = new Video(this);
     this.agent = new Agent(this);
     this.upload = new Upload(this);
@@ -113,6 +117,7 @@ export function newClient(name: ProviderName, apiKey: string): Client {
 // === Per-provider factory functions ===
 export function ai21(apiKey: string): Client { return new Client("ai21", apiKey); }
 export function anthropic(apiKey: string): Client { return new Client("anthropic", apiKey); }
+export function assemblyai(apiKey: string): Client { return new Client("assemblyai", apiKey); }
 export function azure(apiKey: string): Client { return new Client("azure", apiKey); }
 export function bedrock(apiKey: string): Client { return new Client("bedrock", apiKey); }
 export function cerebras(apiKey: string): Client { return new Client("cerebras", apiKey); }
@@ -286,6 +291,18 @@ export class Speech {
   voice(id: string): Speech { const out = clone(this); out._voice = id; return out; }
   async generate(msg: string): Promise<SpeechResponse> {
     return speechGenerate(this, msg);
+  }
+}
+
+// === Transcription — Transcription builder ===
+
+export class Transcription {
+  /** @internal */ client: Client;
+
+  constructor(client: Client) { this.client = client; }
+
+  async submit(...audioParts: Part[]): Promise<TranscriptionHandle> {
+    return transcriptionSubmit(this, ...audioParts);
   }
 }
 

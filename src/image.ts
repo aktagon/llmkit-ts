@@ -24,16 +24,39 @@ import type { MediaRef } from "./structs.ts";
 
 /**
  * Universal multimodal input atom. Discriminated union: a Part is a text
- * part, an image part, or a lyrics part (a text payload tagged as song
- * lyrics, used only by music generation — ADR-033). Construct via object
- * literal — typed-builder accumulators (`c.text.text(s)`,
+ * part, an image part, a lyrics part (a text payload tagged as song
+ * lyrics, used only by music generation — ADR-033), or an audio part (a
+ * public URL or local bytes, used only by transcription — ADR-048).
+ * Construct via object literal — typed-builder accumulators (`c.text.text(s)`,
  * `c.image.image(m, b)`, `c.music.lyrics(s)`, ...) are the canonical
- * user-facing path.
+ * user-facing path; standalone Part constructors (`audio`, `audioBytes`)
+ * exist for varargs terminals (transcription).
  */
 export type Part =
   | { text: string }
   | { image: MediaRef }
-  | { lyrics: string };
+  | { lyrics: string }
+  | { audio: string }
+  | { audioBytes: MediaRef };
+
+/**
+ * audio constructs an audio-bearing Part from a public URL, for transcription
+ * (ADR-048). The URL is submitted to the provider directly as the audio
+ * source. Mirror of Go parts.Audio.
+ */
+export function audio(url: string): Part {
+  return { audio: url };
+}
+
+/**
+ * audioBytes constructs an audio-bearing Part from local bytes, for
+ * transcription (ADR-048). mime is the IANA media type (e.g. "audio/mp3"); raw
+ * is the undecoded bytes. The runtime uploads them to the provider first to
+ * obtain a URL, then submits that. Mirror of Go parts.AudioBytes.
+ */
+export function audioBytes(mime: string, raw: Uint8Array): Part {
+  return { audioBytes: { mimeType: mime, bytes: raw } };
+}
 
 export type { ImageData } from "./structs.ts";
 import type { ImageData } from "./structs.ts";
