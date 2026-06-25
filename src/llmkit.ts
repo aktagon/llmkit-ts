@@ -68,6 +68,16 @@ export type {
   Part,
   ImageOptions,
 } from "./image.ts";
+//
+export { audio, audioBytes } from "./image.ts";
+//
+//
+//
+export { TranscriptionHandle } from "./builders/transcription.ts";
+export type {
+  TranscriptionResponse,
+  TranscriptSegment,
+} from "./structs.ts";
 export type {
   MusicRequest,
   MusicResponse,

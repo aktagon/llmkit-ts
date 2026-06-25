@@ -30,6 +30,13 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "claude-sonnet-4-6",
     baseUrl: "https://api.anthropic.com",
   },
+  assemblyai: {
+    id: "assemblyai",
+    slug: "assemblyai",
+    envVar: "ASSEMBLYAI_API_KEY",
+    defaultModel: "best",
+    baseUrl: "https://api.assemblyai.com",
+  },
   azure: {
     id: "azure",
     slug: "azure",
