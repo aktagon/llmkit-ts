@@ -20,7 +20,7 @@ import {
 } from "../providers/transcription_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
 import { buildAuthHeaders } from "../request.ts";
-import type { Part } from "../image.ts";
+import type { MediaRef, Part } from "../image.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
 import type {
@@ -136,6 +136,14 @@ export async function transcriptionSubmit(
       `${provider.name} does not support transcription`,
     );
   }
+  // A synchronous provider has no job handle; Submit/Wait is the wrong terminal
+  // for it (ADR-051 OAA-003). Name the supported one.
+  if (tcCfg.interaction === "sync") {
+    throw new ValidationError(
+      "interaction",
+      `${provider.name} transcribes synchronously; use Transcribe, not Submit/Wait`,
+    );
+  }
 
   const { url, bytes } = normalizeAudioPart(audioParts);
 
@@ -199,6 +207,175 @@ export async function transcriptionSubmit(
   return new TranscriptionHandle(id, provider);
 }
 
+/**
+ * transcriptionTranscribe runs a SYNCHRONOUS speech-to-text request (ADR-051):
+ * one multipart/form-data POST returns the transcript directly, no job handle.
+ * Pre-flight rejects a non-sync provider (naming Submit/Wait), a missing model,
+ * a remote audio URL (OpenAI ingests inline bytes only — the inverse of
+ * AssemblyAI, OAA-005), and a non-single-audio-bytes input. Mirror of
+ * go/transcription.go transcribeSync + the Transcribe terminal.
+ */
+export async function transcriptionTranscribe(
+  b: Transcription,
+  ...audioParts: Part[]
+): Promise<TranscriptionResponse> {
+  const provider: Provider = {
+    name: b.client.provider.name as ProviderName,
+    apiKey: b.client.provider.apiKey,
+  };
+  if (b.client.provider.baseUrl) {
+    provider.baseUrl = b.client.provider.baseUrl;
+  }
+
+  const cfg = PROVIDERS[provider.name];
+  if (!cfg) {
+    throw new ValidationError("provider", `unknown: ${provider.name}`);
+  }
+  const tcCfg = transcriptionConfig(provider.name);
+  if (!tcCfg) {
+    throw new ValidationError(
+      "provider",
+      `${provider.name} does not support transcription`,
+    );
+  }
+  // An async provider has no synchronous terminal; Submit/Wait is its surface.
+  if (tcCfg.interaction !== "sync") {
+    throw new ValidationError(
+      "interaction",
+      `${provider.name} transcribes asynchronously; use Submit/Wait, not Transcribe`,
+    );
+  }
+  if (!b._model) {
+    throw new ValidationError(
+      "model",
+      "required for synchronous transcription",
+    );
+  }
+  const ref = normalizeAudioBytesPart(audioParts);
+
+  const base = transcriptionBaseUrl(provider, cfg);
+  const headers = buildAuthHeaders(provider, cfg);
+
+  // Build the multipart body in FIXED field order (model, response_format,
+  // file) so all four SDKs emit the same canonical descriptor. fetch sets the
+  // multipart Content-Type + boundary from the FormData (do NOT set it here).
+  const form = new FormData();
+  form.append("model", b._model);
+  form.append("response_format", "verbose_json");
+  const mimeType = ref.mimeType || "application/octet-stream";
+  const filename = "audio." + audioExtForMime(ref.mimeType);
+  form.append("file", new Blob([ref.bytes], { type: mimeType }), filename);
+
+  const resp = await fetch(base + tcCfg.submitEndpoint, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  const respText = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      respText,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  const raw = JSON.parse(respText) as Record<string, unknown>;
+  return transcriptionResultFromOpenAI(raw);
+}
+
+// transcriptionResultFromOpenAI extracts the transcript text and (when present)
+// segment timings from a synchronous OpenAI response. verbose_json offsets are
+// SECONDS (float) -> integer milliseconds (x1000, rounded, OAA-006). Models
+// without segments[] (gpt-4o-*-transcribe) -> empty segments, not an error.
+// Usage stays zero pending a live-verified envelope (OAA-007).
+function transcriptionResultFromOpenAI(
+  raw: Record<string, unknown>,
+): TranscriptionResponse {
+  const text = typeof raw.text === "string" ? raw.text : "";
+  const segs = Array.isArray(raw.segments) ? raw.segments : [];
+  const segments: TranscriptSegment[] = [];
+  for (const s of segs) {
+    if (!s || typeof s !== "object") continue;
+    const m = s as Record<string, unknown>;
+    segments.push({
+      text: typeof m.text === "string" ? m.text : "",
+      start: typeof m.start === "number" ? Math.round(m.start * 1000) : 0,
+      end: typeof m.end === "number" ? Math.round(m.end * 1000) : 0,
+    });
+  }
+  return {
+    text,
+    segments,
+    usage: {
+      input: 0,
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 0,
+      reasoning: 0,
+      cost: 0,
+    },
+  };
+}
+
+// normalizeAudioBytesPart enforces the single-audio-part rule for the sync path
+// (OAA-005): exactly one inline-bytes audio Part. A remote URL is rejected
+// (OpenAI ingests no URL — inverse of AssemblyAI). Mirror of go normalizeAudioBytesPart.
+function normalizeAudioBytesPart(parts: Part[]): MediaRef {
+  let ref: MediaRef | undefined;
+  let audioCount = 0;
+  parts.forEach((part, i) => {
+    if ("audioBytes" in part) {
+      audioCount++;
+      ref = part.audioBytes;
+    } else if ("audio" in part) {
+      throw new ValidationError(
+        `parts[${i}]`,
+        "synchronous transcription accepts inline audio bytes only (audioBytes); a remote audio URL is not supported",
+      );
+    } else if ("text" in part || "image" in part || "lyrics" in part) {
+      throw new ValidationError(
+        `parts[${i}]`,
+        "transcription accepts only audio parts (audioBytes)",
+      );
+    } else {
+      throw new ValidationError(`parts[${i}]`, "empty part");
+    }
+  });
+  if (audioCount !== 1 || !ref) {
+    throw new ValidationError(
+      "parts",
+      "transcription requires exactly one audio part",
+    );
+  }
+  return ref;
+}
+
+// audioExtForMime maps an audio IANA media type to the file extension OpenAI
+// uses to detect the format. Mirror of go audioExtForMime.
+function audioExtForMime(mime: string): string {
+  switch (mime) {
+    case "audio/mpeg":
+    case "audio/mp3":
+      return "mp3";
+    case "audio/wav":
+    case "audio/x-wav":
+      return "wav";
+    case "audio/mp4":
+    case "audio/m4a":
+    case "audio/x-m4a":
+      return "m4a";
+    case "audio/webm":
+      return "webm";
+    case "audio/ogg":
+    case "audio/opus":
+      return "ogg";
+    case "audio/flac":
+      return "flac";
+    default:
+      return "bin";
+  }
+}
+
 // transcriptionResult extracts the finished transcript per wire shape. Only the
 // result decode is wire-shape-keyed (STT-005); the submit/poll/status facts are
 // config. Mirror of go/transcription.go transcriptionResult.
@@ -209,6 +386,14 @@ function transcriptionResult(
   switch (tcCfg.wireShape) {
     case "TranscriptionAssemblyAI":
       return transcriptionResultFromAssemblyAI(raw);
+    case "TranscriptionOpenAI":
+      // OpenAI is synchronous (Transcribe); it is never polled, so the async
+      // poll-result path is unreachable for it. Defensive throw.
+      throw new APIError(
+        0,
+        "transcription: TranscriptionOpenAI is synchronous and has no poll-result extraction",
+        false,
+      );
     default: {
       const _exhaustive: never = tcCfg.wireShape;
       throw new APIError(
