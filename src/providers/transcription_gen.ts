@@ -5,22 +5,26 @@ import type { ProviderName } from "./providers.ts";
 
 //
 //
-export type TranscriptionWireShape = "TranscriptionAssemblyAI";
+export type TranscriptionWireShape = "TranscriptionAssemblyAI" | "TranscriptionOpenAI";
 
 export interface TranscriptionDef {
   wireShape: TranscriptionWireShape;
+  interaction: string; // "sync" | "async"
+  requestEncoding: string; // "json" | "multipart"
   submitEndpoint: string;
-  pollEndpoint: string; // template with {id}
-  uploadEndpoint: string; // local-bytes upload hop; "" = url-only
-  submitHandleField: string; // dotted path to the handle id
-  statusPath: string; // dotted path to the poll status string
-  doneStatus: string; // status value marking terminal success
-  errorStatus: string; // status value marking terminal failure
+  pollEndpoint: string; // template with {id}; async only
+  uploadEndpoint: string; // local-bytes upload hop; "" = url-only / inline-bytes
+  submitHandleField: string; // dotted path to the handle id; async only
+  statusPath: string; // dotted path to the poll status string; async only
+  doneStatus: string; // status value marking terminal success; async only
+  errorStatus: string; // status value marking terminal failure; async only
 }
 
 const TRANSCRIPTION_GEN: Partial<Record<ProviderName, TranscriptionDef>> = {
   assemblyai: {
     wireShape: "TranscriptionAssemblyAI",
+    interaction: "async",
+    requestEncoding: "json",
     submitEndpoint: "/v2/transcript",
     pollEndpoint: "/v2/transcript/{id}",
     uploadEndpoint: "/v2/upload",
@@ -28,6 +32,18 @@ const TRANSCRIPTION_GEN: Partial<Record<ProviderName, TranscriptionDef>> = {
     statusPath: "status",
     doneStatus: "completed",
     errorStatus: "error",
+  },
+  openai: {
+    wireShape: "TranscriptionOpenAI",
+    interaction: "sync",
+    requestEncoding: "multipart",
+    submitEndpoint: "/v1/audio/transcriptions",
+    pollEndpoint: "",
+    uploadEndpoint: "",
+    submitHandleField: "",
+    statusPath: "",
+    doneStatus: "",
+    errorStatus: "",
   },
 };
 
