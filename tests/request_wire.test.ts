@@ -534,6 +534,24 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("speech-inworld", m.body());
   });
 
+  // ADR-051: OpenAI text-to-speech body {model, input, voice, response_format}.
+  // The response is raw audio bytes (asserted in speech.test.ts); only the
+  // outbound request bytes are asserted here.
+  test("speech generate (OpenAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = m.url;
+      await c.speech
+        .model(wi.wireSpeechOpenaiModel)
+        .voice(wi.wireSpeechOpenaiVoice)
+        .generate(wi.wireSpeechOpenaiPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("speech-openai", m.body());
+  });
+
   // ADR-048: transcription submit body {audio_url} — the AssemblyAI
   // speech-to-text submit. The async TranscriptionHandle is discarded; only the
   // outbound submit bytes are asserted. The upload hop is bytes-only and is not

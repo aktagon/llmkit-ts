@@ -96,9 +96,76 @@ describe("Speech.generate — Inworld (SpeechInworld)", () => {
   });
 
   test("unsupported provider is rejected", async () => {
-    const c = newClient(Providers.openai, "test-token");
+    // Anthropic does not support speech generation (OpenAI now does, ADR-051).
+    const c = newClient(Providers.anthropic, "test-token");
     await expect(
       c.speech.model(inworldTTS2).voice("Dennis").generate("Hi"),
     ).rejects.toBeInstanceOf(ValidationError);
+  });
+});
+
+describe("Speech.generate — OpenAI (SpeechOpenAI)", () => {
+  const openaiTTS = "gpt-4o-mini-tts";
+  // A short fake mp3-ish payload — distinct bytes so the round-trip is real.
+  const fakeMp3 = new Uint8Array([0xff, 0xfb, 0x90, 0x00, 0x6d, 0x70, 0x33]);
+
+  test("happy path: flat body, Bearer auth, raw-body audio bytes", async () => {
+    let receivedPath = "";
+    let receivedAuth = "";
+    let receivedBody: any;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedPath = new URL(req.url).pathname;
+        receivedAuth = req.headers.get("authorization") ?? "";
+        receivedBody = await req.json();
+        // OpenAI returns the raw audio bytes as the body, not JSON.
+        return new Response(fakeMp3, {
+          headers: { "content-type": "audio/mpeg" },
+        });
+      },
+    });
+    try {
+      const c = newClient(Providers.openai, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.speech
+        .model(openaiTTS)
+        .voice("alloy")
+        .generate("Hello from llmkit.");
+
+      expect(resp.audio.mimeType).toBe("audio/mpeg");
+      expect(Array.from(resp.audio.bytes)).toEqual(Array.from(fakeMp3));
+      expect(receivedPath).toBe("/v1/audio/speech");
+      expect(receivedAuth).toBe("Bearer test-token");
+      expect(receivedBody).toEqual({
+        model: openaiTTS,
+        input: "Hello from llmkit.",
+        voice: "alloy",
+        response_format: "mp3",
+      });
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("unknown voice is rejected pre-flight, before any HTTP call", async () => {
+    let called = false;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async () => {
+        called = true;
+        return new Response("{}");
+      },
+    });
+    try {
+      const c = newClient(Providers.openai, "test-token");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await expect(
+        c.speech.model(openaiTTS).voice("Dennis").generate("Hi"),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(called).toBe(false);
+    } finally {
+      server.stop(true);
+    }
   });
 });
