@@ -87,19 +87,21 @@ export async function generateSpeech(
     signal: options.signal,
   });
 
-  const respText = await httpResp.text();
+  //
+  //
+  const respBytes = new Uint8Array(await httpResp.arrayBuffer());
   if (!httpResp.ok) {
     throw new APIError(
       httpResp.status,
-      respText,
+      new TextDecoder().decode(respBytes),
       httpResp.status === 429 || httpResp.status >= 500,
     );
   }
 
-  const raw = JSON.parse(respText) as unknown;
-  return parseSpeechResponse(sgCfg.wireShape, model.outputMime, raw);
+  return parseSpeechResponse(sgCfg.audioEncoding, model.outputMime, respBytes);
 }
 
+//
 //
 //
 function dispatchSpeechHTTP(
@@ -110,7 +112,24 @@ function dispatchSpeechHTTP(
 ): { url: string; body: Record<string, unknown> } {
   const endpoint = sgCfg.genEndpoint || cfg.endpoint || "";
   const url = endpoint.startsWith("http") ? endpoint : baseUrl + endpoint;
-  return { url, body: buildInworldSpeechBody(request) };
+  const body =
+    sgCfg.wireShape === "SpeechOpenAI"
+      ? buildOpenAISpeechBody(request)
+      : buildInworldSpeechBody(request);
+  return { url, body };
+}
+
+//
+//
+function buildOpenAISpeechBody(
+  request: SpeechRequest,
+): Record<string, unknown> {
+  return {
+    model: request.model,
+    input: request.text,
+    voice: request.voice,
+    response_format: "mp3",
+  };
 }
 
 //
@@ -139,22 +158,31 @@ function findSpeechModel(
 }
 
 //
+//
+//
+//
 function parseSpeechResponse(
-  _wireShape: string,
+  audioEncoding: string,
   fallbackMime: string,
-  raw: unknown,
+  body: Uint8Array,
 ): SpeechResponse {
-  //
-  const root = raw as { audioContent?: unknown };
   let audio: AudioData = { mimeType: fallbackMime, bytes: new Uint8Array(0) };
-  if (typeof root.audioContent === "string" && root.audioContent) {
-    try {
-      audio = {
-        mimeType: fallbackMime,
-        bytes: base64ToBytes(root.audioContent),
-      };
-    } catch {
-      //
+  if (audioEncoding === "rawBody") {
+    audio = { mimeType: fallbackMime, bytes: body };
+  } else {
+    //
+    const root = JSON.parse(new TextDecoder().decode(body)) as {
+      audioContent?: unknown;
+    };
+    if (typeof root.audioContent === "string" && root.audioContent) {
+      try {
+        audio = {
+          mimeType: fallbackMime,
+          bytes: base64ToBytes(root.audioContent),
+        };
+      } catch {
+        //
+      }
     }
   }
   return {
