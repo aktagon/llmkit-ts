@@ -203,9 +203,130 @@ describe("Transcription.submit + wait — AssemblyAI", () => {
   });
 
   test("unsupported provider is rejected", async () => {
-    const c = newClient(Providers.openai, "test-key");
+    // Anthropic does not support transcription (OpenAI now does, ADR-051).
+    const c = newClient(Providers.anthropic, "test-key");
     await expect(
       c.transcription.submit(audio(assemblyAIAudioURL)),
     ).rejects.toThrow("does not support transcription");
+  });
+});
+
+// === Synchronous transcription — OpenAI (TranscriptionOpenAI, ADR-051) ===
+
+describe("Transcription.transcribe — OpenAI (sync multipart)", () => {
+  const FAKE_MP3 = new Uint8Array([0xff, 0xfb, 0x90, 0x00, 0x6d, 0x70, 0x33]);
+
+  // OpenAI verbose_json: text + segments with start/end in SECONDS (float).
+  function openaiVerboseTranscript(): Record<string, unknown> {
+    return {
+      text: "The quarterly review is scheduled for Tuesday.",
+      segments: [
+        { start: 0.0, end: 1.5, text: "The quarterly review" },
+        { start: 1.5, end: 2.84, text: " is scheduled for Tuesday." },
+      ],
+    };
+  }
+
+  // Serves POST /v1/audio/transcriptions; parses the multipart body and exposes
+  // the captured fields for assertion.
+  function openaiServer(
+    respBody: Record<string, unknown>,
+    capture: (fields: {
+      model: string;
+      responseFormat: string;
+      fileType: string;
+      fileName: string;
+    }) => void,
+  ) {
+    return Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        if (new URL(req.url).pathname !== "/v1/audio/transcriptions") {
+          return new Response("bad path", { status: 404 });
+        }
+        if (req.headers.get("authorization") !== "Bearer test-key") {
+          return new Response("bad auth", { status: 401 });
+        }
+        const form = await req.formData();
+        const file = form.get("file") as File;
+        capture({
+          model: String(form.get("model")),
+          responseFormat: String(form.get("response_format")),
+          fileType: file.type,
+          fileName: file.name,
+        });
+        return new Response(JSON.stringify(respBody), {
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+  }
+
+  test("happy path: multipart fields + verbose_json segments (sec -> ms)", async () => {
+    let captured: any;
+    const server = openaiServer(openaiVerboseTranscript(), (f) => {
+      captured = f;
+    });
+    try {
+      const c = newClient(Providers.openai, "test-key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.transcription
+        .model("whisper-1")
+        .transcribe(audioBytes("audio/mpeg", FAKE_MP3));
+
+      expect(resp.text).toBe("The quarterly review is scheduled for Tuesday.");
+      expect(resp.segments.length).toBe(2);
+      expect(resp.segments[0]!.end).toBe(1500);
+      expect(resp.segments[1]!.end).toBe(2840);
+      expect(captured.model).toBe("whisper-1");
+      expect(captured.responseFormat).toBe("verbose_json");
+      expect(captured.fileType).toBe("audio/mpeg");
+      expect(captured.fileName).toBe("audio.mp3");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("models without verbose_json -> empty segments, not an error", async () => {
+    const server = openaiServer({ text: "Hello there." }, () => {});
+    try {
+      const c = newClient(Providers.openai, "test-key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.transcription
+        .model("whisper-1")
+        .transcribe(audioBytes("audio/mpeg", FAKE_MP3));
+      expect(resp.text).toBe("Hello there.");
+      expect(resp.segments.length).toBe(0);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("submit on a sync provider is rejected, naming Transcribe", async () => {
+    const c = newClient(Providers.openai, "test-key");
+    await expect(
+      c.transcription.model("whisper-1").submit(audioBytes("audio/mpeg", FAKE_MP3)),
+    ).rejects.toThrow("Transcribe");
+  });
+
+  test("transcribe on an async provider is rejected, naming Submit/Wait", async () => {
+    const c = newClient(Providers.assemblyai, "test-key");
+    await expect(
+      c.transcription.model("best").transcribe(audioBytes("audio/mpeg", FAKE_MP3)),
+    ).rejects.toThrow("Submit/Wait");
+  });
+
+  test("a remote audio URL is rejected for OpenAI", async () => {
+    const c = newClient(Providers.openai, "test-key");
+    await expect(
+      c.transcription.model("whisper-1").transcribe(audio(assemblyAIAudioURL)),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  test("missing model is rejected", async () => {
+    const c = newClient(Providers.openai, "test-key");
+    await expect(
+      c.transcription.transcribe(audioBytes("audio/mpeg", FAKE_MP3)),
+    ).rejects.toThrow("model");
   });
 });

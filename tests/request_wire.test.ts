@@ -11,7 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { newClient } from "../src/llmkit.ts";
-import { audio } from "../src/image.ts";
+import { audio, audioBytes } from "../src/image.ts";
 import type { Tool } from "../src/types.ts";
 // Providers (the slug map) is no longer on the public barrel (ADR-038 PMD-005,
 // superseded by ProviderName); the request-wire driver reads it from the
@@ -566,6 +566,49 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("transcription-assemblyai", m.body());
+  });
+
+  // ADR-051: OpenAI SYNCHRONOUS transcription is the first multipart/form-data
+  // request body. The golden is the canonical multipart DESCRIPTOR (OQ-3): the
+  // driver decodes its actual encoded multipart body into ordered fields, the
+  // file part keeping filename + content-type with a bytes placeholder.
+  test("transcription transcribe (OpenAI) matches shared multipart descriptor", async () => {
+    let descriptor: unknown = null;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const form = await req.formData();
+        const fields: Array<Record<string, string>> = [];
+        for (const [name, value] of form.entries()) {
+          if (value instanceof File) {
+            fields.push({
+              name,
+              filename: value.name,
+              contentType: value.type,
+              bytes: "<audio-bytes>",
+            });
+          } else {
+            fields.push({ name, value: String(value) });
+          }
+        }
+        descriptor = { _encoding: "multipart/form-data", fields };
+        return new Response(JSON.stringify({ text: "" }), {
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      await c.transcription
+        .model(wi.wireTranscriptionOpenaiModel)
+        .transcribe(
+          audioBytes(wi.wireTranscriptionOpenaiAudioMime, new Uint8Array([1, 2, 3, 4])),
+        );
+    } finally {
+      server.stop(true);
+    }
+    assertWireGolden("transcription-openai", descriptor);
   });
 
   // ADR-034 fan-out: PixVerse video-submit body {model, prompt, duration,
