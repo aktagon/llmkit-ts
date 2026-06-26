@@ -11,6 +11,7 @@ import type { Capability, File, Message, Response, SafetySetting, Tool } from ".
 import type { ImageData, ImageResponse, MediaRef, Part } from "../image.ts";
 import type { AudioData, MusicResponse } from "../music.ts";
 import type { SpeechResponse } from "../speech.ts";
+import type { TranscriptionResponse } from "../structs.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { batchConfig } from "../providers/batch.ts";
 import { cachingConfig } from "../providers/caching.ts";
@@ -21,7 +22,7 @@ import { BatchHandle } from "./batch.ts";
 import { VideoHandle } from "./video.ts";
 import { TranscriptionHandle } from "./transcription.ts";
 
-export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, AudioData, MusicResponse, SpeechResponse, MiddlewareFn };
+export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, AudioData, MusicResponse, SpeechResponse, TranscriptionResponse, MiddlewareFn };
 export { BatchHandle, VideoHandle, TranscriptionHandle };
 
 export interface ProviderConfig {
@@ -42,7 +43,7 @@ import { musicGenerate } from "./music.ts";
 import { speechGenerate } from "./speech.ts";
 import { textStream } from "./stream.ts";
 import { textPrompt } from "./text.ts";
-import { transcriptionSubmit } from "./transcription.ts";
+import { transcriptionSubmit, transcriptionTranscribe } from "./transcription.ts";
 import { uploadRun } from "./upload.ts";
 import { videoSubmit } from "./video.ts";
 import type { AgentState } from "./agent.ts";
@@ -298,11 +299,16 @@ export class Speech {
 
 export class Transcription {
  client: Client;
+ _model: string = "";
 
   constructor(client: Client) { this.client = client; }
 
+  model(name: string): Transcription { const out = clone(this); out._model = name; return out; }
   async submit(...audioParts: Part[]): Promise<TranscriptionHandle> {
     return transcriptionSubmit(this, ...audioParts);
+  }
+  async transcribe(...audioParts: Part[]): Promise<TranscriptionResponse> {
+    return transcriptionTranscribe(this, ...audioParts);
   }
 }
 

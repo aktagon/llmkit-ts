@@ -20,7 +20,7 @@ import {
 } from "../providers/transcription_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
 import { buildAuthHeaders } from "../request.ts";
-import type { Part } from "../image.ts";
+import type { MediaRef, Part } from "../image.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
 import type {
@@ -136,6 +136,14 @@ export async function transcriptionSubmit(
       `${provider.name} does not support transcription`,
     );
   }
+  //
+  //
+  if (tcCfg.interaction === "sync") {
+    throw new ValidationError(
+      "interaction",
+      `${provider.name} transcribes synchronously; use Transcribe, not Submit/Wait`,
+    );
+  }
 
   const { url, bytes } = normalizeAudioPart(audioParts);
 
@@ -199,6 +207,175 @@ export async function transcriptionSubmit(
   return new TranscriptionHandle(id, provider);
 }
 
+
+
+
+
+
+
+
+
+export async function transcriptionTranscribe(
+  b: Transcription,
+  ...audioParts: Part[]
+): Promise<TranscriptionResponse> {
+  const provider: Provider = {
+    name: b.client.provider.name as ProviderName,
+    apiKey: b.client.provider.apiKey,
+  };
+  if (b.client.provider.baseUrl) {
+    provider.baseUrl = b.client.provider.baseUrl;
+  }
+
+  const cfg = PROVIDERS[provider.name];
+  if (!cfg) {
+    throw new ValidationError("provider", `unknown: ${provider.name}`);
+  }
+  const tcCfg = transcriptionConfig(provider.name);
+  if (!tcCfg) {
+    throw new ValidationError(
+      "provider",
+      `${provider.name} does not support transcription`,
+    );
+  }
+  //
+  if (tcCfg.interaction !== "sync") {
+    throw new ValidationError(
+      "interaction",
+      `${provider.name} transcribes asynchronously; use Submit/Wait, not Transcribe`,
+    );
+  }
+  if (!b._model) {
+    throw new ValidationError(
+      "model",
+      "required for synchronous transcription",
+    );
+  }
+  const ref = normalizeAudioBytesPart(audioParts);
+
+  const base = transcriptionBaseUrl(provider, cfg);
+  const headers = buildAuthHeaders(provider, cfg);
+
+  //
+  //
+  //
+  const form = new FormData();
+  form.append("model", b._model);
+  form.append("response_format", "verbose_json");
+  const mimeType = ref.mimeType || "application/octet-stream";
+  const filename = "audio." + audioExtForMime(ref.mimeType);
+  form.append("file", new Blob([ref.bytes], { type: mimeType }), filename);
+
+  const resp = await fetch(base + tcCfg.submitEndpoint, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  const respText = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      respText,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  const raw = JSON.parse(respText) as Record<string, unknown>;
+  return transcriptionResultFromOpenAI(raw);
+}
+
+//
+//
+//
+//
+//
+function transcriptionResultFromOpenAI(
+  raw: Record<string, unknown>,
+): TranscriptionResponse {
+  const text = typeof raw.text === "string" ? raw.text : "";
+  const segs = Array.isArray(raw.segments) ? raw.segments : [];
+  const segments: TranscriptSegment[] = [];
+  for (const s of segs) {
+    if (!s || typeof s !== "object") continue;
+    const m = s as Record<string, unknown>;
+    segments.push({
+      text: typeof m.text === "string" ? m.text : "",
+      start: typeof m.start === "number" ? Math.round(m.start * 1000) : 0,
+      end: typeof m.end === "number" ? Math.round(m.end * 1000) : 0,
+    });
+  }
+  return {
+    text,
+    segments,
+    usage: {
+      input: 0,
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 0,
+      reasoning: 0,
+      cost: 0,
+    },
+  };
+}
+
+//
+//
+//
+function normalizeAudioBytesPart(parts: Part[]): MediaRef {
+  let ref: MediaRef | undefined;
+  let audioCount = 0;
+  parts.forEach((part, i) => {
+    if ("audioBytes" in part) {
+      audioCount++;
+      ref = part.audioBytes;
+    } else if ("audio" in part) {
+      throw new ValidationError(
+        `parts[${i}]`,
+        "synchronous transcription accepts inline audio bytes only (audioBytes); a remote audio URL is not supported",
+      );
+    } else if ("text" in part || "image" in part || "lyrics" in part) {
+      throw new ValidationError(
+        `parts[${i}]`,
+        "transcription accepts only audio parts (audioBytes)",
+      );
+    } else {
+      throw new ValidationError(`parts[${i}]`, "empty part");
+    }
+  });
+  if (audioCount !== 1 || !ref) {
+    throw new ValidationError(
+      "parts",
+      "transcription requires exactly one audio part",
+    );
+  }
+  return ref;
+}
+
+//
+//
+function audioExtForMime(mime: string): string {
+  switch (mime) {
+    case "audio/mpeg":
+    case "audio/mp3":
+      return "mp3";
+    case "audio/wav":
+    case "audio/x-wav":
+      return "wav";
+    case "audio/mp4":
+    case "audio/m4a":
+    case "audio/x-m4a":
+      return "m4a";
+    case "audio/webm":
+      return "webm";
+    case "audio/ogg":
+    case "audio/opus":
+      return "ogg";
+    case "audio/flac":
+      return "flac";
+    default:
+      return "bin";
+  }
+}
+
 //
 //
 //
@@ -209,6 +386,14 @@ function transcriptionResult(
   switch (tcCfg.wireShape) {
     case "TranscriptionAssemblyAI":
       return transcriptionResultFromAssemblyAI(raw);
+    case "TranscriptionOpenAI":
+      //
+      //
+      throw new APIError(
+        0,
+        "transcription: TranscriptionOpenAI is synchronous and has no poll-result extraction",
+        false,
+      );
     default: {
       const _exhaustive: never = tcCfg.wireShape;
       throw new APIError(
