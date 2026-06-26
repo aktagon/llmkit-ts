@@ -87,21 +87,23 @@ export async function generateSpeech(
     signal: options.signal,
   });
 
-  const respText = await httpResp.text();
+  // Read the raw bytes: the OpenAI shape returns binary audio (not JSON), so we
+  // cannot text-decode + JSON.parse unconditionally.
+  const respBytes = new Uint8Array(await httpResp.arrayBuffer());
   if (!httpResp.ok) {
     throw new APIError(
       httpResp.status,
-      respText,
+      new TextDecoder().decode(respBytes),
       httpResp.status === 429 || httpResp.status >= 500,
     );
   }
 
-  const raw = JSON.parse(respText) as unknown;
-  return parseSpeechResponse(sgCfg.wireShape, model.outputMime, raw);
+  return parseSpeechResponse(sgCfg.audioEncoding, model.outputMime, respBytes);
 }
 
 // dispatchSpeechHTTP picks a wire shape per provider config (never by provider
-// name). Only SpeechInworld exists today: a flat-JSON POST.
+// name). SpeechInworld is a flat-JSON POST whose response carries base64 audio;
+// SpeechOpenAI is a flat-JSON POST whose response body is the raw audio bytes.
 function dispatchSpeechHTTP(
   cfg: ProviderSpec,
   sgCfg: SpeechGenDef,
@@ -110,7 +112,24 @@ function dispatchSpeechHTTP(
 ): { url: string; body: Record<string, unknown> } {
   const endpoint = sgCfg.genEndpoint || cfg.endpoint || "";
   const url = endpoint.startsWith("http") ? endpoint : baseUrl + endpoint;
-  return { url, body: buildInworldSpeechBody(request) };
+  const body =
+    sgCfg.wireShape === "SpeechOpenAI"
+      ? buildOpenAISpeechBody(request)
+      : buildInworldSpeechBody(request);
+  return { url, body };
+}
+
+// buildOpenAISpeechBody assembles the OpenAI /v1/audio/speech request body.
+// Slice 1 fixes response_format=mp3 (KISS); format selection is a later slice.
+function buildOpenAISpeechBody(
+  request: SpeechRequest,
+): Record<string, unknown> {
+  return {
+    model: request.model,
+    input: request.text,
+    voice: request.voice,
+    response_format: "mp3",
+  };
 }
 
 // buildInworldSpeechBody assembles the Inworld /tts/v1/voice request body.
@@ -138,23 +157,32 @@ function findSpeechModel(
   return cfg.models.find((m) => m.modelId === modelId);
 }
 
-// parseSpeechResponse decodes the synthesized audio per wire shape.
+// parseSpeechResponse decodes the synthesized audio per the wire shape's audio
+// response encoding (ADR-051 OAA-002). "rawBody" (OpenAI) takes the response
+// body verbatim as the audio bytes; "base64Envelope" (Inworld) parses a JSON
+// envelope and base64-decodes the audio field.
 function parseSpeechResponse(
-  _wireShape: string,
+  audioEncoding: string,
   fallbackMime: string,
-  raw: unknown,
+  body: Uint8Array,
 ): SpeechResponse {
-  // SpeechInworld: {"audioContent": "<base64>", "usage": {...}}.
-  const root = raw as { audioContent?: unknown };
   let audio: AudioData = { mimeType: fallbackMime, bytes: new Uint8Array(0) };
-  if (typeof root.audioContent === "string" && root.audioContent) {
-    try {
-      audio = {
-        mimeType: fallbackMime,
-        bytes: base64ToBytes(root.audioContent),
-      };
-    } catch {
-      // leave empty on malformed payload
+  if (audioEncoding === "rawBody") {
+    audio = { mimeType: fallbackMime, bytes: body };
+  } else {
+    // base64Envelope: {"audioContent": "<base64>", "usage": {...}}.
+    const root = JSON.parse(new TextDecoder().decode(body)) as {
+      audioContent?: unknown;
+    };
+    if (typeof root.audioContent === "string" && root.audioContent) {
+      try {
+        audio = {
+          mimeType: fallbackMime,
+          bytes: base64ToBytes(root.audioContent),
+        };
+      } catch {
+        // leave empty on malformed payload
+      }
     }
   }
   return {
