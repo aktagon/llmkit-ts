@@ -29,6 +29,7 @@ export interface ProviderConfig {
   name: string;
   apiKey: string;
   baseUrl?: string;
+  headers?: Record<string, string>;
 }
 
 function clone<T extends object>(b: T): T {
@@ -79,13 +80,10 @@ export class Client {
   }
 
 
+  addHeader(name: string, value: string): this { (this.provider.headers ??= {})[name] = value; return this; }
 
 
-
-  withBaseUrl(url: string): this {
-    this.provider.baseUrl = url;
-    return this;
-  }
+  baseURL(url: string): this { this.provider.baseUrl = url; return this; }
 
 
 

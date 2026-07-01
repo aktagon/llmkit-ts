@@ -22,6 +22,13 @@ export interface Provider {
   apiKey: string;
   model?: string;
   baseUrl?: string;
+
+
+
+
+
+
+  headers?: Record<string, string>;
 }
 
 
