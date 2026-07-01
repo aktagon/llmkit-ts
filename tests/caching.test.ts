@@ -1,10 +1,12 @@
 import { describe, test, expect } from "bun:test";
 import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
+import { APIError } from "../src/errors.ts";
 
 function startMockJSON(
   payload: unknown,
   capture?: (req: Request, body: Record<string, unknown>) => void,
+  status = 200,
 ): { url: string; stop: () => void } {
   const server = Bun.serve({
     port: 0,
@@ -12,6 +14,7 @@ function startMockJSON(
       const body = (await req.json()) as Record<string, unknown>;
       capture?.(req, body);
       return new Response(JSON.stringify(payload), {
+        status,
         headers: { "content-type": "application/json" },
       });
     },
@@ -114,6 +117,47 @@ describe("caching — Anthropic ExplicitCaching", () => {
           cache_control: { type: "ephemeral" },
         },
       ]);
+    } finally {
+      server.stop();
+    }
+  });
+});
+
+describe("caching — Google ResourceCaching", () => {
+  test("cachedContents create rejection surfaces a typed APIError carrying the provider's message (BUG-016)", async () => {
+    // When Gemini rejects the cachedContents create — e.g. "too small"
+    // below its per-model token floor — .caching() must raise a typed
+    // APIError carrying the provider's OWN message, not swallow it or
+    // degrade silently. llmkit invents no size floor; it reports whatever
+    // the provider rejected with. This structured error is the substrate
+    // the opt-in capability telemetry reads.
+    const server = startMockJSON(
+      {
+        error: {
+          code: 400,
+          message:
+            "Cached content is too small. total_token_count=653, min_total_token_count=1024",
+          status: "INVALID_ARGUMENT",
+        },
+      },
+      undefined,
+      400,
+    );
+    try {
+      const c = newClient(Providers.google, "k");
+      c.provider.baseUrl = server.url;
+      const attempt = c.text
+        .system("small system prompt")
+        .caching()
+        .prompt("hi");
+      await expect(attempt).rejects.toBeInstanceOf(APIError);
+      try {
+        await attempt;
+      } catch (e) {
+        const err = e as APIError;
+        expect(err.statusCode).toBe(400);
+        expect(err.message).toContain("min_total_token_count=1024");
+      }
     } finally {
       server.stop();
     }
