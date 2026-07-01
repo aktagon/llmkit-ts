@@ -778,7 +778,7 @@ export async function executeRequest(
     const region = process.env[cfg.regionEnvVar] || "";
     const secret = process.env[cfg.secretKeyEnvVar] || "";
     const session = process.env[cfg.sessionTokenEnvVar] || "";
-    headers = await signSigV4(
+    const signed = await signSigV4(
       url,
       new TextEncoder().encode(jsonBody),
       provider.apiKey,
@@ -787,7 +787,12 @@ export async function executeRequest(
       region,
       cfg.serviceName,
     );
+    // ADR-052: start from the AWS-signed headers, then add caller headers that
+    // don't collide (case-insensitively) so the signature is never altered;
+    // a gateway header still rides alongside the signed request.
+    headers = { ...signed };
     headers["Content-Type"] = "application/json";
+    mergeCallerHeaders(headers, provider);
   } else {
     headers = {
       "content-type": "application/json",
@@ -809,6 +814,23 @@ export async function executeRequest(
   return { status: httpResp.status, ok: httpResp.ok, text };
 }
 
+/**
+ * ADR-052: add caller-supplied custom headers (Client.addHeader) to `headers`
+ * that are NOT already present (case-insensitively). Call AFTER the SDK-set
+ * headers (auth, required) so those can never be clobbered — HTTP header names
+ * are case-insensitive, so a caller "authorization" must not shadow the
+ * provider's "Authorization". The caller can still add a new gateway header.
+ */
+export function mergeCallerHeaders(
+  headers: Record<string, string>,
+  provider: Provider,
+): void {
+  const existing = new Set(Object.keys(headers).map((k) => k.toLowerCase()));
+  for (const [k, v] of Object.entries(provider.headers ?? {})) {
+    if (!existing.has(k.toLowerCase())) headers[k] = v;
+  }
+}
+
 export function buildAuthHeaders(
   provider: Provider,
   cfg: ProviderSpec,
@@ -825,6 +847,7 @@ export function buildAuthHeaders(
   if (cfg.requiredHeader) {
     headers[cfg.requiredHeader] = cfg.requiredHeaderValue;
   }
+  mergeCallerHeaders(headers, provider); // additive; never clobbers auth/required above.
   return headers;
 }
 

@@ -12,7 +12,7 @@ import {
 } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractIntPath, extractPath } from "./paths.ts";
-import { resolveModel } from "./request.ts";
+import { mergeCallerHeaders, resolveModel } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
 import type { Provider, PromptOptions } from "./types.ts";
@@ -134,6 +134,8 @@ async function applyResource(
     } else if (cfg.authScheme === "HeaderAPIKey") {
       headers[cfg.authHeader] = provider.apiKey;
     }
+    // ADR-052: additive; never clobbers content-type or the provider auth above.
+    mergeCallerHeaders(headers, provider);
 
     const httpResp = await fetch(createUrl, {
       method: "POST",

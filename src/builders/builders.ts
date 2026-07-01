@@ -29,6 +29,7 @@ export interface ProviderConfig {
   name: string;
   apiKey: string;
   baseUrl?: string;
+  headers?: Record<string, string>;
 }
 
 function clone<T extends object>(b: T): T {
@@ -78,14 +79,11 @@ export class Client {
     this.providers = new Providers(this);
   }
 
-  /** Override the provider's default base URL. Required for
-   *  providers whose default base URL is a template that the
-   *  caller must substitute (e.g. Vertex AI Imagen). Returns
-   *  the same Client for chaining. */
-  withBaseUrl(url: string): this {
-    this.provider.baseUrl = url;
-    return this;
-  }
+  /** Attach a custom HTTP header to every request for this client; calls accumulate. Applied before the provider auth header, so a gateway header (e.g. cf-aig-authorization) rides alongside the provider key. Returns the same Client for chaining. */
+  addHeader(name: string, value: string): this { (this.provider.headers ??= {})[name] = value; return this; }
+
+  /** Override the provider's default base URL. Required for providers whose default base URL is a template the caller must substitute (e.g. Vertex AI Imagen) and to point an OpenAI-compatible provider or gateway at a self-hosted endpoint. Returns the same Client for chaining. */
+  baseURL(url: string): this { this.provider.baseUrl = url; return this; }
 
   /** True iff an explicit request for `cap` will not hard-fail
    *  pre-flight on this client's provider (ADR-030). Gated arms

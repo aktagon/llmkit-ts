@@ -194,6 +194,7 @@ export async function videoSubmit(
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
+    headers: b.client.provider.headers,
   };
   if (b.client.provider.baseUrl) {
     provider.baseUrl = b.client.provider.baseUrl;

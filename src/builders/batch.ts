@@ -72,6 +72,7 @@ function batchInputs(
     providerOut = {
       name: b.client.provider.name as ProviderName,
       apiKey: b.client.provider.apiKey,
+      headers: b.client.provider.headers,
     };
     if (b._model) providerOut.model = b._model;
     if (b.client.provider.baseUrl)
