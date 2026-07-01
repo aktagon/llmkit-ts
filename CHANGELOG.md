@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-07-01
+
+### Added
+
+- `cachingConfig(provider)` — per-provider prompt-caching capability, re-exported from the package entry alongside `imageGenConfig`/`videoGenConfig`/`musicGenConfig`/`speechGenConfig`. Returns the provider's `CachingDef` (mode, write/read token paths, default TTL, lifecycle) or `undefined` when the provider has no caching support. Lets a consumer gate the text builder's `.caching()` on real support — it throws for a provider with no caching config (e.g. `grok`) rather than no-op'ing — instead of mirroring the capability by hand. The `CachingDef` / `CachingMode` / `CachingLifecycle` types are exported too.
+
 ## [1.1.1] — 2026-06-17
 
 ### Fixed
