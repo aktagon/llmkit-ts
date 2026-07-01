@@ -226,7 +226,7 @@ const baseUrl =
   "https://us-central1-aiplatform.googleapis.com" +
   "/v1/projects/my-gcp-project/locations/us-central1/publishers/google/models";
 
-const c = vertex(process.env.VERTEX_BEARER_TOKEN!).withBaseUrl(baseUrl);
+const c = vertex(process.env.VERTEX_BEARER_TOKEN!).baseURL(baseUrl);
 
 const resp = await c.image
   .model("imagen-3.0-generate-002")
@@ -472,10 +472,24 @@ Wired at seven sites: `Text.prompt`, `Text.stream`, `Agent` LLM call, `Agent` to
 ```ts
 import { openai } from "@aktagon/llmkit-ts/builders";
 
-const c = openai("anything").withBaseUrl("http://localhost:8080/v1");
+const c = openai("anything").baseURL("http://localhost:8080/v1");
 ```
 
 Works for any OpenAI-compatible server (vLLM, LM Studio, Ollama, corporate gateways).
+
+## Custom headers
+
+Attach a custom HTTP header to every request — for example an authenticated gateway that needs its own auth header alongside the provider key. `addHeader` is chainable and calls accumulate.
+
+```ts
+import { anthropic } from "@aktagon/llmkit-ts/builders";
+
+const c = anthropic(apiKey)
+  .baseURL("https://gateway.example.com/anthropic")
+  .addHeader("cf-aig-authorization", `Bearer ${gatewayToken}`);
+```
+
+The custom header is sent in addition to the provider's auth header; it cannot override the provider auth header or the required version header.
 
 ## Wire-format stability
 

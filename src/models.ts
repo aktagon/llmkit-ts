@@ -84,6 +84,7 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
     name: p.id,
     apiKey: cfg.apiKey,
     baseUrl: cfg.baseUrl,
+    headers: cfg.headers, // ADR-052: custom headers reach the live catalogue too.
   }));
   const all: ModelInfo[] = [];
   const errors: Record<string, ProviderError> = {};
