@@ -117,6 +117,17 @@ export type { SpeechGenDef, SpeechModelDef } from "./providers/speech_gen.ts";
 //
 //
 //
+export { cachingConfig } from "./providers/caching.ts";
+export type {
+  CachingDef,
+  CachingMode,
+  CachingLifecycle,
+} from "./providers/caching.ts";
+//
+//
+//
+//
+//
 //
 //
 export * as providers from "./providers/provider_info.ts";
