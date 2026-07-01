@@ -218,12 +218,23 @@ describe("Surface — immutable", () => {
 // builders_constructors.test.ts — keeps the list and the ontology in
 // lockstep.
 describe("Surface — constructors", () => {
-  test("withBaseUrl sets provider.baseUrl and returns the same Client", () => {
+  test("baseURL sets provider.baseUrl and returns the same Client", () => {
     const override = "https://example.test/v1";
-    const c = vertex("test-token").withBaseUrl(override);
+    const c = vertex("test-token").baseURL(override);
     expect(c.provider.baseUrl).toBe(override);
-    // Chainability: withBaseUrl must return `this` so callers can write
-    //   const c = vertex(token).withBaseUrl(url) in one statement.
+    // Chainability: baseURL must return `this` so callers can write
+    //   const c = vertex(token).baseURL(url) in one statement.
+    expect(c).toBeInstanceOf(Client);
+  });
+
+  test("addHeader accumulates onto provider.headers and returns the same Client", () => {
+    const c = anthropic("test-key")
+      .addHeader("cf-aig-authorization", "Bearer gw-token")
+      .addHeader("x-trace-id", "abc123");
+    expect(c.provider.headers).toEqual({
+      "cf-aig-authorization": "Bearer gw-token",
+      "x-trace-id": "abc123",
+    });
     expect(c).toBeInstanceOf(Client);
   });
 });

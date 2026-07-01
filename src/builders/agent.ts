@@ -34,6 +34,7 @@ function initAgent(b: Agent): AgentState {
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
+    headers: b.client.provider.headers,
   };
   if (b._model) provider.model = b._model;
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;
