@@ -112,6 +112,17 @@ export { musicGenConfig } from "./providers/music_gen.ts";
 export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
 export { speechGenConfig } from "./providers/speech_gen.ts";
 export type { SpeechGenDef, SpeechModelDef } from "./providers/speech_gen.ts";
+// Prompt-caching capability, queryable so a consumer can gate the builder's
+// `.caching()` on real support (it THROWS for a provider with no caching
+// config, e.g. grok — not a no-op). Same introspection pattern as the *GenConfig
+// re-exports above: the config lives in the generated providers module, which is
+// not its own entry point, so it MUST be re-exported here.
+export { cachingConfig } from "./providers/caching.ts";
+export type {
+  CachingDef,
+  CachingMode,
+  CachingLifecycle,
+} from "./providers/caching.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
 // (name/envVar/defaultModel/baseUrl) — a projection of provider facts, NOT the
 // internal wire/transform spec. Exposed as the static `providers` namespace
