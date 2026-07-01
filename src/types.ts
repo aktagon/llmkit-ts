@@ -22,6 +22,13 @@ export interface Provider {
   apiKey: string;
   model?: string;
   baseUrl?: string;
+  /**
+   * Custom HTTP headers added via Client.addHeader (ADR-052). Merged into
+   * every request before the provider auth header and the static required
+   * header, so a gateway header (e.g. cf-aig-authorization) rides alongside
+   * the provider key without clobbering it.
+   */
+  headers?: Record<string, string>;
 }
 
 /**
