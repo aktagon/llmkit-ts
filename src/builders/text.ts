@@ -24,6 +24,8 @@ import { applyCaching, parseCacheUsage } from "../caching.ts";
 import {
   buildRequest as buildLegacyRequest,
   executeRequest,
+  parseResponsesEnvelope,
+  resolveChatProtocol,
   validateOptions,
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
@@ -115,6 +117,12 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
 
   validateOptions(provider.name, options);
 
+  // ADR-055: opt into a non-default chat protocol (Responses). Overrides the
+  // endpoint + wire shape on this call's cfg copy; empty keeps the default.
+  // Throws ValidationError(field:"protocol") before any network call when the
+  // token is unknown or the provider does not expose it.
+  const effCfg = resolveChatProtocol(cfg, b._protocol);
+
   const baseEvent: Event = {
     op: "llm_request",
     phase: "pre",
@@ -130,18 +138,18 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
     const body = buildLegacyRequest(
       provider,
       request,
-      cfg,
+      effCfg,
       options,
       [],
       extraHeaders,
     );
     if (options.caching) {
-      await applyCaching(body, provider, cfg, options);
+      await applyCaching(body, provider, effCfg, options);
     }
 
     const resp = await executeRequest(
       provider,
-      cfg,
+      effCfg,
       body,
       options,
       extraHeaders,
@@ -155,29 +163,36 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
     }
 
     const raw = JSON.parse(resp.text) as unknown;
-    const cache = parseCacheUsage(raw, provider.name);
-    const result: Response = {
-      text: extractPath(raw, cfg.responseTextPath),
-      usage: {
-        input: extractIntPath(raw, cfg.usageInputPath),
-        output: extractIntPath(raw, cfg.usageOutputPath),
-        cacheWrite: cache.write,
-        cacheRead: cache.read,
-        reasoning: cfg.reasoningTokensPath
-          ? extractIntPath(raw, cfg.reasoningTokensPath)
-          : 0,
-        cost: cfg.usageCostPath
-          ? extractFloatPath(raw, cfg.usageCostPath) * cfg.usageCostScale
-          : 0,
-      },
-    };
-    if (cfg.finishReasonPath) {
-      const reason = extractPath(raw, cfg.finishReasonPath);
-      if (reason) result.finishReason = reason;
-    }
-    if (cfg.finishMessagePath) {
-      const message = extractPath(raw, cfg.finishMessagePath);
-      if (message) result.finishMessage = message;
+    // ADR-055: only ChatResponsesOpenAI diverges (the output[] envelope); every
+    // other wire shape uses the provider's declared response paths.
+    let result: Response;
+    if (effCfg.chatWireShape === "ChatResponsesOpenAI") {
+      result = parseResponsesEnvelope(raw);
+    } else {
+      const cache = parseCacheUsage(raw, provider.name);
+      result = {
+        text: extractPath(raw, effCfg.responseTextPath),
+        usage: {
+          input: extractIntPath(raw, effCfg.usageInputPath),
+          output: extractIntPath(raw, effCfg.usageOutputPath),
+          cacheWrite: cache.write,
+          cacheRead: cache.read,
+          reasoning: effCfg.reasoningTokensPath
+            ? extractIntPath(raw, effCfg.reasoningTokensPath)
+            : 0,
+          cost: effCfg.usageCostPath
+            ? extractFloatPath(raw, effCfg.usageCostPath) * effCfg.usageCostScale
+            : 0,
+        },
+      };
+      if (effCfg.finishReasonPath) {
+        const reason = extractPath(raw, effCfg.finishReasonPath);
+        if (reason) result.finishReason = reason;
+      }
+      if (effCfg.finishMessagePath) {
+        const message = extractPath(raw, effCfg.finishMessagePath);
+        if (message) result.finishMessage = message;
+      }
     }
     if (b._raw) result.raw = raw;
     firePost(options.middleware, {

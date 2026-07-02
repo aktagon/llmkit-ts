@@ -397,5 +397,14 @@ export class TextStream implements AsyncIterable<string> {
 }
 
 export function textStream(b: Text, msg: string): TextStream {
+  // ADR-055: Protocol (e.g. Responses) is prompt-only in slice 1; streaming
+  // Responses is not yet wired. Reject loudly rather than silently streaming
+  // Chat Completions (uniform across the four SDKs).
+  if (b._protocol) {
+    throw new ValidationError(
+      "protocol",
+      "protocol (e.g. Responses) is only supported on the prompt terminal, not stream (ADR-055)",
+    );
+  }
   return new TextStream(b, msg);
 }
