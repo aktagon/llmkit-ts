@@ -76,12 +76,12 @@ export function buildRequest(
   }
 
   const msgs = toMessageList(request);
-  if (isBedrock(cfg)) {
+  if (cfg.chatWireShape === "ChatBedrock") {
     if (request.system) {
       body.system = [{ text: request.system }];
     }
     body.messages = buildBedrockMessages(msgs, cfg);
-  } else if (cfg.systemPlacement === "SiblingObject") {
+  } else if (cfg.chatWireShape === "ChatGoogle") {
     if (request.system) {
       body.system_instruction = { parts: [{ text: request.system }] };
     }
@@ -426,10 +426,6 @@ export function validateOptions(
   }
 }
 
-export function isBedrock(cfg: ProviderSpec): boolean {
-  return cfg.wrapsOptionsIn === "inferenceConfig" && cfg.authScheme === "SigV4";
-}
-
 // The message builders below are tool-aware (ADR-020 / ADR-026): each turn is
 // dispatched on its carrier field — toolResult, then toolCalls, then text — so
 // the Agent path (history with tool turns) and the Text/batch path (text-only)
@@ -581,7 +577,7 @@ function buildGoogleContents(
 // buildFlatContentParts builds the OpenAI/Anthropic user-message content array
 // when files are attached, mirroring the Go/Python/Rust _build_flat_content_parts
 // (BUG-014). File blocks come first, then the prompt text last. The document vs
-// file block is selected by systemPlacement (Anthropic = TopLevelField), never by
+// file block is selected by chatWireShape (ChatAnthropic), never by
 // provider name. Images on the text path are a separate deferred gap (ADR-008
 // OQ-2) and are not attached here.
 function buildFlatContentParts(
@@ -589,7 +585,7 @@ function buildFlatContentParts(
   files: File[],
   cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
-  const isAnthropic = cfg.systemPlacement === "TopLevelField";
+  const isAnthropic = cfg.chatWireShape === "ChatAnthropic";
   const parts: Array<Record<string, unknown>> = [];
   for (const f of files) {
     parts.push(
@@ -657,7 +653,7 @@ function attachToolDefs(
   tools: Tool[],
   cfg: ProviderSpec,
 ): void {
-  if (isBedrock(cfg)) {
+  if (cfg.chatWireShape === "ChatBedrock") {
     body.toolConfig = {
       tools: tools.map((t) => ({
         toolSpec: {
@@ -669,7 +665,7 @@ function attachToolDefs(
     };
     return;
   }
-  if (cfg.systemPlacement === "TopLevelField") {
+  if (cfg.chatWireShape === "ChatAnthropic") {
     body.tools = tools.map((t) => ({
       name: t.name,
       description: t.description,
@@ -677,7 +673,7 @@ function attachToolDefs(
     }));
     return;
   }
-  if (cfg.systemPlacement === "SiblingObject") {
+  if (cfg.chatWireShape === "ChatGoogle") {
     // Google carries tool params under a per-provider wire field (ADR-025):
     // "parametersJsonSchema" accepts native JSON Schema verbatim, vs the
     // OpenAPI-3.0-subset "parameters" default.
@@ -693,7 +689,7 @@ function attachToolDefs(
     ];
     return;
   }
-  if (cfg.systemPlacement === "MessageInArray") {
+  if (cfg.chatWireShape === "ChatOpenAI") {
     body.tools = tools.map((t) => ({
       type: "function",
       function: {
@@ -714,7 +710,7 @@ function toolCallMsg(
   calls: ToolCall[],
   cfg: ProviderSpec,
 ): Record<string, unknown> {
-  if (cfg.systemPlacement === "TopLevelField") {
+  if (cfg.chatWireShape === "ChatAnthropic") {
     return {
       role: cfg.roleMappings.assistant ?? "assistant",
       content: calls.map((c) => ({
@@ -742,7 +738,7 @@ function toolResultMsg(
   result: ToolResult,
   cfg: ProviderSpec,
 ): Record<string, unknown> {
-  if (cfg.systemPlacement === "TopLevelField") {
+  if (cfg.chatWireShape === "ChatAnthropic") {
     return {
       role: "user",
       content: [

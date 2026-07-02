@@ -13,7 +13,6 @@ import { extractIntPath, extractFloatPath, extractPath } from "./paths.ts";
 import {
   buildRequest,
   executeRequest,
-  isBedrock,
   resolveModel,
   toolCallInput,
   validateOptions,
@@ -270,14 +269,14 @@ export class Agent {
 }
 
 function extractToolCalls(raw: unknown, cfg: ProviderSpec): ToolCall[] {
-  if (isBedrock(cfg)) return extractBedrockToolCalls(raw);
-  if (cfg.systemPlacement === "TopLevelField") {
+  if (cfg.chatWireShape === "ChatBedrock") return extractBedrockToolCalls(raw);
+  if (cfg.chatWireShape === "ChatAnthropic") {
     return extractAnthropicToolCalls(raw);
   }
-  if (cfg.systemPlacement === "SiblingObject") {
+  if (cfg.chatWireShape === "ChatGoogle") {
     return extractGoogleToolCalls(raw);
   }
-  if (cfg.systemPlacement === "MessageInArray") {
+  if (cfg.chatWireShape === "ChatOpenAI") {
     return extractOpenAIToolCalls(raw);
   }
   return [];
