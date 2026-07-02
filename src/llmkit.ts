@@ -136,6 +136,10 @@ export type { ProviderInfo } from "./providers/provider_info.ts";
 export type { ProviderName } from "./providers/providers.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
+//
+//
+export { buildOTLPTraces } from "./telemetry.ts";
+export type { Telemetry } from "./telemetry.ts";
 export {
   saveHistory,
   loadHistory,
