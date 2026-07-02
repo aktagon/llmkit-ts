@@ -17,6 +17,7 @@ import {
   waitBatch as runWaitBatch,
   type BatchOptions,
 } from "../batch.ts";
+import { ValidationError } from "../errors.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider, Request, Response } from "../types.ts";
 import type { Text } from "./builders.ts";
@@ -59,6 +60,15 @@ function batchInputs(
   b: Text,
   prompts: string[],
 ): { provider: Provider; requests: Request[]; options: BatchOptions } {
+  //
+  //
+  //
+  if (b._protocol) {
+    throw new ValidationError(
+      "protocol",
+      "protocol (e.g. Responses) is only supported on the prompt terminal, not batch (ADR-055)",
+    );
+  }
   const requests: Request[] = [];
   let providerOut: Provider | undefined;
   let promptOpts: BatchOptions = {};

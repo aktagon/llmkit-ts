@@ -164,6 +164,7 @@ export class Text {
  _maxTokens?: number;
  _model: string = "";
  _presencePenalty?: number;
+ _protocol: string = "";
  _raw: boolean = false;
  _reasoningEffort: string = "";
  _safetySettings: SafetySetting[] = [];
@@ -187,6 +188,7 @@ export class Text {
   maxTokens(n: number): Text { const out = clone(this); out._maxTokens = n; return out; }
   model(name: string): Text { const out = clone(this); out._model = name; return out; }
   presencePenalty(v: number): Text { const out = clone(this); out._presencePenalty = v; return out; }
+  protocol(name: string): Text { const out = clone(this); out._protocol = name; return out; }
   raw(): Text { const out = clone(this); out._raw = true; return out; }
   reasoningEffort(level: string): Text { const out = clone(this); out._reasoningEffort = level; return out; }
   safetySettings(s: SafetySetting[]): Text { const out = clone(this); out._safetySettings = s; return out; }
