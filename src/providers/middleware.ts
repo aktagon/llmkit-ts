@@ -29,23 +29,23 @@ export type MiddlewareOp =
 export interface Event {
   // Always set.
   op: MiddlewareOp;
-  // Always set.
+  // Always set. Internal-only (drives pre/post dispatch); not an OTEL attribute.
   phase: MiddlewarePhase;
   // Always set.
   provider: string;
   // Always set.
   model: string;
-  // Only set when Op=tool_call.
+  // Only set when Op=tool_call. Internal-only.
   tool?: string;
-  // Only set when Op=tool_call, Phase=pre. Mutation by middleware is observed by the tool.
+  // Only set when Op=tool_call, Phase=pre. Mutation by middleware is observed by the tool. Internal-only.
   args?: Record<string, unknown>;
-  // Only set when Op=tool_call, Phase=post.
+  // Only set when Op=tool_call, Phase=post. Internal-only.
   result?: string;
-  // Set for Op=llm_request, Phase=post.
+  // Set for Op=llm_request, Phase=post. Expanded to gen_ai.usage.* via llm:otelUsageAttribute on each TokenDimension, not a single attribute.
   usage?: Usage;
   // Set in Phase=post when the operation failed.
   err?: Error;
-  // Set in Phase=post.
+  // Set in Phase=post. Internal-only (maps to span duration, not a gen_ai attribute).
   duration?: number;
 }
 

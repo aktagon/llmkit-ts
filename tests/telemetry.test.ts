@@ -1,0 +1,169 @@
+// ADR-054 opt-in telemetry. The two parity tests drop the per-SDK OTLP artifact
+// for the cross-SDK comparator and assert it is JSON-value-equal to the shared
+// golden at codegen/testdata/wire/telemetry/v1/<fixture>.json — the SAME golden
+// every SDK asserts against. The remaining tests cover the exporter wiring, the
+// fail-loud empty-endpoint contract, and the fail-open guarantee.
+
+import { describe, expect, test } from "bun:test";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { newClient } from "../src/llmkit.ts";
+import { ValidationError } from "../src/errors.ts";
+import { buildOTLPTraces, telemetryMiddleware } from "../src/telemetry.ts";
+import type { Event } from "../src/providers/middleware.ts";
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+// Fixed span identity + timing for the deterministic parity fixtures (TEL-011).
+const TRACE_ID = "5b8efff798038103d269b633813fc60c";
+const SPAN_ID = "eee19b7ec3c1b174";
+const START_NANO = "1700000000000000000";
+const END_NANO = "1700000001000000000";
+
+function goldenPath(fixture: string): string {
+  return resolve(
+    REPO_ROOT,
+    "codegen",
+    "testdata",
+    "wire",
+    "telemetry",
+    "v1",
+    `${fixture}.json`,
+  );
+}
+
+function artifactPath(fixture: string): string {
+  return resolve(REPO_ROOT, "target", "wire", "telemetry", fixture, "ts.json");
+}
+
+function assertTelemetryGolden(fixture: string, payload: string): void {
+  const out = artifactPath(fixture);
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, payload);
+  const golden = JSON.parse(readFileSync(goldenPath(fixture), "utf8"));
+  expect(JSON.parse(payload)).toEqual(golden);
+}
+
+describe("telemetry — OTLP wire parity", () => {
+  test("success payload matches shared golden", () => {
+    const payload = buildOTLPTraces(
+      "chat",
+      "openai",
+      "gpt-4o",
+      10,
+      20,
+      "",
+      TRACE_ID,
+      SPAN_ID,
+      START_NANO,
+      END_NANO,
+    );
+    assertTelemetryGolden("telemetry-success", payload);
+  });
+
+  test("rejection payload matches shared golden", () => {
+    const payload = buildOTLPTraces(
+      "chat",
+      "openai",
+      "gpt-4o",
+      0,
+      0,
+      "rate_limit_exceeded",
+      TRACE_ID,
+      SPAN_ID,
+      START_NANO,
+      END_NANO,
+    );
+    assertTelemetryGolden("telemetry-rejection", payload);
+  });
+});
+
+describe("telemetry — exporter wiring", () => {
+  test("post-phase Event POSTs to /v1/traces with headers + resourceSpans", async () => {
+    let resolveReq: (v: {
+      path: string;
+      auth: string | null;
+      contentType: string | null;
+      body: string;
+    }) => void;
+    const received = new Promise<{
+      path: string;
+      auth: string | null;
+      contentType: string | null;
+      body: string;
+    }>((r) => {
+      resolveReq = r;
+    });
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const body = await req.text();
+        resolveReq({
+          path: new URL(req.url).pathname,
+          auth: req.headers.get("authorization"),
+          contentType: req.headers.get("content-type"),
+          body,
+        });
+        return new Response("ok");
+      },
+    });
+    try {
+      const mw = telemetryMiddleware({
+        endpoint: `http://localhost:${server.port}`,
+        headers: { authorization: "Bearer secret" },
+      });
+      const ev: Event = {
+        op: "llm_request",
+        phase: "post",
+        provider: "openai",
+        model: "gpt-4o",
+        usage: {
+          input: 10,
+          output: 20,
+          cacheWrite: 0,
+          cacheRead: 0,
+          reasoning: 0,
+          cost: 0,
+        },
+      };
+      const err = mw(undefined, ev);
+      expect(err).toBeNull();
+
+      const got = await received;
+      expect(got.path).toBe("/v1/traces");
+      expect(got.auth).toBe("Bearer secret");
+      expect(got.contentType).toBe("application/json");
+      const parsed = JSON.parse(got.body) as { resourceSpans?: unknown };
+      expect(parsed.resourceSpans).toBeDefined();
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
+describe("telemetry — config contract", () => {
+  test("withTelemetry throws ValidationError on empty endpoint", () => {
+    const c = newClient("openai", "key");
+    let caught: unknown;
+    try {
+      c.withTelemetry({ endpoint: "" });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect((caught as ValidationError).field).toBe("telemetry.endpoint");
+  });
+
+  test("bad endpoint fails open — never throws or blocks", () => {
+    const mw = telemetryMiddleware({ endpoint: "http://127.0.0.1:1" });
+    const ev: Event = {
+      op: "llm_request",
+      phase: "post",
+      provider: "openai",
+      model: "gpt-4o",
+    };
+    expect(mw(undefined, ev)).toBeNull();
+  });
+});
