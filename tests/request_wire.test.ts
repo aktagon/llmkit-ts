@@ -758,6 +758,27 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("workersai", m.body());
   });
 
+  // ADR-055 Phase B: OpenAI Responses chat-protocol body. The SAME flat
+  // {role, content} array as Chat Completions but under "input" (not
+  // "messages"), with max_tokens renamed to max_output_tokens. Opted in via
+  // c.text.protocol("responses"); the endpoint switch to /v1/responses is
+  // delivery-side (asserted in responses.test.ts).
+  test("responses (OpenAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .protocol("responses")
+        .model(wi.wireResponsesOpenaiModel)
+        .maxTokens(wi.wireResponsesOpenaiMaxTokens)
+        .prompt(wi.wireResponsesOpenaiPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("responses-openai", m.body());
+  });
+
   // === TASK-002: tool-definition fixtures across the four chat wire families.
   // wireToolDef builds the single canonical tool from the generated wire-input
   // consts (ontology/wire-fixtures.ttl single source). The run stub is never
