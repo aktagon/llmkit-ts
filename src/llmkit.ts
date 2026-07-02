@@ -136,6 +136,10 @@ export type { ProviderInfo } from "./providers/provider_info.ts";
 export type { ProviderName } from "./providers/providers.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
+// Opt-in telemetry (ADR-054). The value re-export also loads telemetry.ts at
+// runtime so its Client.withTelemetry prototype augmentation is installed.
+export { buildOTLPTraces } from "./telemetry.ts";
+export type { Telemetry } from "./telemetry.ts";
 export {
   saveHistory,
   loadHistory,
