@@ -146,6 +146,10 @@ function exportTelemetry(t: Telemetry, e: Event): void {
       "content-type": "application/json",
       ...(t.headers ?? {}),
     };
+    // FU-2 invariant: the fetch is NOT awaited, so export is non-blocking — a
+    // slow/hung collector never adds latency to the caller. This is the shape
+    // Go/Python/Rust match (goroutine / daemon thread / detached thread). Do not
+    // add `await` here.
     void fetch(url, { method: "POST", headers, body: payload }).catch(() => {});
   } catch {
     // fail-open: telemetry must never surface to the caller.
