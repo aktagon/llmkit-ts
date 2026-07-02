@@ -16,10 +16,12 @@ import {
   supportedOptions,
 } from "./providers/options.ts";
 import { ValidationError } from "./errors.ts";
+import { extractIntPath, extractPath } from "./paths.ts";
 import type {
   Provider,
   Request as PromptRequest,
   PromptOptions,
+  Response,
   Tool,
 } from "./types.ts";
 import type { File, Message, ToolCall, ToolResult } from "./structs.ts";
@@ -37,6 +39,99 @@ export function resolveModel(provider: Provider, cfg: ProviderSpec): string {
     );
   }
   return cfg.defaultModel;
+}
+
+//
+//
+//
+//
+//
+export const Responses = "responses";
+
+//
+//
+//
+function protocolWireShape(token: string): string {
+  switch (token) {
+    case Responses:
+      return "ChatResponsesOpenAI";
+  }
+  return "";
+}
+
+//
+//
+//
+//
+//
+//
+export function resolveChatProtocol(
+  cfg: ProviderSpec,
+  token: string,
+): ProviderSpec {
+  if (!token) return cfg;
+  const want = protocolWireShape(token);
+  if (!want) {
+    throw new ValidationError("protocol", `unknown protocol: ${token}`);
+  }
+  for (const cp of cfg.chatProtocols) {
+    if (cp.wireShape === want) {
+      return { ...cfg, endpoint: cp.endpoint, chatWireShape: cp.wireShape };
+    }
+  }
+  throw new ValidationError(
+    "protocol",
+    `provider "${cfg.name}" does not support protocol "${token}"`,
+  );
+}
+
+//
+//
+//
+//
+//
+//
+//
+export function parseResponsesEnvelope(raw: unknown): Response {
+  const result: Response = {
+    text: extractResponsesText(raw),
+    usage: {
+      input: extractIntPath(raw, "usage.input_tokens"),
+      output: extractIntPath(raw, "usage.output_tokens"),
+      cacheWrite: 0,
+      cacheRead: extractIntPath(raw, "usage.input_tokens_details.cached_tokens"),
+      reasoning: extractIntPath(
+        raw,
+        "usage.output_tokens_details.reasoning_tokens",
+      ),
+      cost: 0,
+    },
+  };
+  const status = extractPath(raw, "status");
+  if (status) result.finishReason = status;
+  return result;
+}
+
+//
+//
+//
+function extractResponsesText(raw: unknown): string {
+  if (typeof raw !== "object" || raw === null) return "";
+  const output = (raw as Record<string, unknown>).output;
+  if (!Array.isArray(output)) return "";
+  for (const item of output) {
+    if (typeof item !== "object" || item === null) continue;
+    const m = item as Record<string, unknown>;
+    if (m.type !== "message" || !Array.isArray(m.content)) continue;
+    for (const block of m.content) {
+      if (typeof block !== "object" || block === null) continue;
+      const cm = block as Record<string, unknown>;
+      if (cm.type === "output_text" && typeof cm.text === "string") {
+        return cm.text;
+      }
+    }
+  }
+  return "";
 }
 
 export function buildRequest(
@@ -86,6 +181,11 @@ export function buildRequest(
       body.system_instruction = { parts: [{ text: request.system }] };
     }
     body.contents = buildGoogleContents(msgs, cfg);
+  } else if (cfg.chatWireShape === "ChatResponsesOpenAI") {
+    //
+    //
+    //
+    body.input = buildMessages(msgs, request.system ?? "", cfg, request.files ?? []);
   } else {
     body.messages = buildMessages(
       msgs,
@@ -147,6 +247,15 @@ export function buildRequest(
 
   if (request.schema) {
     applyStructuredOutput(body, headersOut, request.schema, provider.name);
+  }
+
+  //
+  //
+  //
+  //
+  if (cfg.chatWireShape === "ChatResponsesOpenAI" && "max_tokens" in body) {
+    body.max_output_tokens = body.max_tokens;
+    delete body.max_tokens;
   }
 
   return body;
