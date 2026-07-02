@@ -60,6 +60,7 @@ export interface ProviderSpec {
   requiredHeader: string;
   requiredHeaderValue: string;
   systemPlacement: string;
+  chatWireShape: string;
   roleMappings: Record<string, string>;
   usageInputPath: string;
   usageOutputPath: string;
@@ -99,6 +100,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -141,6 +143,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "anthropic-version",
     requiredHeaderValue: "2023-06-01",
     systemPlacement: "TopLevelField",
+    chatWireShape: "ChatAnthropic",
     roleMappings: {
       assistant: "assistant",
       user: "user",
@@ -181,6 +184,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "",
     roleMappings: {
       user: "user",
     },
@@ -220,6 +224,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -262,6 +267,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "TopLevelField",
+    chatWireShape: "ChatBedrock",
     roleMappings: {
       assistant: "assistant",
       user: "user",
@@ -302,6 +308,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -344,6 +351,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -386,6 +394,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -428,6 +437,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -470,6 +480,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -512,6 +523,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -554,6 +566,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "SiblingObject",
+    chatWireShape: "ChatGoogle",
     roleMappings: {
       assistant: "model",
       user: "user",
@@ -594,6 +607,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -636,6 +650,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -678,6 +693,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "",
     roleMappings: {
       user: "user",
     },
@@ -717,6 +733,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -759,6 +776,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -801,6 +819,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -843,6 +862,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -885,6 +905,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -927,6 +948,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -969,6 +991,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1011,6 +1034,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1053,6 +1077,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1095,6 +1120,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1136,6 +1162,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "",
     roleMappings: {
       user: "user",
     },
@@ -1175,6 +1202,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1217,6 +1245,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "",
     roleMappings: {
       user: "user",
     },
@@ -1256,6 +1285,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1298,6 +1328,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1340,6 +1371,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "",
     roleMappings: {
       user: "user",
     },
@@ -1379,6 +1411,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "",
     roleMappings: {
       user: "user",
     },
@@ -1418,6 +1451,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1460,6 +1494,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1502,6 +1537,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
@@ -1543,6 +1579,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     requiredHeader: "",
     requiredHeaderValue: "",
     systemPlacement: "MessageInArray",
+    chatWireShape: "ChatOpenAI",
     roleMappings: {
       assistant: "assistant",
       system: "system",
