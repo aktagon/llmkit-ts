@@ -146,6 +146,10 @@ function exportTelemetry(t: Telemetry, e: Event): void {
       "content-type": "application/json",
       ...(t.headers ?? {}),
     };
+    //
+    //
+    //
+    //
     void fetch(url, { method: "POST", headers, body: payload }).catch(() => {});
   } catch {
     //
