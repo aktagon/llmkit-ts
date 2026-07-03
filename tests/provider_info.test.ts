@@ -13,11 +13,24 @@ describe("providers namespace (ADR-038/040)", () => {
     expect(info.envVar).toBe("ANTHROPIC_API_KEY");
     expect(info.defaultModel).toBe("claude-sonnet-4-6");
     expect(info.baseUrl).toBe("https://api.anthropic.com");
+    expect(info.browserCallable).toBe(false);
   });
 
   test("info projects exactly the contract fields (guards against widening)", () => {
     const keys = Object.keys(providers.info("openai")).sort();
-    expect(keys).toEqual(["baseUrl", "defaultModel", "envVar", "id", "slug"]);
+    expect(keys).toEqual([
+      "baseUrl",
+      "browserCallable",
+      "defaultModel",
+      "envVar",
+      "id",
+      "slug",
+    ]);
+  });
+
+  test("browserCallable is the CORS fact: true for google, false otherwise (ADR-035)", () => {
+    expect(providers.info("google").browserCallable).toBe(true);
+    expect(providers.info("grok").browserCallable).toBe(false);
   });
 
   test("list enumerates every provider, sorted by slug", () => {
