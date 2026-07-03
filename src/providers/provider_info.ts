@@ -13,6 +13,7 @@ export interface ProviderInfo {
   envVar: string;
   defaultModel: string;
   baseUrl: string;
+  browserCallable: boolean; // ADR-035: host serves CORS for direct browser calls (coarse)
 }
 
 const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
@@ -22,6 +23,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "AI21_API_KEY",
     defaultModel: "jamba-1.5-large",
     baseUrl: "https://api.ai21.com",
+    browserCallable: false,
   },
   anthropic: {
     id: "anthropic",
@@ -29,6 +31,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "ANTHROPIC_API_KEY",
     defaultModel: "claude-sonnet-4-6",
     baseUrl: "https://api.anthropic.com",
+    browserCallable: false,
   },
   assemblyai: {
     id: "assemblyai",
@@ -36,6 +39,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "ASSEMBLYAI_API_KEY",
     defaultModel: "best",
     baseUrl: "https://api.assemblyai.com",
+    browserCallable: false,
   },
   azure: {
     id: "azure",
@@ -43,6 +47,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "AZURE_OPENAI_API_KEY",
     defaultModel: "gpt-4o",
     baseUrl: "https://REPLACE-WITH-YOUR-RESOURCE.openai.azure.com",
+    browserCallable: false,
   },
   bedrock: {
     id: "bedrock",
@@ -50,6 +55,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "AWS_ACCESS_KEY_ID",
     defaultModel: "anthropic.claude-sonnet-4-20250514-v1:0",
     baseUrl: "https://bedrock-runtime.{region}.amazonaws.com",
+    browserCallable: false,
   },
   cerebras: {
     id: "cerebras",
@@ -57,6 +63,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "CEREBRAS_API_KEY",
     defaultModel: "llama-3.3-70b",
     baseUrl: "https://api.cerebras.ai",
+    browserCallable: false,
   },
   cohere: {
     id: "cohere",
@@ -64,6 +71,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "COHERE_API_KEY",
     defaultModel: "command-r-plus",
     baseUrl: "https://api.cohere.com/compatibility",
+    browserCallable: false,
   },
   deepseek: {
     id: "deepseek",
@@ -71,6 +79,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "DEEPSEEK_API_KEY",
     defaultModel: "deepseek-chat",
     baseUrl: "https://api.deepseek.com",
+    browserCallable: false,
   },
   doubao: {
     id: "doubao",
@@ -78,6 +87,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "ARK_API_KEY",
     defaultModel: "doubao-1.5-pro-32k-250115",
     baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    browserCallable: false,
   },
   ernie: {
     id: "ernie",
@@ -85,6 +95,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "QIANFAN_API_KEY",
     defaultModel: "ernie-4.0-8k",
     baseUrl: "https://qianfan.baidubce.com/v2",
+    browserCallable: false,
   },
   fireworks: {
     id: "fireworks",
@@ -92,6 +103,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "FIREWORKS_API_KEY",
     defaultModel: "accounts/fireworks/models/llama-v3p3-70b-instruct",
     baseUrl: "https://api.fireworks.ai/inference",
+    browserCallable: false,
   },
   google: {
     id: "google",
@@ -99,6 +111,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "GOOGLE_API_KEY",
     defaultModel: "gemini-2.5-flash",
     baseUrl: "https://generativelanguage.googleapis.com",
+    browserCallable: true,
   },
   grok: {
     id: "grok",
@@ -106,6 +119,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "XAI_API_KEY",
     defaultModel: "grok-3-fast",
     baseUrl: "https://api.x.ai",
+    browserCallable: false,
   },
   groq: {
     id: "groq",
@@ -113,6 +127,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "GROQ_API_KEY",
     defaultModel: "llama-3.3-70b-versatile",
     baseUrl: "https://api.groq.com/openai",
+    browserCallable: false,
   },
   inworld: {
     id: "inworld",
@@ -120,6 +135,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "INWORLD_API_KEY",
     defaultModel: "inworld-tts-2",
     baseUrl: "https://api.inworld.ai",
+    browserCallable: false,
   },
   jan: {
     id: "jan",
@@ -127,6 +143,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "JAN_API_KEY",
     defaultModel: "",
     baseUrl: "http://localhost:1337",
+    browserCallable: false,
   },
   llamacpp: {
     id: "llamacpp",
@@ -134,6 +151,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "LLAMACPP_API_KEY",
     defaultModel: "",
     baseUrl: "http://localhost:8080",
+    browserCallable: false,
   },
   lmstudio: {
     id: "lmstudio",
@@ -141,6 +159,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "LM_STUDIO_API_KEY",
     defaultModel: "",
     baseUrl: "http://localhost:1234",
+    browserCallable: false,
   },
   minimax: {
     id: "minimax",
@@ -148,6 +167,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "MINIMAX_API_KEY",
     defaultModel: "MiniMax-Text-01",
     baseUrl: "https://api.minimax.chat",
+    browserCallable: false,
   },
   mistral: {
     id: "mistral",
@@ -155,6 +175,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "MISTRAL_API_KEY",
     defaultModel: "mistral-large-latest",
     baseUrl: "https://api.mistral.ai",
+    browserCallable: false,
   },
   moonshot: {
     id: "moonshot",
@@ -162,6 +183,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "MOONSHOT_API_KEY",
     defaultModel: "moonshot-v1-8k",
     baseUrl: "https://api.moonshot.ai",
+    browserCallable: false,
   },
   ollama: {
     id: "ollama",
@@ -169,6 +191,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "OLLAMA_API_KEY",
     defaultModel: "",
     baseUrl: "http://localhost:11434",
+    browserCallable: false,
   },
   openai: {
     id: "openai",
@@ -176,6 +199,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "OPENAI_API_KEY",
     defaultModel: "gpt-4o-2024-08-06",
     baseUrl: "https://api.openai.com",
+    browserCallable: false,
   },
   openrouter: {
     id: "openrouter",
@@ -183,6 +207,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "OPENROUTER_API_KEY",
     defaultModel: "openai/gpt-4o",
     baseUrl: "https://openrouter.ai/api",
+    browserCallable: false,
   },
   perplexity: {
     id: "perplexity",
@@ -190,6 +215,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "PERPLEXITY_API_KEY",
     defaultModel: "sonar-pro",
     baseUrl: "https://api.perplexity.ai",
+    browserCallable: false,
   },
   pixverse: {
     id: "pixverse",
@@ -197,6 +223,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "PIXVERSE_API_KEY",
     defaultModel: "v4.5",
     baseUrl: "https://app-api.pixverse.ai",
+    browserCallable: false,
   },
   qwen: {
     id: "qwen",
@@ -204,6 +231,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "DASHSCOPE_API_KEY",
     defaultModel: "qwen-plus",
     baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode",
+    browserCallable: false,
   },
   recraft: {
     id: "recraft",
@@ -211,6 +239,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "RECRAFT_API_TOKEN",
     defaultModel: "recraftv3",
     baseUrl: "https://external.api.recraft.ai",
+    browserCallable: false,
   },
   sambanova: {
     id: "sambanova",
@@ -218,6 +247,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "SAMBANOVA_API_KEY",
     defaultModel: "Meta-Llama-3.3-70B-Instruct",
     baseUrl: "https://api.sambanova.ai",
+    browserCallable: false,
   },
   together: {
     id: "together",
@@ -225,6 +255,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "TOGETHER_API_KEY",
     defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
     baseUrl: "https://api.together.xyz",
+    browserCallable: false,
   },
   vertex: {
     id: "vertex",
@@ -232,6 +263,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "VERTEX_BEARER_TOKEN",
     defaultModel: "imagen-3.0-generate-002",
     baseUrl: "https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models",
+    browserCallable: false,
   },
   vidu: {
     id: "vidu",
@@ -239,6 +271,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "VIDU_API_KEY",
     defaultModel: "viduq3-pro",
     baseUrl: "https://api.vidu.com",
+    browserCallable: false,
   },
   vllm: {
     id: "vllm",
@@ -246,6 +279,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "VLLM_API_KEY",
     defaultModel: "",
     baseUrl: "http://localhost:8000",
+    browserCallable: false,
   },
   workersai: {
     id: "workersai",
@@ -253,6 +287,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "CLOUDFLARE_API_TOKEN",
     defaultModel: "@cf/meta/llama-3.1-8b-instruct",
     baseUrl: "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
+    browserCallable: false,
   },
   yi: {
     id: "yi",
@@ -260,6 +295,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "YI_API_KEY",
     defaultModel: "yi-large",
     baseUrl: "https://api.01.ai",
+    browserCallable: false,
   },
   zhipu: {
     id: "zhipu",
@@ -267,6 +303,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "ZHIPU_API_KEY",
     defaultModel: "glm-4-plus",
     baseUrl: "https://open.bigmodel.cn/api/paas",
+    browserCallable: false,
   },
 };
 
