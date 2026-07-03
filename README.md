@@ -467,6 +467,26 @@ A pre-phase veto throws `MiddlewareVetoError` so it can be discriminated from tr
 
 Wired at seven sites: `Text.prompt`, `Text.stream`, `Agent` LLM call, `Agent` tool execution (`op=tool_call`), `Upload.run` (`op=upload`), `Text.submitBatch` / `Text.batch` (`op=batch_submit`), Google resource caching pre-flight (`op=cache_create`).
 
+## Telemetry
+
+Opt-in OpenTelemetry. Attach a `Telemetry` and every call — success and rejection alike — produces one OTEL GenAI span (operation, provider, model, token usage, and `error.type` on failure) as standards-compliant OTLP/JSON bytes. llmkit builds the span; you decide where the bytes go. Off unless attached.
+
+```ts
+import { openai, httpExport } from "@aktagon/llmkit-ts";
+
+// Batteries: POST every span to an OTLP collector.
+const client = openai(process.env.OPENAI_API_KEY).addTelemetry({
+  export: httpExport("https://collector:4318"),
+});
+
+// Or bring your own transport — hand the bytes to your OTEL SDK:
+client.addTelemetry({ export: (b) => batchProcessor.enqueue(b) });
+
+const resp = await client.text.prompt("Hello");
+```
+
+`httpExport` is a fail-open POST — convenient for low volume; for high volume hand your own callback into your OTEL SDK's batch processor. The same OTLP span shape is emitted byte-for-byte across all four SDKs, so one collector serves a polyglot fleet. A telemetry config with no `export` throws a `ValidationError`.
+
 ## Self-hosted endpoints
 
 ```ts
