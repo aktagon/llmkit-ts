@@ -11,7 +11,11 @@ import { fileURLToPath } from "node:url";
 
 import { newClient } from "../src/llmkit.ts";
 import { ValidationError } from "../src/errors.ts";
-import { buildOTLPTraces, telemetryMiddleware } from "../src/telemetry.ts";
+import {
+  buildOTLPTraces,
+  httpExport,
+  telemetryMiddleware,
+} from "../src/telemetry.ts";
 import type { Event } from "../src/providers/middleware.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -80,8 +84,50 @@ describe("telemetry — OTLP wire parity", () => {
   });
 });
 
-describe("telemetry — exporter wiring", () => {
-  test("post-phase Event POSTs to /v1/traces with headers + resourceSpans", async () => {
+const POST_EVENT: Event = {
+  op: "llm_request",
+  phase: "post",
+  provider: "openai",
+  model: "gpt-4o",
+  usage: {
+    input: 10,
+    output: 20,
+    cacheWrite: 0,
+    cacheRead: 0,
+    reasoning: 0,
+    cost: 0,
+  },
+};
+
+describe("telemetry — export callback (ADR-059)", () => {
+  test("post phase hands finished OTLP bytes to export exactly once", () => {
+    const got: Uint8Array[] = [];
+    const mw = telemetryMiddleware({ export: (b) => got.push(b) });
+
+    // Pre phase never exports.
+    expect(mw(undefined, { ...POST_EVENT, phase: "pre" })).toBeNull();
+    expect(got.length).toBe(0);
+
+    expect(mw(undefined, POST_EVENT)).toBeNull();
+    expect(got.length).toBe(1);
+    const parsed = JSON.parse(new TextDecoder().decode(got[0])) as {
+      resourceSpans?: unknown;
+    };
+    expect(parsed.resourceSpans).toBeDefined();
+  });
+
+  test("a throwing callback fails open — never surfaces to the caller", () => {
+    const mw = telemetryMiddleware({
+      export: () => {
+        throw new Error("callback blew up");
+      },
+    });
+    expect(mw(undefined, POST_EVENT)).toBeNull();
+  });
+});
+
+describe("telemetry — httpExport batteries", () => {
+  test("httpExport POSTs to /v1/traces with headers + resourceSpans", async () => {
     let resolveReq: (v: {
       path: string;
       auth: string | null;
@@ -111,24 +157,11 @@ describe("telemetry — exporter wiring", () => {
     });
     try {
       const mw = telemetryMiddleware({
-        endpoint: `http://localhost:${server.port}`,
-        headers: { authorization: "Bearer secret" },
+        export: httpExport(`http://localhost:${server.port}`, {
+          authorization: "Bearer secret",
+        }),
       });
-      const ev: Event = {
-        op: "llm_request",
-        phase: "post",
-        provider: "openai",
-        model: "gpt-4o",
-        usage: {
-          input: 10,
-          output: 20,
-          cacheWrite: 0,
-          cacheRead: 0,
-          reasoning: 0,
-          cost: 0,
-        },
-      };
-      const err = mw(undefined, ev);
+      const err = mw(undefined, POST_EVENT);
       expect(err).toBeNull();
 
       const got = await received;
@@ -141,29 +174,26 @@ describe("telemetry — exporter wiring", () => {
       server.stop(true);
     }
   });
+
+  test("httpExport to a dead endpoint fails open", () => {
+    const mw = telemetryMiddleware({
+      export: httpExport("http://127.0.0.1:1"),
+    });
+    expect(mw(undefined, POST_EVENT)).toBeNull();
+  });
 });
 
 describe("telemetry — config contract", () => {
-  test("withTelemetry throws ValidationError on empty endpoint", () => {
+  test("withTelemetry throws ValidationError on missing export (TEL-017)", () => {
     const c = newClient("openai", "key");
     let caught: unknown;
     try {
-      c.withTelemetry({ endpoint: "" });
+      // deliberately omit export to exercise the honest-contract guard
+      c.withTelemetry({} as never);
     } catch (e) {
       caught = e;
     }
     expect(caught).toBeInstanceOf(ValidationError);
-    expect((caught as ValidationError).field).toBe("telemetry.endpoint");
-  });
-
-  test("bad endpoint fails open — never throws or blocks", () => {
-    const mw = telemetryMiddleware({ endpoint: "http://127.0.0.1:1" });
-    const ev: Event = {
-      op: "llm_request",
-      phase: "post",
-      provider: "openai",
-      model: "gpt-4o",
-    };
-    expect(mw(undefined, ev)).toBeNull();
+    expect((caught as ValidationError).field).toBe("telemetry.export");
   });
 });

@@ -20,12 +20,16 @@ import {
   TELEMETRY_TRACES_PATH,
 } from "./providers/telemetry_gen.ts";
 
-// Telemetry is the opt-in observability config. CaptureContent gates tier-2
-// message payloads (default false for privacy); the middleware Event does not
-// carry payloads yet, so it reserves the semantics for a deferred follow-up.
+// Telemetry is the opt-in observability config (ADR-059). `export` receives the
+// finished OTLP/HTTP proto3-JSON bytes for one span, called synchronously on the
+// post phase; llmkit does no telemetry network I/O and spawns no worker. What the
+// callback does — enqueue into an OTEL SDK, POST, drop — plus all batching and
+// backpressure is the caller's concern. Use `httpExport` for a batteries POST. A
+// missing `export` is a ValidationError (honest-contract lineage). `captureContent`
+// gates tier-2 message payloads (default false); the Event carries none yet, so it
+// reserves the semantics for a deferred follow-up.
 export interface Telemetry {
-  endpoint: string;
-  headers?: Record<string, string>;
+  export: (bytes: Uint8Array) => void;
   captureContent?: boolean;
 }
 
@@ -121,48 +125,64 @@ function randHex(bytes: number): string {
   return out;
 }
 
-// exportTelemetry serializes a post-phase Event to an OTLP traces payload and
-// POSTs it. Fail-open: every error (bad endpoint, timeout) is swallowed and the
-// fetch is fire-and-forget, so telemetry never blocks or fails the call.
-function exportTelemetry(t: Telemetry, e: Event): void {
-  try {
-    const op = TELEMETRY_OPERATION_NAME[e.op] ?? e.op;
-    const errType = classifyError(e.err);
-    const now = String(BigInt(Date.now()) * 1_000_000n);
-    const payload = buildOTLPTraces(
-      op,
-      e.provider,
-      e.model,
-      e.usage?.input ?? 0,
-      e.usage?.output ?? 0,
-      errType,
-      randHex(16),
-      randHex(8),
-      now,
-      now,
-    );
-    const url = t.endpoint.replace(/\/+$/, "") + TELEMETRY_TRACES_PATH;
-    const headers: Record<string, string> = {
+// buildTelemetryPayload classifies a post-phase Event and renders it to the OTLP
+// traces bytes. Span identity + timing are stamped here (the pure builder takes
+// them as arguments so the parity goldens can inject fixed values). Returns bytes
+// so the Export contract is uniform with Go []byte / Python bytes / Rust &[u8].
+function buildTelemetryPayload(e: Event): Uint8Array {
+  const op = TELEMETRY_OPERATION_NAME[e.op] ?? e.op;
+  const errType = classifyError(e.err);
+  const now = String(BigInt(Date.now()) * 1_000_000n);
+  const json = buildOTLPTraces(
+    op,
+    e.provider,
+    e.model,
+    e.usage?.input ?? 0,
+    e.usage?.output ?? 0,
+    errType,
+    randHex(16),
+    randHex(8),
+    now,
+    now,
+  );
+  return new TextEncoder().encode(json);
+}
+
+// httpExport returns an Export callback that POSTs each OTLP payload to
+// endpoint + "/v1/traces" with caller headers, fail-open (a dead collector never
+// surfaces). It spawns no background worker and needs no close.
+//
+// Low-volume only: hand your own callback to your OTEL SDK for high volume. JS
+// has no blocking HTTP, so unlike the Go/Python/Rust batteries POST the fetch is
+// fire-and-forget (not awaited) — llmkit still spawns nothing; the callback just
+// dispatches a non-blocking request.
+export function httpExport(
+  endpoint: string,
+  headers?: Record<string, string>,
+): (bytes: Uint8Array) => void {
+  const url = endpoint.replace(/\/+$/, "") + TELEMETRY_TRACES_PATH;
+  return (bytes: Uint8Array): void => {
+    const h: Record<string, string> = {
       "content-type": "application/json",
-      ...(t.headers ?? {}),
+      ...(headers ?? {}),
     };
-    // FU-2 invariant: the fetch is NOT awaited, so export is non-blocking — a
-    // slow/hung collector never adds latency to the caller. This is the shape
-    // Go/Python/Rust match (goroutine / daemon thread / detached thread). Do not
-    // add `await` here.
-    void fetch(url, { method: "POST", headers, body: payload }).catch(() => {});
-  } catch {
-    // fail-open: telemetry must never surface to the caller.
-  }
+    void fetch(url, { method: "POST", headers: h, body: bytes }).catch(() => {});
+  };
 }
 
 // telemetryMiddleware builds the export hook. Only the post phase exports; the
-// pre phase is a no-op (no veto). Empty-endpoint validation happens earlier in
-// withTelemetry (fail-loud at attach time, the JS idiom).
+// pre phase is a no-op (no veto). Missing-export validation happens earlier in
+// withTelemetry (fail-loud at attach time, the JS idiom). Export is called
+// SYNCHRONOUSLY (ADR-059) inside a try/catch so a throwing callback never
+// surfaces to the caller (fail-open).
 export function telemetryMiddleware(t: Telemetry): MiddlewareFn {
   return (_ctx, e): Error | null => {
     if (e.phase !== "post") return null;
-    exportTelemetry(t, e);
+    try {
+      t.export(buildTelemetryPayload(e));
+    } catch {
+      // fail-open: telemetry must never surface to the caller.
+    }
     return null;
   };
 }
@@ -180,10 +200,10 @@ Client.prototype.withTelemetry = function (
   this: Client,
   t: Telemetry,
 ): Client {
-  if (!t.endpoint) {
+  if (typeof t.export !== "function") {
     throw new ValidationError(
-      "telemetry.endpoint",
-      "endpoint is required when telemetry is enabled",
+      "telemetry.export",
+      "export is required when telemetry is enabled (use httpExport for a batteries POST)",
     );
   }
   const mw = telemetryMiddleware(t);
