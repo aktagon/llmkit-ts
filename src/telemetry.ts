@@ -1,4 +1,4 @@
-// Opt-in observability (ADR-054). Attach with Client.withTelemetry to export an
+// Opt-in observability (ADR-054). Attach with Client.addTelemetry to export an
 // OTEL GenAI-aligned span over OTLP/HTTP (JSON) on every provider call — success
 // and rejection. Off unless attached; an empty endpoint is a ValidationError
 // (the honest-contract lineage — no enabled-but-no-sink state). Handwritten
@@ -172,7 +172,7 @@ export function httpExport(
 
 // telemetryMiddleware builds the export hook. Only the post phase exports; the
 // pre phase is a no-op (no veto). Missing-export validation happens earlier in
-// withTelemetry (fail-loud at attach time, the JS idiom). Export is called
+// addTelemetry (fail-loud at attach time, the JS idiom). Export is called
 // SYNCHRONOUSLY (ADR-059) inside a try/catch so a throwing callback never
 // surfaces to the caller (fail-open).
 export function telemetryMiddleware(t: Telemetry): MiddlewareFn {
@@ -187,16 +187,16 @@ export function telemetryMiddleware(t: Telemetry): MiddlewareFn {
   };
 }
 
-// Augment the generated Client with the handwritten withTelemetry method — the
+// Augment the generated Client with the handwritten addTelemetry method — the
 // Go reference adds it as a method in a sibling file of the same package; the TS
 // equivalent is a prototype augmentation, since builders.ts is codegen-owned.
 declare module "./builders/builders.ts" {
   interface Client {
-    withTelemetry(t: Telemetry): Client;
+    addTelemetry(t: Telemetry): Client;
   }
 }
 
-Client.prototype.withTelemetry = function (
+Client.prototype.addTelemetry = function (
   this: Client,
   t: Telemetry,
 ): Client {

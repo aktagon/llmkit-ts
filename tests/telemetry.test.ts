@@ -184,12 +184,12 @@ describe("telemetry — httpExport batteries", () => {
 });
 
 describe("telemetry — config contract", () => {
-  test("withTelemetry throws ValidationError on missing export (TEL-017)", () => {
+  test("addTelemetry throws ValidationError on missing export (TEL-017)", () => {
     const c = newClient("openai", "key");
     let caught: unknown;
     try {
       // deliberately omit export to exercise the honest-contract guard
-      c.withTelemetry({} as never);
+      c.addTelemetry({} as never);
     } catch (e) {
       caught = e;
     }
