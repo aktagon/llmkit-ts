@@ -192,11 +192,11 @@ export function telemetryMiddleware(t: Telemetry): MiddlewareFn {
 //
 declare module "./builders/builders.ts" {
   interface Client {
-    withTelemetry(t: Telemetry): Client;
+    addTelemetry(t: Telemetry): Client;
   }
 }
 
-Client.prototype.withTelemetry = function (
+Client.prototype.addTelemetry = function (
   this: Client,
   t: Telemetry,
 ): Client {
