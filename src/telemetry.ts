@@ -23,9 +23,13 @@ import {
 //
 //
 //
+//
+//
+//
+//
+//
 export interface Telemetry {
-  endpoint: string;
-  headers?: Record<string, string>;
+  export: (bytes: Uint8Array) => void;
   captureContent?: boolean;
 }
 
@@ -124,45 +128,61 @@ function randHex(bytes: number): string {
 //
 //
 //
-function exportTelemetry(t: Telemetry, e: Event): void {
-  try {
-    const op = TELEMETRY_OPERATION_NAME[e.op] ?? e.op;
-    const errType = classifyError(e.err);
-    const now = String(BigInt(Date.now()) * 1_000_000n);
-    const payload = buildOTLPTraces(
-      op,
-      e.provider,
-      e.model,
-      e.usage?.input ?? 0,
-      e.usage?.output ?? 0,
-      errType,
-      randHex(16),
-      randHex(8),
-      now,
-      now,
-    );
-    const url = t.endpoint.replace(/\/+$/, "") + TELEMETRY_TRACES_PATH;
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      ...(t.headers ?? {}),
-    };
-    //
-    //
-    //
-    //
-    void fetch(url, { method: "POST", headers, body: payload }).catch(() => {});
-  } catch {
-    //
-  }
+//
+function buildTelemetryPayload(e: Event): Uint8Array {
+  const op = TELEMETRY_OPERATION_NAME[e.op] ?? e.op;
+  const errType = classifyError(e.err);
+  const now = String(BigInt(Date.now()) * 1_000_000n);
+  const json = buildOTLPTraces(
+    op,
+    e.provider,
+    e.model,
+    e.usage?.input ?? 0,
+    e.usage?.output ?? 0,
+    errType,
+    randHex(16),
+    randHex(8),
+    now,
+    now,
+  );
+  return new TextEncoder().encode(json);
 }
 
+//
+//
+//
+//
+//
+//
+//
+//
+export function httpExport(
+  endpoint: string,
+  headers?: Record<string, string>,
+): (bytes: Uint8Array) => void {
+  const url = endpoint.replace(/\/+$/, "") + TELEMETRY_TRACES_PATH;
+  return (bytes: Uint8Array): void => {
+    const h: Record<string, string> = {
+      "content-type": "application/json",
+      ...(headers ?? {}),
+    };
+    void fetch(url, { method: "POST", headers: h, body: bytes }).catch(() => {});
+  };
+}
+
+//
+//
 //
 //
 //
 export function telemetryMiddleware(t: Telemetry): MiddlewareFn {
   return (_ctx, e): Error | null => {
     if (e.phase !== "post") return null;
-    exportTelemetry(t, e);
+    try {
+      t.export(buildTelemetryPayload(e));
+    } catch {
+      //
+    }
     return null;
   };
 }
@@ -180,10 +200,10 @@ Client.prototype.withTelemetry = function (
   this: Client,
   t: Telemetry,
 ): Client {
-  if (!t.endpoint) {
+  if (typeof t.export !== "function") {
     throw new ValidationError(
-      "telemetry.endpoint",
-      "endpoint is required when telemetry is enabled",
+      "telemetry.export",
+      "export is required when telemetry is enabled (use httpExport for a batteries POST)",
     );
   }
   const mw = telemetryMiddleware(t);

@@ -138,7 +138,7 @@ export { MiddlewareVetoError } from "./middleware.ts";
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";
 //
 //
-export { buildOTLPTraces } from "./telemetry.ts";
+export { buildOTLPTraces, httpExport } from "./telemetry.ts";
 export type { Telemetry } from "./telemetry.ts";
 export {
   saveHistory,
