@@ -15,6 +15,7 @@ import {
   optionOverrides,
   supportedOptions,
 } from "./providers/options.ts";
+import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
 import { extractIntPath, extractPath } from "./paths.ts";
 import type {
@@ -262,6 +263,20 @@ export function buildRequest(
     applyStructuredOutput(body, headersOut, request.schema, provider.name);
   }
 
+  // BUG-017: when the request references uploaded files, the Messages request
+  // must carry the provider's file-upload beta header so the {type:"document",
+  // source:{type:"file"}} block is accepted. Composed onto any existing
+  // anthropic-beta (e.g. structured output) — comma-separated, deduped.
+  if (headersOut && (request.files?.length ?? 0) > 0) {
+    const fu = fileUploadConfig(provider.name);
+    if (fu && fu.betaHeader) {
+      headersOut["anthropic-beta"] = appendBeta(
+        headersOut["anthropic-beta"] ?? "",
+        fu.betaHeader,
+      );
+    }
+  }
+
   // ADR-055 Responses wire-shape body fixup: the Responses API names the
   // output-token cap max_output_tokens and rejects max_tokens with a 400
   // (live-verified 2026-07-02). Every other body field is shared with Chat
@@ -272,6 +287,17 @@ export function buildRequest(
   }
 
   return body;
+}
+
+// appendBeta composes a beta token onto an existing anthropic-beta header value
+// without overwriting: comma-separated, deduped (never re-adds a token already
+// present). Mirrors the Go appendBeta helper (BUG-017).
+function appendBeta(existing: string, add: string): string {
+  if (add === "") return existing;
+  if (existing === "") return add;
+  const present = existing.split(",").map((t) => t.trim());
+  if (present.includes(add)) return existing;
+  return `${existing},${add}`;
 }
 
 // applyStructuredOutput writes the provider-shaped structured-output fields onto

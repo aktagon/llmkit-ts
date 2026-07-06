@@ -368,6 +368,34 @@ describe("Text.file — document block (BUG-014)", () => {
     }
   });
 
+  test("Anthropic: file id adds the files-api beta header (BUG-017)", async () => {
+    let receivedBeta: string | null = null as string | null;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBeta = req.headers.get("anthropic-beta");
+        return new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: "ok" }],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        );
+      },
+    });
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      const resp = await c.text
+        .model("claude-opus-4-8")
+        .file("file_011CMZq8h5Vn")
+        .prompt("Summarize the attached document.");
+      expect(resp.text).toBe("ok");
+      expect(receivedBeta).toBe("files-api-2025-04-14");
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("OpenAI: file id emits a file block before the prompt text", async () => {
     let receivedBody: any = {};
     const server = Bun.serve({
