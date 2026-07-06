@@ -396,6 +396,42 @@ describe("Text.file — document block (BUG-014)", () => {
     }
   });
 
+  test("Anthropic: schema + file id compose both beta tokens without overwriting (BUG-017 appendBeta)", async () => {
+    let receivedBeta: string | null = null as string | null;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBeta = req.headers.get("anthropic-beta");
+        return new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: "ok" }],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        );
+      },
+    });
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = `http://localhost:${server.port}`;
+      // Structured output sets anthropic-beta=structured-outputs-...; the file
+      // reference must APPEND files-api-... onto it (appendBeta compose path),
+      // not overwrite it — otherwise one of the two features 400s.
+      const resp = await c.text
+        .model("claude-opus-4-8")
+        .schema(
+          '{"type":"object","properties":{"summary":{"type":"string"}},"additionalProperties":false}',
+        )
+        .file("file_011CMZq8h5Vn")
+        .prompt("Summarize the attached document as structured data.");
+      expect(resp.text).toBe("ok");
+      expect(receivedBeta).toBe(
+        "structured-outputs-2025-11-13,files-api-2025-04-14",
+      );
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("OpenAI: file id emits a file block before the prompt text", async () => {
     let receivedBody: any = {};
     const server = Bun.serve({
