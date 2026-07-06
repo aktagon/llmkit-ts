@@ -18,6 +18,7 @@ import {
 import { ValidationError } from "./errors.ts";
 import { extractIntPath, extractPath } from "./paths.ts";
 import type {
+  InputImage,
   Provider,
   Request as PromptRequest,
   PromptOptions,
@@ -175,23 +176,35 @@ export function buildRequest(
     if (request.system) {
       body.system = [{ text: request.system }];
     }
-    body.messages = buildBedrockMessages(msgs, cfg);
+    body.messages = buildBedrockMessages(msgs, cfg, request.images ?? []);
   } else if (cfg.chatWireShape === "ChatGoogle") {
     if (request.system) {
       body.system_instruction = { parts: [{ text: request.system }] };
     }
-    body.contents = buildGoogleContents(msgs, cfg);
+    body.contents = buildGoogleContents(
+      msgs,
+      cfg,
+      request.files ?? [],
+      request.images ?? [],
+    );
   } else if (cfg.chatWireShape === "ChatResponsesOpenAI") {
     //
     //
     //
-    body.input = buildMessages(msgs, request.system ?? "", cfg, request.files ?? []);
+    body.input = buildMessages(
+      msgs,
+      request.system ?? "",
+      cfg,
+      request.files ?? [],
+      request.images ?? [],
+    );
   } else {
     body.messages = buildMessages(
       msgs,
       request.system ?? "",
       cfg,
       request.files ?? [],
+      request.images ?? [],
     );
     if (cfg.systemPlacement === "TopLevelField" && request.system) {
       body.system = request.system;
@@ -606,6 +619,7 @@ function toMessageList(request: PromptRequest): Msg[] {
 function buildBedrockMessages(
   msgs: Msg[],
   cfg: ProviderSpec,
+  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
   return msgs.map((m): Record<string, unknown> => {
     switch (m.kind) {
@@ -631,7 +645,10 @@ function buildBedrockMessages(
       case "text":
         return {
           role: cfg.roleMappings[m.role] ?? m.role,
-          content: [{ text: m.text }],
+          content:
+            images.length > 0 && m.role === "user" && msgs.length === 1
+              ? buildBedrockContentParts(m.text, images)
+              : [{ text: m.text }],
         };
       default: {
         const _exhaustive: never = m;
@@ -646,7 +663,10 @@ function buildBedrockMessages(
 function buildGoogleContents(
   msgs: Msg[],
   cfg: ProviderSpec,
+  files: File[] = [],
+  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
+  const hasMedia = files.length > 0 || images.length > 0;
   return msgs.map((m): Record<string, unknown> => {
     switch (m.kind) {
       case "result":
@@ -671,7 +691,10 @@ function buildGoogleContents(
       case "text":
         return {
           role: cfg.roleMappings[m.role] ?? m.role,
-          parts: [{ text: m.text }],
+          parts:
+            hasMedia && m.role === "user" && msgs.length === 1
+              ? buildGoogleContentParts(m.text, files, images)
+              : [{ text: m.text }],
         };
       default: {
         const _exhaustive: never = m;
@@ -692,6 +715,7 @@ function buildGoogleContents(
 function buildFlatContentParts(
   text: string,
   files: File[],
+  images: InputImage[],
   cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
   const isAnthropic = cfg.chatWireShape === "ChatAnthropic";
@@ -703,8 +727,90 @@ function buildFlatContentParts(
         : { type: "file", file: { file_id: f.id } },
     );
   }
+  for (const img of images) {
+    if (isAnthropic) {
+      if (img.url.startsWith("data:")) {
+        const [mimeType, data] = parseDataURI(img.url);
+        parts.push({
+          type: "image",
+          source: { type: "base64", media_type: mimeType, data },
+        });
+      } else {
+        parts.push({ type: "image", source: { type: "url", url: img.url } });
+      }
+    } else {
+      parts.push({
+        type: "image_url",
+        image_url: { url: img.url, detail: img.detail || "auto" },
+      });
+    }
+  }
   parts.push({ type: "text", text });
   return parts;
+}
+
+//
+//
+//
+function parseDataURI(uri: string): [string, string] {
+  if (!uri.startsWith("data:")) return ["", uri];
+  const rest = uri.slice("data:".length);
+  const comma = rest.indexOf(",");
+  if (comma < 0) return ["", uri];
+  const meta = rest.slice(0, comma); // "image/png;base64"
+  const data = rest.slice(comma + 1);
+  const mimeType = meta.endsWith(";base64")
+    ? meta.slice(0, -";base64".length)
+    : meta;
+  return [mimeType, data];
+}
+
+//
+//
+//
+function buildGoogleContentParts(
+  text: string,
+  files: File[],
+  images: InputImage[],
+): Array<Record<string, unknown>> {
+  const parts: Array<Record<string, unknown>> = [];
+  for (const f of files) {
+    parts.push({
+      file_data: { file_uri: f.uri, mime_type: f.mimeType },
+    });
+  }
+  for (const img of images) {
+    const [uriMime, data] = parseDataURI(img.url);
+    const mimeType = uriMime || img.mimeType || "image/jpeg";
+    parts.push({ inline_data: { mime_type: mimeType, data } });
+  }
+  parts.push({ text });
+  return parts;
+}
+
+//
+//
+function buildBedrockContentParts(
+  text: string,
+  images: InputImage[],
+): Array<Record<string, unknown>> {
+  const parts: Array<Record<string, unknown>> = [];
+  for (const img of images) {
+    const [uriMime, data] = parseDataURI(img.url);
+    const mimeType = uriMime || img.mimeType;
+    parts.push({
+      image: { format: bedrockImageFormat(mimeType), source: { bytes: data } },
+    });
+  }
+  parts.push({ text });
+  return parts;
+}
+
+//
+//
+function bedrockImageFormat(mimeType: string): string {
+  const i = mimeType.lastIndexOf("/");
+  return i >= 0 ? mimeType.slice(i + 1) : mimeType;
 }
 
 function buildMessages(
@@ -712,6 +818,7 @@ function buildMessages(
   system: string,
   cfg: ProviderSpec,
   files: File[] = [],
+  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
 
@@ -722,6 +829,7 @@ function buildMessages(
     });
   }
 
+  const hasMedia = files.length > 0 || images.length > 0;
   for (const m of msgs) {
     switch (m.kind) {
       case "result":
@@ -737,8 +845,8 @@ function buildMessages(
         out.push({
           role: cfg.roleMappings[m.role] ?? m.role,
           content:
-            files.length > 0 && m.role === "user" && msgs.length === 1
-              ? buildFlatContentParts(m.text, files, cfg)
+            hasMedia && m.role === "user" && msgs.length === 1
+              ? buildFlatContentParts(m.text, files, images, cfg)
               : m.text,
         });
         break;
