@@ -15,6 +15,7 @@ import {
   optionOverrides,
   supportedOptions,
 } from "./providers/options.ts";
+import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
 import { extractIntPath, extractPath } from "./paths.ts";
 import type {
@@ -266,12 +267,37 @@ export function buildRequest(
   //
   //
   //
+  if (headersOut && (request.files?.length ?? 0) > 0) {
+    const fu = fileUploadConfig(provider.name);
+    if (fu && fu.betaHeader) {
+      headersOut["anthropic-beta"] = appendBeta(
+        headersOut["anthropic-beta"] ?? "",
+        fu.betaHeader,
+      );
+    }
+  }
+
+  //
+  //
+  //
+  //
   if (cfg.chatWireShape === "ChatResponsesOpenAI" && "max_tokens" in body) {
     body.max_output_tokens = body.max_tokens;
     delete body.max_tokens;
   }
 
   return body;
+}
+
+//
+//
+//
+function appendBeta(existing: string, add: string): string {
+  if (add === "") return existing;
+  if (existing === "") return add;
+  const present = existing.split(",").map((t) => t.trim());
+  if (present.includes(add)) return existing;
+  return `${existing},${add}`;
 }
 
 //
