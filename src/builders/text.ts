@@ -14,7 +14,6 @@
 //
 //
 //
-//
 
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -30,7 +29,14 @@ import {
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event } from "../providers/middleware.ts";
-import type { PromptOptions, Provider, Request, Response } from "../types.ts";
+import type {
+  InputImage,
+  PromptOptions,
+  Provider,
+  Request,
+  Response,
+} from "../types.ts";
+import { bytesToBase64 } from "../image.ts";
 import type { Text } from "./builders.ts";
 
 
@@ -53,9 +59,20 @@ export function buildPromptArgs(
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;
 
   //
+  //
+  //
   const textSegments: string[] = [];
+  const images: InputImage[] = [];
   for (const p of b._parts) {
-    if ("text" in p) textSegments.push(p.text);
+    if ("text" in p) {
+      textSegments.push(p.text);
+    } else if ("image" in p) {
+      images.push({
+        url: `data:${p.image.mimeType};base64,${bytesToBase64(p.image.bytes)}`,
+        mimeType: p.image.mimeType,
+        detail: "",
+      });
+    }
   }
   if (finalText) textSegments.push(finalText);
   const user = textSegments.join("");
@@ -80,6 +97,7 @@ export function buildPromptArgs(
     request.user = user;
   }
   if (b._files.length > 0) request.files = b._files;
+  if (images.length > 0) request.images = images;
   if (b._schema) request.schema = b._schema;
 
   const options: PromptOptions = {};

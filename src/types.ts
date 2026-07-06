@@ -63,7 +63,20 @@ export interface Request {
   user?: string;
   messages?: Message[];
   files?: File[];
+  images?: InputImage[];
   schema?: string;
+}
+
+
+
+
+
+
+
+export interface InputImage {
+  url: string;
+  mimeType: string;
+  detail: string;
 }
 
 export interface Usage {
