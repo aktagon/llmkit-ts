@@ -37,6 +37,23 @@ function assertWireGolden(fixture: string, body: unknown): void {
   expect(body).toEqual(golden);
 }
 
+function headerArtifactPath(fixture: string): string {
+  return resolve(REPO_ROOT, "target", "wire", "request", fixture, "ts.headers.json");
+}
+
+// assertWireHeaders drops the per-SDK request-header artifact (lowercased keys —
+// the Headers object already normalizes them) for the cross-SDK comparator's
+// opt-in header subset-match (HANDOFF-028), closing BUG-017's deferred golden
+// header lock. A fixture with a companion <fixture>.headers.json golden has each
+// named header asserted value-equal across all four SDKs.
+function assertWireHeaders(fixture: string, headers: Headers): void {
+  const out = headerArtifactPath(fixture);
+  mkdirSync(dirname(out), { recursive: true });
+  const flat: Record<string, string> = {};
+  for (const [k, v] of headers.entries()) flat[k.toLowerCase()] = v;
+  writeFileSync(out, JSON.stringify(flat, null, 2));
+}
+
 // startMock returns a server that records the outbound JSON body plus request
 // headers (headers feed the in-driver asserts for load-bearing headers, e.g.
 // Anthropic's structured-output beta header) and answers with a shape valid
@@ -146,6 +163,7 @@ describe("request wire — cross-capability", () => {
     // this beta header Anthropic rejects output_format with a 400.
     expect(m.headers().get("anthropic-beta")).toBe("structured-outputs-2025-11-13");
     assertWireGolden("structured-output-anthropic", m.body());
+    assertWireHeaders("structured-output-anthropic", m.headers());
   });
 
   test("text + document (Anthropic) matches shared golden", async () => {
@@ -161,6 +179,10 @@ describe("request wire — cross-capability", () => {
       m.stop();
     }
     assertWireGolden("anthropic-text-document", m.body());
+    // BUG-017 / HANDOFF-028: the Files API beta must ride on the Messages request
+    // referencing an uploaded file — golden-locked across all four SDKs via the
+    // companion anthropic-text-document.headers.json.
+    assertWireHeaders("anthropic-text-document", m.headers());
   });
 
   test("text + document (OpenAI) matches shared golden", async () => {
