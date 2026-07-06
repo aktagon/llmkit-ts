@@ -166,6 +166,23 @@ describe("request wire — cross-capability", () => {
     assertWireHeaders("structured-output-anthropic", m.headers());
   });
 
+  test("schema + document (Anthropic) composes both anthropic-beta tokens (BUG-017/HANDOFF-028)", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireAnthropicSchemaDocumentModel)
+        .schema(wi.wireAnthropicSchemaDocumentSchema)
+        .file(wi.wireAnthropicSchemaDocumentFileId)
+        .prompt(wi.wireAnthropicSchemaDocumentPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("anthropic-schema-document", m.body());
+    assertWireHeaders("anthropic-schema-document", m.headers());
+  });
+
   test("text + document (Anthropic) matches shared golden", async () => {
     const m = startMock();
     try {

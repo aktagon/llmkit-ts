@@ -4,6 +4,10 @@
 // from ontology/wire-fixtures.ttl. Consumed by the request-wire
 // conformance drivers; codegen/lint_wire_witness.py derives witness
 // coverage from the same facts.
+export const wireAnthropicSchemaDocumentModel = "claude-opus-4-8";
+export const wireAnthropicSchemaDocumentPrompt = "Summarize the attached document as structured data.";
+export const wireAnthropicSchemaDocumentSchema = "{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}";
+export const wireAnthropicSchemaDocumentFileId = "file_011CMZq8h5VnVe8jL3qK7p2R";
 export const wireAnthropicTextDocumentModel = "claude-opus-4-8";
 export const wireAnthropicTextDocumentPrompt = "Summarize the attached document in three sentences.";
 export const wireAnthropicTextDocumentFileId = "file_011CMZq8h5VnVe8jL3qK7p2R";
