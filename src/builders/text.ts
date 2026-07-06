@@ -9,12 +9,11 @@
 // reuse the existing buildRequest/executeRequest/applyCaching layer
 // without duplicating ~150 LOC of provider-specific request shaping.
 //
-// Limitations carried over from slice 1:
-//  - Image parts in `_parts` are ignored (legacy TS Request has no
-//    `images` field). Text parts are concatenated, then `finalText`
-//    is appended as the last text segment if non-empty.
-// Tracked under ADR-008 OQ-2. (`_files` is now threaded to the wire
-// document block — BUG-014.)
+// `_parts` handling: text parts are concatenated (then `finalText` is
+// appended as the last text segment if non-empty); image parts lower into
+// `request.images` as base64 `data:` URIs and reach the wire as native image
+// blocks (ADR-060, resolving ADR-008 OQ-2). `_files` threads to the wire
+// document block (BUG-014).
 
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -30,7 +29,14 @@ import {
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event } from "../providers/middleware.ts";
-import type { PromptOptions, Provider, Request, Response } from "../types.ts";
+import type {
+  InputImage,
+  PromptOptions,
+  Provider,
+  Request,
+  Response,
+} from "../types.ts";
+import { bytesToBase64 } from "../image.ts";
 import type { Text } from "./builders.ts";
 
 /**
@@ -52,10 +58,21 @@ export function buildPromptArgs(
   if (b._model) provider.model = b._model;
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;
 
-  // Concatenate accumulated text parts, then append finalText.
+  // Concatenate accumulated text parts, then append finalText. Image parts
+  // lower into InputImage entries as base64 `data:` URIs, in caller order
+  // (ADR-060, mirroring Go's splitTextAndImages).
   const textSegments: string[] = [];
+  const images: InputImage[] = [];
   for (const p of b._parts) {
-    if ("text" in p) textSegments.push(p.text);
+    if ("text" in p) {
+      textSegments.push(p.text);
+    } else if ("image" in p) {
+      images.push({
+        url: `data:${p.image.mimeType};base64,${bytesToBase64(p.image.bytes)}`,
+        mimeType: p.image.mimeType,
+        detail: "",
+      });
+    }
   }
   if (finalText) textSegments.push(finalText);
   const user = textSegments.join("");
@@ -80,6 +97,7 @@ export function buildPromptArgs(
     request.user = user;
   }
   if (b._files.length > 0) request.files = b._files;
+  if (images.length > 0) request.images = images;
   if (b._schema) request.schema = b._schema;
 
   const options: PromptOptions = {};
