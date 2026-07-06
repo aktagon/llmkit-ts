@@ -28,8 +28,9 @@ describe("providers namespace (ADR-038/040)", () => {
     ]);
   });
 
-  test("browserCallable is the CORS fact: true for google, false otherwise (ADR-035)", () => {
+  test("browserCallable is the CORS fact: true for google + openai, false otherwise (ADR-035)", () => {
     expect(providers.info("google").browserCallable).toBe(true);
+    expect(providers.info("openai").browserCallable).toBe(true);
     expect(providers.info("grok").browserCallable).toBe(false);
   });
 
