@@ -63,7 +63,20 @@ export interface Request {
   user?: string;
   messages?: Message[];
   files?: File[];
+  images?: InputImage[];
   schema?: string;
+}
+
+/**
+ * InputImage references an image attached to a text-generation request
+ * (vision input, ADR-060). `url` is a base64 `data:` URI or a plain URL;
+ * `detail` is the OpenAI `image_url.detail` hint ("auto" when empty).
+ * Distinct from Part's `image(...)` constructor used for image generation.
+ */
+export interface InputImage {
+  url: string;
+  mimeType: string;
+  detail: string;
 }
 
 export interface Usage {

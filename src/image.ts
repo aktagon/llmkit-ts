@@ -909,7 +909,7 @@ function looksLikeSVG(data: Uint8Array): boolean {
   return s.startsWith("<?xml") || s.startsWith("<svg");
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+export function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {

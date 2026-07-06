@@ -178,6 +178,72 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("openai-text-document", m.body());
   });
 
+  // === ADR-060: inline image on the text path across the four chat wire shapes.
+  // c.text.image(mime, bytes).prompt(...) emits a native image block ahead of
+  // the prompt text; the per-provider block is selected by chatWireShape. The
+  // tiny PNG is the canonical 1x1 pixel shared with the image-edit / video-i2v
+  // fixtures. Resolves ADR-008 OQ-2 for the image modality. ===
+
+  test("text + image (Anthropic) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireAnthropicTextImageModel)
+        .image(wi.wireAnthropicTextImageImageMime, tinyPngBytes)
+        .prompt(wi.wireAnthropicTextImagePrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("anthropic-text-image", m.body());
+  });
+
+  test("text + image (OpenAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireOpenaiTextImageModel)
+        .image(wi.wireOpenaiTextImageImageMime, tinyPngBytes)
+        .prompt(wi.wireOpenaiTextImagePrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("openai-text-image", m.body());
+  });
+
+  test("text + image (Google) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.google, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireGoogleTextImageModel)
+        .image(wi.wireGoogleTextImageImageMime, tinyPngBytes)
+        .prompt(wi.wireGoogleTextImagePrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("google-text-image", m.body());
+  });
+
+  test("text + image (Bedrock) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.bedrock, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireBedrockTextImageModel)
+        .image(wi.wireBedrockTextImageImageMime, tinyPngBytes)
+        .prompt(wi.wireBedrockTextImagePrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("bedrock-text-image", m.body());
+  });
+
   // === Plan 039: nested-schema fixtures — the recursive normalization walk
   // (witness-lint first catch; see the Go drivers for the rationale). ===
 
