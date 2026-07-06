@@ -147,6 +147,19 @@ console.log(resp.text);
 
 Tool dispatch covers Anthropic `tool_use`, OpenAI `tool_calls`, Google `functionCall`, and Bedrock Converse `toolUse`. Tool errors surface to the model as the result string verbatim — sanitise tool inputs at the source.
 
+### Image input (vision)
+
+Attach an image to a text prompt with `.image(mime, bytes)`; it is sent as the
+provider's native image block (works on Anthropic, OpenAI, Google, and
+Bedrock). Bytes-based, so it works with no filesystem (e.g. a browser
+extension passing a screenshot straight through):
+
+```ts
+const resp = await c.text
+  .image("image/png", screenshotBytes)
+  .prompt("Describe this screenshot in one sentence.");
+```
+
 ### Image — text-to-image and edit
 
 ```ts
