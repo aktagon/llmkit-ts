@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-07-07
+
+### Fixed
+
+- Added a `prepare` script so the package builds `dist/` on a `github:` git install. Previously only `prepack` ran (fires on `npm publish`/`pack`, not on git installs), so a `github:aktagon/llmkit-ts` dependency resolved to a package with no build and a missing `main` entry. Lets consumers pin to a git tag without npm. No API change.
+
 ## [1.3.0] — 2026-07-06
 
 ### Added
