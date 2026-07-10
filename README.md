@@ -69,9 +69,9 @@ Runnable examples for each capability live in [`examples/`](./examples); `tests/
 | cerebras  | llama-3.3-70b                               | CEREBRAS_API_KEY  |
 | ...       | (full list in `src/providers/providers.ts`) |                   |
 
-30 providers, 4 API shapes (OpenAI-compatible, Anthropic Messages, Google Generative AI, AWS Bedrock Converse). Bedrock auth uses SigV4; other providers use API-key auth.
+36 providers, 4 API shapes (OpenAI-compatible, Anthropic Messages, Google Generative AI, AWS Bedrock Converse). Bedrock auth uses SigV4; other providers use API-key auth.
 
-Per-provider factory functions: `ai21`, `anthropic`, `azure`, `bedrock`, `cerebras`, `cohere`, `deepseek`, `doubao`, `ernie`, `fireworks`, `google`, `grok`, `groq`, `jan`, `llamacpp`, `lmstudio`, `minimax`, `mistral`, `moonshot`, `ollama`, `openai`, `openrouter`, `perplexity`, `qwen`, `sambanova`, `together`, `vertex`, `vllm`, `yi`, `zhipu`. Or use the generic `newClient(name, key)`.
+Per-provider factory functions: `ai21`, `anthropic`, `assemblyai`, `azure`, `bedrock`, `cerebras`, `cohere`, `deepseek`, `doubao`, `ernie`, `fireworks`, `google`, `grok`, `groq`, `inworld`, `jan`, `llamacpp`, `lmstudio`, `minimax`, `mistral`, `moonshot`, `ollama`, `openai`, `openrouter`, `perplexity`, `pixverse`, `qwen`, `recraft`, `sambanova`, `together`, `vertex`, `vidu`, `vllm`, `workersai`, `yi`, `zhipu`. Or use the generic `newClient(name, key)`.
 
 ## API
 
