@@ -5,6 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 export type ImageInputMode = "InlineParts" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict" | "JSONGenerations";
 export type ImageOutputMode = "Base64Inline" | "URLOrBase64";
+export type ImageResponseShape = "GoogleParts" | "DataArrayB64Json" | "VertexPredictions";
 
 export interface ImageModelDef {
   modelId: string;
@@ -20,6 +21,11 @@ export interface ImageModelDef {
 export interface ImageGenDef {
   inputMode: ImageInputMode;
   outputMode: ImageOutputMode;
+  /** Response wire family selecting the response parser (BUG-024). */
+  responseShape: ImageResponseShape;
+  /** Dotted-from-root usage-token paths; empty when unreported. */
+  usageInputPath: string;
+  usageOutputPath: string;
   maxInputCount: number;
   genEndpoint: string;
   editEndpoint: string;
@@ -30,6 +36,9 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
   google: {
     inputMode: "InlineParts",
     outputMode: "Base64Inline",
+    responseShape: "GoogleParts",
+    usageInputPath: "usageMetadata.promptTokenCount",
+    usageOutputPath: "usageMetadata.candidatesTokenCount",
     maxInputCount: 14,
     genEndpoint: "",
     editEndpoint: "",
@@ -53,6 +62,9 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
   grok: {
     inputMode: "JSONInlineRefs",
     outputMode: "Base64Inline",
+    responseShape: "DataArrayB64Json",
+    usageInputPath: "",
+    usageOutputPath: "",
     maxInputCount: 16,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "/v1/images/edits",
@@ -69,6 +81,9 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
   openai: {
     inputMode: "MultipartForm",
     outputMode: "Base64Inline",
+    responseShape: "DataArrayB64Json",
+    usageInputPath: "usage.input_tokens",
+    usageOutputPath: "usage.output_tokens",
     maxInputCount: 16,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "/v1/images/edits",
@@ -106,6 +121,9 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
   recraft: {
     inputMode: "JSONGenerations",
     outputMode: "Base64Inline",
+    responseShape: "DataArrayB64Json",
+    usageInputPath: "",
+    usageOutputPath: "",
     maxInputCount: 0,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "",
@@ -129,6 +147,9 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
   vertex: {
     inputMode: "JSONPredict",
     outputMode: "Base64Inline",
+    responseShape: "VertexPredictions",
+    usageInputPath: "",
+    usageOutputPath: "",
     maxInputCount: 1,
     genEndpoint: "",
     editEndpoint: "",

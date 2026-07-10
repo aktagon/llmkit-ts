@@ -1,7 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
-import { MiddlewareVetoError, ValidationError } from "../src/llmkit.ts";
+import {
+  MiddlewareVetoError,
+  ValidationError,
+  imageGenConfig,
+} from "../src/llmkit.ts";
 
 const flashModel = "gemini-3.1-flash-image-preview";
 const proModel = "gemini-3-pro-image-preview";
@@ -1435,5 +1439,65 @@ describe("Image.generate — Recraft", () => {
     }
     expect(err).toBeInstanceOf(ValidationError);
     expect((err as ValidationError).field).toBe("aspect_ratio");
+  });
+});
+
+// ===== BUG-024: response parser selected by config shape, not provider name =====
+//
+// The parser is chosen from ImageGenDef.responseShape. These tests prove two
+// providers (OpenAI + Recraft) that share the DataArrayB64Json shape are
+// decoded by the same config-driven path — adding a third such provider needs
+// no new runtime provider-name branch.
+
+describe("Image response shape is config-driven (BUG-024)", () => {
+  test("providers sharing data[].b64_json declare the same responseShape", () => {
+    expect(imageGenConfig(Providers.openai)?.responseShape).toBe(
+      "DataArrayB64Json",
+    );
+    expect(imageGenConfig(Providers.grok)?.responseShape).toBe(
+      "DataArrayB64Json",
+    );
+    expect(imageGenConfig(Providers.recraft)?.responseShape).toBe(
+      "DataArrayB64Json",
+    );
+    // The other shapes are distinct — response selection is NOT derivable
+    // from inputMode (each of the three above has a different inputMode).
+    expect(imageGenConfig(Providers.google)?.responseShape).toBe("GoogleParts");
+    expect(imageGenConfig(Providers.vertex)?.responseShape).toBe(
+      "VertexPredictions",
+    );
+  });
+
+  test("same data[].b64_json body decodes identically for OpenAI and Recraft", async () => {
+    const encoded = bytesToBase64(fakePNG);
+    const body = JSON.stringify({ data: [{ b64_json: encoded }] });
+    const serve = () =>
+      Bun.serve({
+        port: 0,
+        fetch: () =>
+          new Response(body, {
+            headers: { "content-type": "application/json" },
+          }),
+      });
+
+    const s1 = serve();
+    const s2 = serve();
+    try {
+      const openai = newClient(Providers.openai, "k");
+      openai.provider.baseUrl = `http://localhost:${s1.port}`;
+      const recraft = newClient(Providers.recraft, "k");
+      recraft.provider.baseUrl = `http://localhost:${s2.port}`;
+
+      const r1 = await openai.image.model(openaiImage2).generate("A red circle");
+      const r2 = await recraft.image.model(recraftV3).generate("A red circle");
+
+      expect(Array.from(r1.images[0]!.bytes)).toEqual(Array.from(fakePNG));
+      expect(Array.from(r2.images[0]!.bytes)).toEqual(
+        Array.from(r1.images[0]!.bytes),
+      );
+    } finally {
+      s1.stop(true);
+      s2.stop(true);
+    }
   });
 });
