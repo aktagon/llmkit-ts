@@ -401,25 +401,31 @@ export async function generateImage(
     }
 
     const raw = JSON.parse(respText) as unknown;
-    const result =
-      provider.name === "openai"
-        ? parseImageResponseDataArray(raw, "input_tokens", "output_tokens")
-        : provider.name === "grok"
-          ? parseImageResponseDataArray(raw, "", "")
-          : provider.name === "recraft"
-            ? // Recraft returns the same data[].b64_json shape as OpenAI/xAI
-              //
-              //
-              //
-              //
-              parseImageResponseDataArray(raw, "", "")
-            : provider.name === "vertex"
-              ? parseVertexImageResponse(raw)
-              : parseImageResponse(
-                  raw,
-                  cfg.usageInputPath,
-                  cfg.usageOutputPath,
-                );
+    //
+    //
+    //
+    let result: ImageResponse;
+    switch (imgCfg.responseShape) {
+      case "DataArrayB64Json":
+        //
+        //
+        result = parseImageResponseDataArray(
+          raw,
+          imgCfg.usageInputPath,
+          imgCfg.usageOutputPath,
+        );
+        break;
+      case "VertexPredictions":
+        result = parseVertexImageResponse(raw);
+        break;
+      default:
+        //
+        result = parseImageResponse(
+          raw,
+          imgCfg.usageInputPath,
+          imgCfg.usageOutputPath,
+        );
+    }
     if (options.raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
@@ -797,8 +803,8 @@ function parseImageResponse(
 
 function parseImageResponseDataArray(
   raw: unknown,
-  inputTokenField: string,
-  outputTokenField: string,
+  inputPath: string,
+  outputPath: string,
 ): ImageResponse {
   const root = raw as {
     data?: Array<{
@@ -806,7 +812,6 @@ function parseImageResponseDataArray(
       mime_type?: string;
       revised_prompt?: string;
     }>;
-    usage?: Record<string, number | undefined>;
   };
   const images: ImageData[] = [];
   const revised: string[] = [];
@@ -831,13 +836,12 @@ function parseImageResponseDataArray(
       revised.push(entry.revised_prompt);
     }
   }
-  const usage = root?.usage ?? {};
   return {
     images,
     text: revised.join("\n"),
     usage: {
-      input: inputTokenField ? (usage[inputTokenField] ?? 0) : 0,
-      output: outputTokenField ? (usage[outputTokenField] ?? 0) : 0,
+      input: inputPath ? extractIntPath(raw, inputPath) : 0,
+      output: outputPath ? extractIntPath(raw, outputPath) : 0,
       cacheWrite: 0,
       cacheRead: 0,
       reasoning: 0,
