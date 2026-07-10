@@ -401,25 +401,31 @@ export async function generateImage(
     }
 
     const raw = JSON.parse(respText) as unknown;
-    const result =
-      provider.name === "openai"
-        ? parseImageResponseDataArray(raw, "input_tokens", "output_tokens")
-        : provider.name === "grok"
-          ? parseImageResponseDataArray(raw, "", "")
-          : provider.name === "recraft"
-            ? // Recraft returns the same data[].b64_json shape as OpenAI/xAI
-              // (the SDK forces response_format=b64_json) but carries no usage
-              // object, so token paths are empty (zero tokens — no fabricated
-              // values). SVG bytes (vector models) are sniffed to
-              // image/svg+xml inside parseImageResponseDataArray.
-              parseImageResponseDataArray(raw, "", "")
-            : provider.name === "vertex"
-              ? parseVertexImageResponse(raw)
-              : parseImageResponse(
-                  raw,
-                  cfg.usageInputPath,
-                  cfg.usageOutputPath,
-                );
+    // Response parser selected by config shape, never by provider name
+    // (BUG-024). imgCfg.usageInputPath/usageOutputPath are dotted-from-root,
+    // image-gen-scoped, and empty when the endpoint reports no usage.
+    let result: ImageResponse;
+    switch (imgCfg.responseShape) {
+      case "DataArrayB64Json":
+        // OpenAI/xAI/Recraft data[].b64_json shape. SVG bytes (Recraft vector
+        // models) are sniffed to image/svg+xml inside the parser.
+        result = parseImageResponseDataArray(
+          raw,
+          imgCfg.usageInputPath,
+          imgCfg.usageOutputPath,
+        );
+        break;
+      case "VertexPredictions":
+        result = parseVertexImageResponse(raw);
+        break;
+      default:
+        // GoogleParts: candidates[].content.parts inline data.
+        result = parseImageResponse(
+          raw,
+          imgCfg.usageInputPath,
+          imgCfg.usageOutputPath,
+        );
+    }
     if (options.raw) result.raw = raw;
     firePost(options.middleware, {
       ...baseEvent,
@@ -791,14 +797,14 @@ function parseImageResponse(
  *     when echoed back (xAI does so; OpenAI does not), otherwise defaults
  *     to image/png.
  *   - data[i].revised_prompt strings concatenate into text.
- *   - inputTokenField / outputTokenField are the keys on the `usage` object
- *     to read for token counts. Pass empty strings for providers that
+ *   - inputPath / outputPath are dotted-from-root paths to the token counts
+ *     (e.g. "usage.input_tokens"). Pass empty strings for providers that
  *     don't report them (xAI reports usage.cost_in_usd_ticks instead).
  */
 function parseImageResponseDataArray(
   raw: unknown,
-  inputTokenField: string,
-  outputTokenField: string,
+  inputPath: string,
+  outputPath: string,
 ): ImageResponse {
   const root = raw as {
     data?: Array<{
@@ -806,7 +812,6 @@ function parseImageResponseDataArray(
       mime_type?: string;
       revised_prompt?: string;
     }>;
-    usage?: Record<string, number | undefined>;
   };
   const images: ImageData[] = [];
   const revised: string[] = [];
@@ -831,13 +836,12 @@ function parseImageResponseDataArray(
       revised.push(entry.revised_prompt);
     }
   }
-  const usage = root?.usage ?? {};
   return {
     images,
     text: revised.join("\n"),
     usage: {
-      input: inputTokenField ? (usage[inputTokenField] ?? 0) : 0,
-      output: outputTokenField ? (usage[outputTokenField] ?? 0) : 0,
+      input: inputPath ? extractIntPath(raw, inputPath) : 0,
+      output: outputPath ? extractIntPath(raw, outputPath) : 0,
       cacheWrite: 0,
       cacheRead: 0,
       reasoning: 0,
