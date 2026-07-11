@@ -199,7 +199,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     envVar: "OPENAI_API_KEY",
     defaultModel: "gpt-4o-2024-08-06",
     baseUrl: "https://api.openai.com",
-    browserCallable: true,
+    browserCallable: false,
   },
   openrouter: {
     id: "openrouter",

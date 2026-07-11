@@ -28,9 +28,11 @@ describe("providers namespace (ADR-038/040)", () => {
     ]);
   });
 
-  test("browserCallable is the CORS fact: true for google + openai, false otherwise (ADR-035)", () => {
+  test("browserCallable is the CORS fact: true only for google (response-level ACAO), false otherwise (ADR-035; BUG-027 openai)", () => {
     expect(providers.info("google").browserCallable).toBe(true);
-    expect(providers.info("openai").browserCallable).toBe(true);
+    // BUG-027: openai passes the OPTIONS preflight but omits ACAO on the actual
+    // response, so it is false — the fact is keyed off the method response.
+    expect(providers.info("openai").browserCallable).toBe(false);
     expect(providers.info("grok").browserCallable).toBe(false);
   });
 
