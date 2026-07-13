@@ -38,7 +38,7 @@ function clone<T extends object>(b: T): T {
 
 import { saveHistory, loadHistory } from "../wire.ts";
 import { agentMessages, agentPrompt, agentReset } from "./agent.ts";
-import { textBatch, textSubmitBatch } from "./batch.ts";
+import { textBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
 import { musicGenerate } from "./music.ts";
 import { speechGenerate } from "./speech.ts";
@@ -207,11 +207,8 @@ export class Text {
   stream(msg: string): TextStream {
     return textStream(this, msg);
   }
-  async batch(...prompts: string[]): Promise<Response[]> {
+  async batch(...prompts: string[]): Promise<BatchHandle> {
     return textBatch(this, ...prompts);
-  }
-  async submitBatch(...prompts: string[]): Promise<BatchHandle> {
-    return textSubmitBatch(this, ...prompts);
   }
 }
 

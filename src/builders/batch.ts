@@ -1,8 +1,9 @@
-// D2.5 (plan-018) — owns Text.batch + Text.submitBatch + BatchHandle.wait
-// translation. The legacy free functions (`promptBatch`, `submitBatch`,
-// `waitBatch`, formerly exported from llmkit.ts) are now reachable only
-// as internal helpers imported from batch.ts; the typed-builder methods
-// are the only public entry point for batched prompts.
+// Owns the `Text.batch` terminal + BatchHandle.wait/poll translation. Batch
+// is a text execution mode (parallel to `stream`): `c.text.<config>.batch(...)`
+// queues the batch and returns a BatchHandle without blocking. The blocking
+// one-liner is the explicit compose `(await c.text.batch(...)).wait()` — there
+// is no blocking-sugar terminal. The legacy free functions (`submitBatch`,
+// `waitBatch`) are reachable only as internal helpers imported from batch.ts.
 //
 // BatchHandle is promoted from a plain interface (legacy types.ts) to a
 // class here so the typed-builder API can offer `.wait()` as a method —
@@ -10,9 +11,12 @@
 // (`id`, `provider`) preserve the legacy data shape, so a plain object
 // returned by the internal `submitBatch` can be wrapped via `new BatchHandle`
 // without conversion.
+//
+// AJU-007: BatchHandle is deliberately NOT a thenable / PromiseLike — it has
+// no `then` method, so a stray `await handle` or Promise.all cannot silently
+// run a minutes-long job. The blocking path is the explicit `.wait()`.
 
 import {
-  promptBatch as runBatch,
   pollBatch as runPollBatch,
   submitBatch as runSubmitBatch,
   waitBatch as runWaitBatch,
@@ -128,15 +132,11 @@ function batchInputs(
   return { provider: providerOut, requests, options };
 }
 
+// The single batch terminal on the Text builder: c.text.<config>.batch(...).
+// Queues the batch and returns a BatchHandle without blocking; the chain's
+// .raw() opt-in is remembered on the handle so handle.wait()/poll() honor it
+// (ADR-014). The blocking one-liner is the compose (await batch(...)).wait().
 export async function textBatch(
-  b: Text,
-  ...prompts: string[]
-): Promise<Response[]> {
-  const { provider, requests, options } = batchInputs(b, prompts);
-  return await runBatch(provider, requests, options);
-}
-
-export async function textSubmitBatch(
   b: Text,
   ...prompts: string[]
 ): Promise<BatchHandle> {
