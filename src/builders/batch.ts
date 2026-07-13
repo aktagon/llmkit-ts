@@ -13,10 +13,12 @@
 
 import {
   promptBatch as runBatch,
+  pollBatch as runPollBatch,
   submitBatch as runSubmitBatch,
   waitBatch as runWaitBatch,
   type BatchOptions,
 } from "../batch.ts";
+import type { JobStatus } from "../job.ts";
 import { ValidationError } from "../errors.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider, Request, Response } from "../types.ts";
@@ -38,6 +40,23 @@ export class BatchHandle {
 
   async wait(options: BatchOptions = {}): Promise<Response[]> {
     return await runWaitBatch(
+      { id: this.id, provider: this.provider },
+      { ...options, raw: options.raw ?? this.raw },
+    );
+  }
+
+  /**
+   * poll performs exactly ONE provider round-trip and returns the normalized
+   * JobStatus (ADR-063 POLL-001) — the non-blocking primitive for callers driving
+   * their own poll loop from an orchestrator (Temporal, a queue, cron). When the
+   * batch has completed, JobStatus.result carries the ordered responses (the
+   * two-hop result fetch is performed inline); a provider-reported terminal
+   * failure yields state "failed" with the status on JobStatus.cause; otherwise
+   * state is "running". Honors this.raw like wait(), and is safe on a
+   * reconstituted handle (ADR-014 cross-process resume; POLL-005).
+   */
+  async poll(options: BatchOptions = {}): Promise<JobStatus<Response[]>> {
+    return await runPollBatch(
       { id: this.id, provider: this.provider },
       { ...options, raw: options.raw ?? this.raw },
     );

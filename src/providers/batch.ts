@@ -11,6 +11,7 @@ export interface BatchLifecycle {
   pollingEndpoint: string;
   pollingStatusPath: string;
   pollingDoneValue: string;
+  pollingErrorValues: string[];
   resultEndpoint: string;
   resultFileIdPath: string;
   fileContentEndpoint: string;
@@ -44,6 +45,7 @@ const BATCHES: Partial<Record<ProviderName, BatchDef>> = {
       pollingEndpoint: "",
       pollingStatusPath: "processing_status",
       pollingDoneValue: "ended",
+      pollingErrorValues: [],
       resultEndpoint: "/v1/messages/batches/{id}/results",
       resultFileIdPath: "",
       fileContentEndpoint: "",
@@ -75,6 +77,7 @@ const BATCHES: Partial<Record<ProviderName, BatchDef>> = {
       pollingEndpoint: "",
       pollingStatusPath: "status",
       pollingDoneValue: "completed",
+      pollingErrorValues: ["failed", "expired", "cancelled"],
       resultEndpoint: "",
       resultFileIdPath: "output_file_id",
       fileContentEndpoint: "/v1/files/{id}/content",

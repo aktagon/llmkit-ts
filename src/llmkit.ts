@@ -67,7 +67,11 @@ export type {
 // Client.supports query).
 export { Capabilities } from "./types.ts";
 export type { Capability } from "./types.ts";
-export { APIError, ValidationError } from "./errors.ts";
+export { APIError, ValidationError, PollTimeoutError } from "./errors.ts";
+// Async-job poll surface (ADR-062 / ADR-063): the normalized JobStatus that
+// BatchHandle.poll / TranscriptionHandle.poll return, plus its JobState and
+// failure cause. Public because they are what poll() returns (POLL-004).
+export type { JobState, JobStatus, JobFailure } from "./job.ts";
 export type { Tool } from "./types.ts";
 export type {
   ImageRequest,
