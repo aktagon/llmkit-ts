@@ -63,15 +63,6 @@ const DEFAULT_POLL_INTERVAL_MS = 2000;
 //
 const DEFAULT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
-export async function promptBatch(
-  provider: Provider,
-  requests: PromptRequest[],
-  options: BatchOptions = {},
-): Promise<PromptResponse[]> {
-  const handle = await submitBatch(provider, requests, options);
-  return waitBatch(handle, options);
-}
-
 export async function submitBatch(
   provider: Provider,
   requests: PromptRequest[],
