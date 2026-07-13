@@ -145,7 +145,7 @@ describe("middleware — upload, batch_submit, cache_create", () => {
     }
   });
 
-  test("submitBatch fires op=batch_submit pre + post", async () => {
+  test("batch fires op=batch_submit pre + post", async () => {
     const events: Event[] = [];
     const observer: MiddlewareFn = (_c, e) => {
       events.push({ ...e });
@@ -155,7 +155,7 @@ describe("middleware — upload, batch_submit, cache_create", () => {
     try {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = server.url;
-      await c.text.addMiddleware(observer).submitBatch("hi");
+      await c.text.addMiddleware(observer).batch("hi");
       const ops = events.map((e) => `${e.op}:${e.phase}`);
       expect(ops).toEqual(["batch_submit:pre", "batch_submit:post"]);
     } finally {

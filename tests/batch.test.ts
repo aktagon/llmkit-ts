@@ -59,7 +59,9 @@ describe("batch — Anthropic (InlineRequests)", () => {
     try {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = `http://localhost:${server.port}`;
-      const responses = await c.text.batch("ping1", "ping2");
+      const responses = await (
+        await c.text.batch("ping1", "ping2")
+      ).wait({ pollIntervalMs: 1 });
       expect(responses.map((r) => r.text)).toEqual(["alpha", "beta"]);
       expect(responses[0]!.usage.input).toBe(1);
       expect(responses[0]!.usage.output).toBe(2);
@@ -76,8 +78,8 @@ describe("batch — Anthropic (InlineRequests)", () => {
   });
 
   // ADR-012 REQ-PROP-003: every chain field set on the Text builder must
-  // propagate through Text.batch the same way it propagates through
-  // Text.prompt. Previously the typed-builder batch path silently
+  // propagate through c.text.batch the same way it propagates through
+  // c.text.prompt. Previously the typed-builder batch path silently
   // dropped max_tokens / temperature / etc.
   test("chain sampling options reach every per-request wire body", async () => {
     let createBody: Record<string, unknown> | undefined;
@@ -124,14 +126,16 @@ describe("batch — Anthropic (InlineRequests)", () => {
     try {
       const c = newClient(Providers.anthropic, "k");
       c.provider.baseUrl = `http://localhost:${server.port}`;
-      await c.text
-        .model("claude-sonnet-4-6")
-        .system("be terse")
-        .maxTokens(64)
-        .temperature(0.3)
-        .topP(0.9)
-        .stopSequences("END")
-        .batch("ping");
+      await (
+        await c.text
+          .model("claude-sonnet-4-6")
+          .system("be terse")
+          .maxTokens(64)
+          .temperature(0.3)
+          .topP(0.9)
+          .stopSequences("END")
+          .batch("ping")
+      ).wait({ pollIntervalMs: 1 });
       const requests = createBody?.requests as Array<Record<string, unknown>>;
       const params = requests[0]!.params as Record<string, unknown>;
       expect(params.max_tokens).toBe(64);
@@ -204,7 +208,7 @@ describe("batch — OpenAI (FileReferenceInput)", () => {
     try {
       const c = newClient(Providers.openai, "sk");
       c.provider.baseUrl = `http://localhost:${server.port}`;
-      const handle = await c.text.submitBatch("hi");
+      const handle = await c.text.batch("hi");
       expect(handle.id).toBe("batch_abc");
 
       const responses = await handle.wait({ pollIntervalMs: 5 });

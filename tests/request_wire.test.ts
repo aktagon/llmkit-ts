@@ -358,7 +358,7 @@ describe("request wire — cross-capability", () => {
     try {
       const c = newClient(Providers.anthropic, "key");
       c.provider.baseUrl = m.url;
-      await c.text.system(wi.wireCachingSystem).caching().submitBatch(wi.wireCachingPrompt);
+      await c.text.system(wi.wireCachingSystem).caching().batch(wi.wireCachingPrompt);
     } finally {
       m.stop();
     }

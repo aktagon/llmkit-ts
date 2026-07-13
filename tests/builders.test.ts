@@ -563,8 +563,8 @@ describe("Phase 3 slice 1 — Image.generate wired", () => {
 
 // === Phase 3 slice 2a — wiring verification ===
 
-describe("Phase 3 slice 2a — Text.batch + Text.submitBatch wired", () => {
-  test("submitBatch posts inline batch payload, returns BatchHandle class", async () => {
+describe("Text.batch — text-mode batch terminal wired", () => {
+  test("batch posts inline batch payload, returns BatchHandle class", async () => {
     let captured: Record<string, unknown> | undefined;
     let capturedUrl = "";
     const server = startMockServer(async (req) => {
@@ -577,7 +577,7 @@ describe("Phase 3 slice 2a — Text.batch + Text.submitBatch wired", () => {
     try {
       const c = anthropic("k");
       c.provider.baseUrl = server.url;
-      const handle = await c.text.system("be terse").submitBatch("p1", "p2");
+      const handle = await c.text.system("be terse").batch("p1", "p2");
       expect(handle).toBeInstanceOf(BatchHandle);
       expect(handle.id).toBe("msgbatch_123");
       expect(handle.provider.name).toBe("anthropic");
@@ -640,7 +640,7 @@ describe("Phase 3 slice 2a — Text.batch + Text.submitBatch wired", () => {
     expect(pollCalls).toBeGreaterThanOrEqual(1);
   });
 
-  test("Text.batch sends payload and parses results in one call", async () => {
+  test("(await c.text.batch()).wait() sends payload and parses results", async () => {
     const resultLine = JSON.stringify({
       custom_id: "req-0",
       result: {
@@ -670,12 +670,22 @@ describe("Phase 3 slice 2a — Text.batch + Text.submitBatch wired", () => {
     try {
       const c = anthropic("k");
       c.provider.baseUrl = server.url;
-      const responses = await c.text.maxTokens(10).batch("only-one");
+      const responses = await (
+        await c.text.maxTokens(10).batch("only-one")
+      ).wait({ pollIntervalMs: 1 });
       expect(responses).toHaveLength(1);
       expect(responses[0]?.text).toBe("answer");
     } finally {
       server.stop();
     }
+  });
+
+  test("BatchHandle is not thenable — a stray await must not run the job (AJU-007)", async () => {
+    const handle = new BatchHandle("msgbatch_abc", {
+      name: "anthropic",
+      apiKey: "k",
+    });
+    expect(typeof (handle as { then?: unknown }).then).toBe("undefined");
   });
 });
 
