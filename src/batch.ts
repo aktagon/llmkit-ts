@@ -15,6 +15,17 @@ import {
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
+import {
+  classifyByConfig,
+  nonEmptyValues,
+  PollBody,
+  pollJob,
+  pollOnce,
+  type Classification,
+  type JobAdapter,
+  type JobStatus,
+  type LifecycleConfig,
+} from "./job.ts";
 import type {
   BatchHandle,
   PromptOptions,
@@ -31,10 +42,26 @@ import type {
 // pollIntervalMs, so sampling options were silently dropped.
 export interface BatchOptions extends Partial<PromptOptions> {
   pollIntervalMs?: number;
+  /**
+   * pollTimeoutMs is the OVERALL poll-loop wall-clock backstop for waitBatch
+   * (ADR-062 OQ-1) — NOT a per-request HTTP timeout (S05). Defaults to ~10 min;
+   * overridable up to the provider's 24h window. When it fires, waitBatch throws
+   * PollTimeoutError. poll() never times out (one round-trip), so it ignores this.
+   */
+  pollTimeoutMs?: number;
+  /**
+   * signal aborts a blocking waitBatch / poll early (S06). Maps 1:1 to Go's
+   * context.Context — the poll loop rejects with the abort reason when signalled.
+   */
+  signal?: AbortSignal;
   middleware?: MiddlewareFn[];
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
+// ~10-min overall poll-loop backstop (ADR-062 OQ-1). The blocking waitBatch loop
+// was previously UNBOUNDED; this brings it down to a bounded short default,
+// matching the other three SDKs. Mirror of go/batch.go batchPollTimeout.
+const DEFAULT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function promptBatch(
   provider: Provider,
@@ -135,10 +162,86 @@ export async function submitBatch(
   }
 }
 
+// waitBatch polls the batch lifecycle until a terminal state and returns the
+// ordered responses. It is now a thin delegation to the shared job engine
+// (ADR-062) — pollJob owns the loop, deadline, and state machine; BatchJobAdapter
+// carries the batch-specific seams. Signature byte-unchanged. On a provider-
+// reported failure it throws "batch failed: <status>"; on the deadline backstop it
+// throws PollTimeoutError (POLL-008).
 export async function waitBatch(
   handle: BatchHandle,
   options: BatchOptions = {},
 ): Promise<PromptResponse[]> {
+  const adapter = newBatchAdapter(handle, options);
+  return pollJob<PromptResponse[]>(adapter, options.signal);
+}
+
+// pollBatch performs exactly ONE provider round-trip and returns the normalized
+// JobStatus (ADR-063 POLL-001) — the enterprise seam for callers driving the poll
+// loop from their own orchestrator. On a completed batch JobStatus.result carries
+// the ordered responses (the two-hop result fetch is performed inline); a provider-
+// reported terminal failure yields state "failed" with the status on JobStatus.cause.
+export async function pollBatch(
+  handle: BatchHandle,
+  options: BatchOptions = {},
+): Promise<JobStatus<PromptResponse[]>> {
+  const adapter = newBatchAdapter(handle, options);
+  return pollOnce<PromptResponse[]>(adapter, options.signal);
+}
+
+// BatchJobAdapter binds the batch capability to the job engine's seams. It closes
+// over the resolved base/headers + provider config so result can perform batch's
+// two-hop (output_file_id -> GET /content). Mirror of go/batch.go batchAdapter.
+class BatchJobAdapter implements JobAdapter<PromptResponse[]> {
+  constructor(
+    private readonly lc: LifecycleConfig,
+    private readonly handle: BatchHandle,
+    private readonly base: string,
+    private readonly bc: BatchDef,
+    private readonly headers: Record<string, string>,
+    private readonly pollUrl: string,
+    private readonly raw: boolean,
+  ) {}
+
+  config(): LifecycleConfig {
+    return this.lc;
+  }
+
+  async poll(signal?: AbortSignal): Promise<PollBody> {
+    const text = await fetchText(this.pollUrl, this.headers, signal);
+    return new PollBody(JSON.parse(text) as Record<string, unknown>);
+  }
+
+  classify(body: PollBody): Classification {
+    return classifyByConfig(this.lc, body);
+  }
+
+  async result(body: PollBody, signal?: AbortSignal): Promise<PromptResponse[]> {
+    // The poll body is already decoded — hand it to fetchBatchResults so the
+    // two-hop provider (OpenAI: output_file_id lives in this same status body)
+    // skips a redundant status GET.
+    return fetchBatchResults(
+      this.handle,
+      this.base,
+      this.bc,
+      this.headers,
+      body.raw,
+      this.raw,
+      signal,
+    );
+  }
+}
+
+// newBatchAdapter assembles the batch adapter + its LifecycleConfig from the batch
+// facts. errorValues comes from the generated pollingErrorValues fact (OpenAI:
+// failed/expired/cancelled); when absent (Anthropic — batch "ended" is done,
+// failures are per-request) it is empty and a stuck batch terminates at the
+// deadline backstop rather than mislabelling a failed terminal. Mirror of
+// go/batch.go newBatchAdapter.
+function newBatchAdapter(
+  handle: BatchHandle,
+  options: BatchOptions,
+): BatchJobAdapter {
   const cfg = PROVIDERS[handle.provider.name];
   if (!cfg) {
     throw new ValidationError("provider", `unknown: ${handle.provider.name}`);
@@ -154,28 +257,24 @@ export async function waitBatch(
 
   const base = handle.provider.baseUrl || cfg.baseUrl;
   const headers = buildAuthHeaders(handle.provider, cfg);
-  const lc = bc.lifecycle;
-  const pollUrl = lc.pollingEndpoint
-    ? base + lc.pollingEndpoint.replace("{id}", handle.id)
-    : base + lc.createEndpoint + "/" + handle.id;
-  const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+  const lifecycle = bc.lifecycle;
+  const pollUrl = lifecycle.pollingEndpoint
+    ? base + lifecycle.pollingEndpoint.replace("{id}", handle.id)
+    : base + lifecycle.createEndpoint + "/" + handle.id;
 
-  while (true) {
-    const status = await fetchJson(pollUrl, headers);
-    if (extractPath(status, lc.pollingStatusPath) === lc.pollingDoneValue) {
-      // ADR-014 cross-process resume: when a handle was persisted with
-      // .raw=true, honor it at wait time even if options.raw is unset.
-      return fetchBatchResults(
-        handle,
-        base,
-        bc,
-        headers,
-        status,
-        !!options.raw || !!handle.raw,
-      );
-    }
-    await sleep(interval);
-  }
+  const lc: LifecycleConfig = {
+    noun: "batch",
+    statusPath: lifecycle.pollingStatusPath,
+    doneValues: nonEmptyValues(lifecycle.pollingDoneValue),
+    errorValues: lifecycle.pollingErrorValues,
+    errorMessagePath: "",
+    pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+    pollTimeoutMs: options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
+  };
+  // ADR-014 cross-process resume: when a handle was persisted with .raw=true,
+  // honor it even if options.raw is unset.
+  const raw = !!options.raw || !!handle.raw;
+  return new BatchJobAdapter(lc, handle, base, bc, headers, pollUrl, raw);
 }
 
 async function fetchBatchResults(
@@ -185,6 +284,7 @@ async function fetchBatchResults(
   headers: Record<string, string>,
   finalStatus: unknown,
   raw: boolean,
+  signal?: AbortSignal,
 ): Promise<PromptResponse[]> {
   const lc = bc.lifecycle as BatchLifecycle;
   let body: string;
@@ -194,10 +294,10 @@ async function fetchBatchResults(
       throw new APIError(0, "batch results: empty output file ID", false);
     }
     const fileUrl = base + lc.fileContentEndpoint.replace("{id}", fileId);
-    body = await fetchText(fileUrl, headers);
+    body = await fetchText(fileUrl, headers, signal);
   } else if (lc.resultEndpoint) {
     const url = base + lc.resultEndpoint.replace("{id}", handle.id);
-    body = await fetchText(url, headers);
+    body = await fetchText(url, headers, signal);
   } else {
     throw new APIError(
       0,
@@ -351,19 +451,12 @@ function navigatePath(data: unknown, path: string): unknown {
   return cur;
 }
 
-async function fetchJson(
-  url: string,
-  headers: Record<string, string>,
-): Promise<unknown> {
-  const text = await fetchText(url, headers);
-  return JSON.parse(text);
-}
-
 async function fetchText(
   url: string,
   headers: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<string> {
-  const resp = await fetch(url, { headers });
+  const resp = await fetch(url, { headers, signal });
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -373,8 +466,4 @@ async function fetchText(
     );
   }
   return text;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
