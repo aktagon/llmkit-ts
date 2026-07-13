@@ -67,7 +67,11 @@ export type {
 //
 export { Capabilities } from "./types.ts";
 export type { Capability } from "./types.ts";
-export { APIError, ValidationError } from "./errors.ts";
+export { APIError, ValidationError, PollTimeoutError } from "./errors.ts";
+//
+//
+//
+export type { JobState, JobStatus, JobFailure } from "./job.ts";
 export type { Tool } from "./types.ts";
 export type {
   ImageRequest,
