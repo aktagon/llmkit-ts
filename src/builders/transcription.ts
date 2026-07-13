@@ -19,6 +19,17 @@ import {
   transcriptionConfig,
 } from "../providers/transcription_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
+import {
+  classifyByConfig,
+  nonEmptyValues,
+  PollBody,
+  pollJob,
+  pollOnce,
+  type Classification,
+  type JobAdapter,
+  type JobStatus,
+  type LifecycleConfig,
+} from "../job.ts";
 import { buildAuthHeaders } from "../request.ts";
 import type { MediaRef, Part } from "../image.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -39,7 +50,17 @@ const DEFAULT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface TranscriptionWaitOptions {
   pollIntervalMs?: number;
+  /**
+   * pollTimeoutMs is the OVERALL poll-loop wall-clock backstop for wait() — NOT a
+   * per-request HTTP timeout (S05). When it fires, wait() throws PollTimeoutError.
+   * poll() never times out (one round-trip), so it ignores this.
+   */
   pollTimeoutMs?: number;
+  /**
+   * signal aborts a blocking wait() / poll() early (S06). Maps 1:1 to Go's
+   * context.Context — the poll loop rejects with the abort reason when signalled.
+   */
+  signal?: AbortSignal;
 }
 
 export class TranscriptionHandle {
@@ -55,54 +76,99 @@ export class TranscriptionHandle {
    * Polls the provider until the transcription job reaches a terminal state,
    * then resolves with the finished TranscriptionResponse. A status=error job
    * rejects with an Error carrying the provider's error message (never a silent
-   * empty success). Mirror of go/transcription.go TranscriptionHandle.Wait.
+   * empty success); the deadline backstop rejects with PollTimeoutError
+   * (POLL-008). Now a thin loop over the shared job engine (ADR-062) — pollJob
+   * owns the loop, deadline, and state machine. Mirror of go/transcription.go
+   * TranscriptionHandle.Wait.
    */
   async wait(
     options: TranscriptionWaitOptions = {},
   ): Promise<TranscriptionResponse> {
-    const cfg = PROVIDERS[this.provider.name];
-    if (!cfg) {
-      throw new ValidationError("provider", `unknown: ${this.provider.name}`);
-    }
-    const tcCfg = transcriptionConfig(this.provider.name);
-    if (!tcCfg) {
-      throw new ValidationError(
-        "provider",
-        `${this.provider.name} does not support transcription`,
-      );
-    }
-
-    const base = transcriptionBaseUrl(this.provider, cfg);
-    const headers = buildAuthHeaders(this.provider, cfg);
-    const pollUrl = base + tcCfg.pollEndpoint.replace("{id}", this.id);
-
-    const interval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-    const timeout = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
-    const deadline = performance.now() + timeout;
-
-    while (true) {
-      if (performance.now() > deadline) {
-        throw new APIError(
-          0,
-          `transcription poll: timed out waiting for ${this.id}`,
-          false,
-        );
-      }
-      const respText = await fetchText(pollUrl, headers);
-      const raw = JSON.parse(respText) as Record<string, unknown>;
-      const status = lookupHandleField(raw, tcCfg.statusPath);
-      if (status === tcCfg.doneStatus) {
-        return transcriptionResult(tcCfg, raw);
-      }
-      if (status === tcCfg.errorStatus) {
-        let msg = lookupHandleField(raw, cfg.errorMessagePath);
-        if (!msg) msg = "transcription failed";
-        throw new APIError(0, `transcription failed: ${msg}`, false);
-      }
-      // queued, processing (or any non-terminal status): keep polling.
-      await sleep(interval);
-    }
+    const adapter = newTranscriptionAdapter(this, options);
+    return pollJob<TranscriptionResponse>(adapter, options.signal);
   }
+
+  /**
+   * poll performs exactly ONE provider round-trip and returns the normalized
+   * JobStatus (ADR-063 POLL-001) — the non-blocking primitive for callers driving
+   * their own poll loop. On a completed job JobStatus.result carries the finished
+   * TranscriptionResponse; a failed job populates JobStatus.cause (the provider
+   * error surfaces in cause.message, preserving the wait() error surface).
+   * Safe on a reconstituted handle (ADR-014 cross-process resume; POLL-005).
+   */
+  async poll(
+    options: TranscriptionWaitOptions = {},
+  ): Promise<JobStatus<TranscriptionResponse>> {
+    const adapter = newTranscriptionAdapter(this, options);
+    return pollOnce<TranscriptionResponse>(adapter, options.signal);
+  }
+}
+
+// TranscriptionJobAdapter binds async transcription to the job engine's seams.
+// classify uses the config-backed default (status vs doneStatus / errorStatus);
+// result decodes the finished transcript per wire shape (no second hop). Mirror of
+// go/transcription.go transcriptionAdapter.
+class TranscriptionJobAdapter implements JobAdapter<TranscriptionResponse> {
+  constructor(
+    private readonly lc: LifecycleConfig,
+    private readonly headers: Record<string, string>,
+    private readonly pollUrl: string,
+    private readonly tcCfg: TranscriptionDef,
+  ) {}
+
+  config(): LifecycleConfig {
+    return this.lc;
+  }
+
+  async poll(signal?: AbortSignal): Promise<PollBody> {
+    const text = await fetchText(this.pollUrl, this.headers, signal);
+    return new PollBody(JSON.parse(text) as Record<string, unknown>);
+  }
+
+  classify(body: PollBody): Classification {
+    return classifyByConfig(this.lc, body);
+  }
+
+  async result(body: PollBody): Promise<TranscriptionResponse> {
+    return transcriptionResult(this.tcCfg, body.raw);
+  }
+}
+
+// newTranscriptionAdapter assembles the transcription adapter + its
+// LifecycleConfig from today's transcription facts. The status-to-terminal mapping
+// stays config (statusPath / doneStatus / errorStatus, STT-005); the provider
+// error message rides on cfg.errorMessagePath so wait() still surfaces it (S02).
+// Mirror of go/transcription.go newTranscriptionAdapter.
+function newTranscriptionAdapter(
+  handle: TranscriptionHandle,
+  options: TranscriptionWaitOptions,
+): TranscriptionJobAdapter {
+  const cfg = PROVIDERS[handle.provider.name];
+  if (!cfg) {
+    throw new ValidationError("provider", `unknown: ${handle.provider.name}`);
+  }
+  const tcCfg = transcriptionConfig(handle.provider.name);
+  if (!tcCfg) {
+    throw new ValidationError(
+      "provider",
+      `${handle.provider.name} does not support transcription`,
+    );
+  }
+
+  const base = transcriptionBaseUrl(handle.provider, cfg);
+  const headers = buildAuthHeaders(handle.provider, cfg);
+  const pollUrl = base + tcCfg.pollEndpoint.replace("{id}", handle.id);
+
+  const lc: LifecycleConfig = {
+    noun: "transcription",
+    statusPath: tcCfg.statusPath,
+    doneValues: nonEmptyValues(tcCfg.doneStatus),
+    errorValues: nonEmptyValues(tcCfg.errorStatus),
+    errorMessagePath: cfg.errorMessagePath,
+    pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+    pollTimeoutMs: options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
+  };
+  return new TranscriptionJobAdapter(lc, headers, pollUrl, tcCfg);
 }
 
 /**
@@ -530,8 +596,9 @@ async function postJson(
 async function fetchText(
   url: string,
   headers: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<string> {
-  const resp = await fetch(url, { headers });
+  const resp = await fetch(url, { headers, signal });
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -541,8 +608,4 @@ async function fetchText(
     );
   }
   return text;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
