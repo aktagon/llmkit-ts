@@ -10,9 +10,13 @@
 //
 //
 //
+//
+//
+//
+//
+//
 
 import {
-  promptBatch as runBatch,
   pollBatch as runPollBatch,
   submitBatch as runSubmitBatch,
   waitBatch as runWaitBatch,
@@ -128,15 +132,11 @@ function batchInputs(
   return { provider: providerOut, requests, options };
 }
 
+//
+//
+//
+//
 export async function textBatch(
-  b: Text,
-  ...prompts: string[]
-): Promise<Response[]> {
-  const { provider, requests, options } = batchInputs(b, prompts);
-  return await runBatch(provider, requests, options);
-}
-
-export async function textSubmitBatch(
   b: Text,
   ...prompts: string[]
 ): Promise<BatchHandle> {
