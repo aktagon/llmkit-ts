@@ -291,8 +291,9 @@ export function buildRequest(
 
 // appendBeta composes a beta token onto an existing anthropic-beta header value
 // without overwriting: comma-separated, deduped (never re-adds a token already
-// present). Mirrors the Go appendBeta helper (BUG-017).
-function appendBeta(existing: string, add: string): string {
+// present). Mirrors the Go appendBeta helper (BUG-017). Exported so the batch
+// submit path can compose the per-request betas onto the batch CREATE request.
+export function appendBeta(existing: string, add: string): string {
   if (add === "") return existing;
   if (existing === "") return add;
   const present = existing.split(",").map((t) => t.trim());
