@@ -370,17 +370,18 @@ The `.path()` branch dynamically loads `node:fs/promises` and is unavailable in 
 
 <!-- llmkit:include ts/examples/batch.ts#batch -->
 ```ts
-const results = await client.text
+const handle = await client.text
   .system("Be brief")
   .batch(
     "Translate hello to French",
     "Translate hello to Spanish",
     "Translate hello to German",
   );
+const results = await handle.wait();
 results.forEach((r) => console.log(r.text));
 ```
 
-`.batch(...prompts)` is `.submitBatch(...prompts)` + `handle.wait()`. Use `.submitBatch(...prompts)` to get a `BatchHandle` you can persist, then call `handle.wait()` later. Both inline (Anthropic) and file-reference (OpenAI two-hop) flows are handled internally.
+`c.text.<config>.batch(...prompts)` queues the batch and returns a `BatchHandle` you can persist. Call `handle.wait()` to block until completion, or `handle.poll()` to drive the loop yourself. The blocking one-liner is `(await c.text.batch(...prompts)).wait()`. Both inline (Anthropic) and file-reference (OpenAI two-hop) flows are handled internally.
 
 ### Caching
 
@@ -478,7 +479,7 @@ await c.text.addMiddleware(budgetGate(5.0, spent), logUsage).prompt("...");
 
 A pre-phase veto throws `MiddlewareVetoError` so it can be discriminated from transport or provider errors. Middlewares fire in registration order; the first non-null pre-phase return aborts.
 
-Wired at seven sites: `Text.prompt`, `Text.stream`, `Agent` LLM call, `Agent` tool execution (`op=tool_call`), `Upload.run` (`op=upload`), `Text.submitBatch` / `Text.batch` (`op=batch_submit`), Google resource caching pre-flight (`op=cache_create`).
+Wired at seven sites: `Text.prompt`, `Text.stream`, `Agent` LLM call, `Agent` tool execution (`op=tool_call`), `Upload.run` (`op=upload`), `Text.batch` (`op=batch_submit`), Google resource caching pre-flight (`op=cache_create`).
 
 ## Telemetry
 
