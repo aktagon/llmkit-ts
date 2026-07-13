@@ -365,6 +365,26 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("caching-batch-anthropic", m.body());
   });
 
+  test("batch + inline image + document (Anthropic) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.anthropic, "key");
+      c.provider.baseUrl = m.url;
+      await c.text
+        .model(wi.wireBatchMultimodalAnthropicModel)
+        .image(wi.wireBatchMultimodalAnthropicImageMime, tinyPngBytes)
+        .file(wi.wireBatchMultimodalAnthropicFileId)
+        .batch(wi.wireBatchMultimodalAnthropicPrompt);
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("batch-multimodal-anthropic", m.body());
+    // Referencing an uploaded file id in a batch item requires the files-api beta
+    // on the batch CREATE request (batch-modality witness) — golden-locked across
+    // all four SDKs via the companion batch-multimodal-anthropic.headers.json.
+    assertWireHeaders("batch-multimodal-anthropic", m.headers());
+  });
+
   // === M2: options fixtures, one per model family (see the Go drivers — the
   // minting reference — for the WIRE-005 provenance notes and the live
   // rejection matrix that shaped each option chain). ===
