@@ -292,7 +292,8 @@ export function buildRequest(
 //
 //
 //
-function appendBeta(existing: string, add: string): string {
+//
+export function appendBeta(existing: string, add: string): string {
   if (add === "") return existing;
   if (existing === "") return add;
   const present = existing.split(",").map((t) => t.trim());

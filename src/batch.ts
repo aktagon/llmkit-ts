@@ -8,6 +8,7 @@ import { APIError, ValidationError } from "./errors.ts";
 import { extractPath, extractIntPath, extractFloatPath } from "./paths.ts";
 import { applyCaching, parseCacheUsage } from "./caching.ts";
 import {
+  appendBeta,
   buildAuthHeaders,
   buildRequest,
   resolveModel,
@@ -109,13 +110,20 @@ export async function submitBatch(
       };
       body = new TextEncoder().encode(JSON.stringify(payload));
     } else {
-      const payload = await buildBatchBody(
+      const { payload, betaHeaders } = await buildBatchBody(
         requests,
         provider,
         cfg,
         bc,
         options,
       );
+      //
+      //
+      //
+      //
+      for (const [k, v] of Object.entries(betaHeaders)) {
+        headers[k] = k === "anthropic-beta" ? appendBeta(headers[k] ?? "", v) : v;
+      }
       body = new TextEncoder().encode(JSON.stringify(payload));
     }
 
@@ -299,17 +307,33 @@ async function fetchBatchResults(
   return parseBatchResults(handle.provider.name, body, bc, raw);
 }
 
+//
+//
+//
+//
+//
 async function buildBatchBody(
   requests: PromptRequest[],
   provider: Provider,
   cfg: ProviderSpec,
   bc: BatchDef,
   options: BatchOptions,
-): Promise<Record<string, unknown>> {
+): Promise<{
+  payload: Record<string, unknown>;
+  betaHeaders: Record<string, string>;
+}> {
   const items: Record<string, unknown>[] = [];
+  const betaHeaders: Record<string, string> = {};
   for (let i = 0; i < requests.length; i++) {
     const req = requests[i]!;
-    const reqBody = buildRequest(provider, req, cfg, options);
+    const reqHeaders: Record<string, string> = {};
+    const reqBody = buildRequest(provider, req, cfg, options, [], reqHeaders);
+    if (reqHeaders["anthropic-beta"]) {
+      betaHeaders["anthropic-beta"] = appendBeta(
+        betaHeaders["anthropic-beta"] ?? "",
+        reqHeaders["anthropic-beta"],
+      );
+    }
     if (options.caching) {
       await applyCaching(reqBody, provider, cfg, options);
     }
@@ -319,10 +343,10 @@ async function buildBatchBody(
       items.push(reqBody);
     }
   }
-  if (bc.requestWrapper) {
-    return { [bc.requestWrapper]: items };
-  }
-  return { requests: items };
+  const payload = bc.requestWrapper
+    ? { [bc.requestWrapper]: items }
+    : { requests: items };
+  return { payload, betaHeaders };
 }
 
 async function buildBatchJsonl(
