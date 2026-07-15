@@ -429,6 +429,20 @@ describe("request wire — cross-capability", () => {
     assertWireGolden("options-openai-gpt4o", m.body());
   });
 
+  // BUG-028: stream_options.include_usage on the OpenAI streaming request body.
+  test("stream (OpenAI) matches shared golden", async () => {
+    const m = startMock();
+    try {
+      const c = newClient(Providers.openai, "key");
+      c.provider.baseUrl = m.url;
+      for await (const _ of c.text.model(wi.wireStreamOpenaiModel).stream(wi.wireStreamOpenaiPrompt)) {
+      }
+    } finally {
+      m.stop();
+    }
+    assertWireGolden("stream-openai", m.body());
+  });
+
   test("options (Anthropic thinking) matches shared golden", async () => {
     const m = startMock();
     try {
