@@ -18,6 +18,7 @@ import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 import type { ProviderName } from "../src/providers/providers.ts";
 import type { Response } from "../src/types.ts";
+import type { ImageResponse } from "../src/structs.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -63,13 +64,43 @@ function responseMockServer(body: string) {
   });
 }
 
-function assertResponseGolden(shape: string, resp: Response): void {
-  const art = responseArtifact(resp);
+// imageArtifact projects an ImageResponse. For media the Content discriminant is
+// {kind,mimeType,byteLen,count} (RWR-004): the four SDKs must agree the same body
+// decodes to the same number of images with the same mime and decoded byte length
+// — the batch×image parse-drift class (BUG-024) lands here. finishReason is
+// optional on the TS ImageResponse (Go/Python/Rust default it to "").
+function imageArtifact(resp: ImageResponse): unknown {
+  const first = resp.images[0];
+  return {
+    usage: {
+      input: resp.usage.input,
+      output: resp.usage.output,
+      cacheRead: resp.usage.cacheRead,
+      cacheWrite: resp.usage.cacheWrite,
+      reasoning: resp.usage.reasoning,
+      cost: resp.usage.cost,
+    },
+    finishReason: resp.finishReason ?? "",
+    content: {
+      kind: "image",
+      mimeType: first ? first.mimeType : "",
+      byteLen: first ? first.bytes.length : 0,
+      count: resp.images.length,
+    },
+    error: null,
+  };
+}
+
+function assertGolden(shape: string, art: unknown): void {
   const out = artifactPath(shape);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(art, null, 2));
   const golden = JSON.parse(readFileSync(goldenPath(shape), "utf8"));
   expect(art).toEqual(golden);
+}
+
+function assertResponseGolden(shape: string, resp: Response): void {
+  assertGolden(shape, responseArtifact(resp));
 }
 
 async function driveResponse(shape: string, provider: ProviderName): Promise<void> {
@@ -80,6 +111,19 @@ async function driveResponse(shape: string, provider: ProviderName): Promise<voi
     c.provider.baseUrl = `http://localhost:${server.port}`;
     const resp = await c.text.prompt("ping");
     assertResponseGolden(shape, resp);
+  } finally {
+    server.stop(true);
+  }
+}
+
+async function driveImage(shape: string, provider: ProviderName, model: string): Promise<void> {
+  const body = readFileSync(bodyPath(shape), "utf8");
+  const server = responseMockServer(body);
+  try {
+    const c = newClient(provider, "k");
+    c.provider.baseUrl = `http://localhost:${server.port}`;
+    const resp = await c.image.model(model).generate("a cat");
+    assertGolden(shape, imageArtifact(resp));
   } finally {
     server.stop(true);
   }
@@ -96,5 +140,19 @@ describe("response wire — cross-SDK conformance (ADR-065)", () => {
 
   test("chat-google matches shared golden", async () => {
     await driveResponse("chat-google", Providers.google);
+  });
+
+  // Phase 2: image response dispatch (BUG-024 surface) — one golden per
+  // llm:imageResponseShape (GoogleParts / DataArrayB64Json / VertexPredictions).
+  test("image-google matches shared golden", async () => {
+    await driveImage("image-google", Providers.google, "gemini-3.1-flash-image-preview");
+  });
+
+  test("image-openai matches shared golden", async () => {
+    await driveImage("image-openai", Providers.openai, "gpt-image-1");
+  });
+
+  test("image-vertex matches shared golden", async () => {
+    await driveImage("image-vertex", Providers.vertex, "imagen-3.0-generate-002");
   });
 });
