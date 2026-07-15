@@ -27,6 +27,12 @@ function bodyPath(shape: string): string {
   return resolve(REPO_ROOT, "codegen", "testdata", "wire", "response", "v1", "bodies", `${shape}.json`);
 }
 
+// Streaming bodies are raw text/event-stream sequences, not JSON documents, so
+// they carry a .sse extension beside the JSON bodies.
+function streamBodyPath(shape: string): string {
+  return resolve(REPO_ROOT, "codegen", "testdata", "wire", "response", "v1", "bodies", `${shape}.sse`);
+}
+
 function goldenPath(shape: string): string {
   return resolve(REPO_ROOT, "codegen", "testdata", "wire", "response", "v1", `${shape}.json`);
 }
@@ -62,6 +68,15 @@ function responseMockServer(body: string) {
   return Bun.serve({
     port: 0,
     fetch: () => new Response(body, { headers: { "content-type": "application/json" } }),
+  });
+}
+
+// streamMockServer serves the anchored SSE bytes verbatim with an event-stream
+// content type; the streaming parser reads the body reader to EOF.
+function streamMockServer(body: string) {
+  return Bun.serve({
+    port: 0,
+    fetch: () => new Response(body, { headers: { "content-type": "text/event-stream" } }),
   });
 }
 
@@ -191,6 +206,31 @@ async function driveTranscript(shape: string, provider: ProviderName, model: str
   }
 }
 
+// B-stream: drive the real streaming path against the SSE mock, drain the chunk
+// iterator, then project the trailing handle's accumulated Response — the same
+// projection as the sync chat artifact (SSE deltas assemble to the same
+// Response). Data-only SSE only (OpenAI / Google); Anthropic event-typed stream
+// deferred (see PROVENANCE.md).
+async function driveStream(shape: string, provider: ProviderName): Promise<void> {
+  const body = readFileSync(streamBodyPath(shape), "utf8");
+  const server = streamMockServer(body);
+  try {
+    const c = newClient(provider, "k");
+    c.provider.baseUrl = `http://localhost:${server.port}`;
+    const stream = c.text.stream("ping");
+    // eslint-disable-next-line no-empty
+    for await (const _ of stream) {
+    }
+    const err = stream.error();
+    if (err) throw err;
+    const resp = stream.response();
+    if (!resp) throw new Error(`stream ${shape} produced no response`);
+    assertResponseGolden(shape, resp);
+  } finally {
+    server.stop(true);
+  }
+}
+
 describe("response wire — cross-SDK conformance (ADR-065)", () => {
   test("chat-openai matches shared golden", async () => {
     await driveResponse("chat-openai", Providers.openai);
@@ -225,5 +265,14 @@ describe("response wire — cross-SDK conformance (ADR-065)", () => {
 
   test("transcription-openai matches shared golden", async () => {
     await driveTranscript("transcription-openai", Providers.openai, "whisper-1");
+  });
+
+  // B-stream: streaming (SSE) response parity — data-only shapes.
+  test("stream-openai matches shared golden", async () => {
+    await driveStream("stream-openai", Providers.openai);
+  });
+
+  test("stream-google matches shared golden", async () => {
+    await driveStream("stream-google", Providers.google);
   });
 });
