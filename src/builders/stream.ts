@@ -103,6 +103,10 @@ async function runStream(
       body[streamCfg.param] =
         streamCfg.paramValue === "true" ? true : streamCfg.paramValue;
     }
+    //
+    if (streamCfg.usageOptIn) {
+      body.stream_options = { include_usage: true };
+    }
     const headers = buildAuthHeaders(provider, cfg);
     const baseUrl = provider.baseUrl || cfg.baseUrl;
     const endpoint = streamCfg.endpoint || cfg.endpoint;
