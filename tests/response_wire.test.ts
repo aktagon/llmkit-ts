@@ -18,7 +18,8 @@ import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
 import type { ProviderName } from "../src/providers/providers.ts";
 import type { Response } from "../src/types.ts";
-import type { ImageResponse } from "../src/structs.ts";
+import type { ImageResponse, SpeechResponse, TranscriptionResponse } from "../src/structs.ts";
+import { audioBytes } from "../src/image.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -91,6 +92,41 @@ function imageArtifact(resp: ImageResponse): unknown {
   };
 }
 
+// speechArtifact projects a SpeechResponse — the media discriminant
+// {kind,mimeType,byteLen} (the ADR-018 bytes/mime accessor contract).
+function speechArtifact(resp: SpeechResponse): unknown {
+  return {
+    usage: {
+      input: resp.usage.input,
+      output: resp.usage.output,
+      cacheRead: resp.usage.cacheRead,
+      cacheWrite: resp.usage.cacheWrite,
+      reasoning: resp.usage.reasoning,
+      cost: resp.usage.cost,
+    },
+    finishReason: "",
+    content: { kind: "speech", mimeType: resp.audio.mimeType, byteLen: resp.audio.bytes.length },
+    error: null,
+  };
+}
+
+// transcriptArtifact projects a TranscriptionResponse — {kind,text,segments}.
+function transcriptArtifact(resp: TranscriptionResponse): unknown {
+  return {
+    usage: {
+      input: resp.usage.input,
+      output: resp.usage.output,
+      cacheRead: resp.usage.cacheRead,
+      cacheWrite: resp.usage.cacheWrite,
+      reasoning: resp.usage.reasoning,
+      cost: resp.usage.cost,
+    },
+    finishReason: "",
+    content: { kind: "transcript", text: resp.text, segments: resp.segments.length },
+    error: null,
+  };
+}
+
 function assertGolden(shape: string, art: unknown): void {
   const out = artifactPath(shape);
   mkdirSync(dirname(out), { recursive: true });
@@ -129,6 +165,32 @@ async function driveImage(shape: string, provider: ProviderName, model: string):
   }
 }
 
+async function driveSpeech(shape: string, provider: ProviderName, model: string, voice: string): Promise<void> {
+  const body = readFileSync(bodyPath(shape), "utf8");
+  const server = responseMockServer(body);
+  try {
+    const c = newClient(provider, "k");
+    c.provider.baseUrl = `http://localhost:${server.port}`;
+    const resp = await c.speech.model(model).voice(voice).generate("hello");
+    assertGolden(shape, speechArtifact(resp));
+  } finally {
+    server.stop(true);
+  }
+}
+
+async function driveTranscript(shape: string, provider: ProviderName, model: string): Promise<void> {
+  const body = readFileSync(bodyPath(shape), "utf8");
+  const server = responseMockServer(body);
+  try {
+    const c = newClient(provider, "k");
+    c.provider.baseUrl = `http://localhost:${server.port}`;
+    const resp = await c.transcription.model(model).transcribe(audioBytes("audio/wav", new Uint8Array([82, 73, 70, 70])));
+    assertGolden(shape, transcriptArtifact(resp));
+  } finally {
+    server.stop(true);
+  }
+}
+
 describe("response wire — cross-SDK conformance (ADR-065)", () => {
   test("chat-openai matches shared golden", async () => {
     await driveResponse("chat-openai", Providers.openai);
@@ -154,5 +216,14 @@ describe("response wire — cross-SDK conformance (ADR-065)", () => {
 
   test("image-vertex matches shared golden", async () => {
     await driveImage("image-vertex", Providers.vertex, "imagen-3.0-generate-002");
+  });
+
+  // Speech (TTS) + transcription (STT) — the media/transcript accessor contract.
+  test("speech-inworld matches shared golden", async () => {
+    await driveSpeech("speech-inworld", Providers.inworld, "inworld-tts-2", "Dennis");
+  });
+
+  test("transcription-openai matches shared golden", async () => {
+    await driveTranscript("transcription-openai", Providers.openai, "whisper-1");
   });
 });
