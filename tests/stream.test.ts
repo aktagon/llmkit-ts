@@ -43,6 +43,59 @@ describe("Text.stream — OpenAI flavor (no event types)", () => {
   });
 });
 
+// BUG-028: OpenAI only emits streamed usage when the request opts in with
+// stream_options.include_usage. Assert llmkit sends it for OpenAI (usageOptIn
+// true) and NOT for an unverified compat-fleet provider (Grok).
+describe("Text.stream — stream_options usage opt-in (BUG-028)", () => {
+  function captureBodyServer(): {
+    url: string;
+    body: () => Record<string, unknown>;
+    stop: () => void;
+  } {
+    let captured: Record<string, unknown> = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        captured = (await req.json()) as Record<string, unknown>;
+        return new Response(`data: [DONE]\n`, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      },
+    });
+    return {
+      url: `http://localhost:${server.port}`,
+      body: () => captured,
+      stop: () => server.stop(true),
+    };
+  }
+
+  test("OpenAI sends stream_options.include_usage", async () => {
+    const server = captureBodyServer();
+    try {
+      const c = newClient(Providers.openai, "sk");
+      c.provider.baseUrl = server.url;
+      for await (const _ of c.text.model("m").stream("hi")) {
+      }
+      expect(server.body().stream_options).toEqual({ include_usage: true });
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("Grok (unverified fleet) omits stream_options", async () => {
+    const server = captureBodyServer();
+    try {
+      const c = newClient(Providers.grok, "k");
+      c.provider.baseUrl = server.url;
+      for await (const _ of c.text.model("m").stream("hi")) {
+      }
+      expect(server.body().stream_options).toBeUndefined();
+    } finally {
+      server.stop();
+    }
+  });
+});
+
 describe("Text.stream — Anthropic flavor (event types)", () => {
   test("dispatches only content_block_delta events, terminates on message_stop", async () => {
     const server = startMockSSE([
