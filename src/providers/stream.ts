@@ -15,6 +15,7 @@ export interface StreamDef {
   usageEvent: string;
   usageInputPath: string;
   usageOutputPath: string;
+  usageOptIn: boolean;
 }
 
 const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
@@ -30,6 +31,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   anthropic: {
     endpoint: "",
@@ -43,6 +45,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "message_delta",
     usageInputPath: "usage.input_tokens",
     usageOutputPath: "usage.output_tokens",
+    usageOptIn: false,
   },
   azure: {
     endpoint: "",
@@ -56,6 +59,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   cerebras: {
     endpoint: "",
@@ -69,6 +73,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   cohere: {
     endpoint: "",
@@ -82,6 +87,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   deepseek: {
     endpoint: "",
@@ -95,6 +101,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   doubao: {
     endpoint: "",
@@ -108,6 +115,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   ernie: {
     endpoint: "",
@@ -121,6 +129,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   fireworks: {
     endpoint: "",
@@ -134,6 +143,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   google: {
     endpoint: "/v1beta/models/{model}:streamGenerateContent?alt=sse",
@@ -147,6 +157,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usageMetadata.promptTokenCount",
     usageOutputPath: "usageMetadata.candidatesTokenCount",
+    usageOptIn: false,
   },
   grok: {
     endpoint: "",
@@ -160,6 +171,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   groq: {
     endpoint: "",
@@ -173,6 +185,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   jan: {
     endpoint: "",
@@ -186,6 +199,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   llamacpp: {
     endpoint: "",
@@ -199,6 +213,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   lmstudio: {
     endpoint: "",
@@ -212,6 +227,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   minimax: {
     endpoint: "",
@@ -225,6 +241,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   mistral: {
     endpoint: "",
@@ -238,6 +255,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   moonshot: {
     endpoint: "",
@@ -251,6 +269,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   ollama: {
     endpoint: "",
@@ -264,6 +283,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   openai: {
     endpoint: "",
@@ -277,6 +297,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: true,
   },
   openrouter: {
     endpoint: "",
@@ -290,6 +311,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   perplexity: {
     endpoint: "",
@@ -303,6 +325,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   qwen: {
     endpoint: "",
@@ -316,6 +339,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   sambanova: {
     endpoint: "",
@@ -329,6 +353,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   together: {
     endpoint: "",
@@ -342,6 +367,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   vllm: {
     endpoint: "",
@@ -355,6 +381,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   workersai: {
     endpoint: "",
@@ -368,6 +395,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   yi: {
     endpoint: "",
@@ -381,6 +409,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
   zhipu: {
     endpoint: "",
@@ -394,6 +423,7 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageEvent: "",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageOptIn: false,
   },
 };
 
