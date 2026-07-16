@@ -237,10 +237,7 @@ async function fetchCataloguePage(
   pcfg: ProviderSpec,
   parserKind: string,
 ): Promise<ParsedModelsPage> {
-  const headers = {
-    "content-type": "application/json",
-    ...buildAuthHeaders(provider, pcfg),
-  };
+  const headers = buildCatalogueHeaders(provider, pcfg);
   const httpResp = await fetch(reqUrl, { method: "GET", headers });
   const text = await httpResp.text();
   if (!httpResp.ok) {
@@ -292,7 +289,7 @@ function parseSingleRecord(kind: string, body: string): ParsedModelRecord {
 // Splices the pagination cursor into the URL using the cursor query-param
 // name carried by the generated CatalogueConfig (ADR-067 Fix A). An empty
 // cursor or an empty cursorParam (PaginationNone) leaves the URL unchanged.
-function appendCursor(
+export function appendCursor(
   rawUrl: string,
   cursorParam: string,
   cursor: string,
@@ -302,7 +299,7 @@ function appendCursor(
   return `${rawUrl}${sep}${cursorParam}=${encodeURIComponent(cursor)}`;
 }
 
-function buildCatalogueUrl(
+export function buildCatalogueUrl(
   provider: Provider,
   pcfg: ProviderSpec,
   endpoint: string,
@@ -314,6 +311,16 @@ function buildCatalogueUrl(
     url = `${url}${sep}${pcfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
   }
   return url;
+}
+
+// The catalogue-list request carries only the provider auth (+ any required /
+// caller headers) — a bodyless GET, so no content-type. Same header set the
+// other four SDKs' buildCatalogueHeaders produce (cross-SDK URL parity, CAT-006).
+export function buildCatalogueHeaders(
+  provider: Provider,
+  pcfg: ProviderSpec,
+): Record<string, string> {
+  return buildAuthHeaders(provider, pcfg);
 }
 
 function mapCatalogueHttpErr(status: number, body: string): Error {
