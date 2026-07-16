@@ -152,7 +152,7 @@ export async function catalogueRunList(
     for (;;) {
       const reqUrl = appendCursor(
         buildCatalogueUrl(scoped.target, pcfg, cfg.endpoint),
-        cfg.pagination,
+        cfg.cursorParam,
         cursor,
       );
       const page = await fetchCataloguePage(
@@ -289,21 +289,17 @@ function parseSingleRecord(kind: string, body: string): ParsedModelRecord {
   }
 }
 
+// Splices the pagination cursor into the URL using the cursor query-param
+// name carried by the generated CatalogueConfig (ADR-067 Fix A). An empty
+// cursor or an empty cursorParam (PaginationNone) leaves the URL unchanged.
 function appendCursor(
   rawUrl: string,
-  pagination: string,
+  cursorParam: string,
   cursor: string,
 ): string {
-  if (!cursor) return rawUrl;
+  if (!cursor || !cursorParam) return rawUrl;
   const sep = rawUrl.includes("?") ? "&" : "?";
-  switch (pagination) {
-    case "CursorByLastID":
-      return `${rawUrl}${sep}after_id=${encodeURIComponent(cursor)}`;
-    case "CursorOpaqueToken":
-      return `${rawUrl}${sep}pageToken=${encodeURIComponent(cursor)}`;
-    default:
-      return rawUrl;
-  }
+  return `${rawUrl}${sep}${cursorParam}=${encodeURIComponent(cursor)}`;
 }
 
 function buildCatalogueUrl(
