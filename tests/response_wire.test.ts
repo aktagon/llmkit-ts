@@ -20,6 +20,12 @@ import type { ProviderName } from "../src/providers/providers.ts";
 import type { Response } from "../src/types.ts";
 import type { ImageResponse, SpeechResponse, TranscriptionResponse } from "../src/structs.ts";
 import { audioBytes } from "../src/image.ts";
+import type { ParsedModelsPage } from "../src/providers/models_parsers.ts";
+import {
+  parseAnthropicModelsResponse,
+  parseGoogleModelsResponse,
+  parseOpenAICohortModelsResponse,
+} from "../src/providers/models_parsers.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -211,6 +217,38 @@ async function driveTranscript(shape: string, provider: ProviderName, model: str
 // projection as the sync chat artifact (SSE deltas assemble to the same
 // Response). Data-only SSE only (OpenAI / Google); Anthropic event-typed stream
 // deferred (see PROVENANCE.md).
+// Catalogue (/models) response shape (ADR-067 Fix B). Unlike the generation
+// shapes, the catalogue parse seam is driven DIRECTLY (no HTTP path): the
+// anchored /models body (a STRING for the TS parser) is fed to the handwritten
+// parser and the ParsedModelsPage is projected to the catalogue discriminant
+// {kind:"models", count, firstId, lastId, nextCursor, first{...}}. Record fields
+// are optional on the TS ParsedModelRecord, so they coalesce to ""/0. No usage /
+// finishReason: a catalogue is not a generation response.
+function modelsArtifact(page: ParsedModelsPage): unknown {
+  const first = page.records[0];
+  const last = page.records[page.records.length - 1];
+  return {
+    content: {
+      count: page.records.length,
+      first: {
+        contextWindow: first?.contextWindow ?? 0,
+        displayName: first?.displayName ?? "",
+        maxOutput: first?.maxOutput ?? 0,
+      },
+      firstId: first?.id ?? "",
+      kind: "models",
+      lastId: last?.id ?? "",
+      nextCursor: page.nextCursor,
+    },
+    error: null,
+  };
+}
+
+function driveModels(shape: string, parse: (body: string) => ParsedModelsPage): void {
+  const body = readFileSync(bodyPath(shape), "utf8");
+  assertGolden(shape, modelsArtifact(parse(body)));
+}
+
 async function driveStream(shape: string, provider: ProviderName): Promise<void> {
   const body = readFileSync(streamBodyPath(shape), "utf8");
   const server = streamMockServer(body);
@@ -274,5 +312,19 @@ describe("response wire — cross-SDK conformance (ADR-065)", () => {
 
   test("stream-google matches shared golden", async () => {
     await driveStream("stream-google", Providers.google);
+  });
+
+  // Catalogue (/models) response parity (ADR-067 Fix B) — one golden per
+  // provider parse shape (anthropic cursor / openai-cohort / google cursor).
+  test("models-anthropic matches shared golden", () => {
+    driveModels("models-anthropic", parseAnthropicModelsResponse);
+  });
+
+  test("models-openai matches shared golden", () => {
+    driveModels("models-openai", parseOpenAICohortModelsResponse);
+  });
+
+  test("models-google matches shared golden", () => {
+    driveModels("models-google", parseGoogleModelsResponse);
   });
 });
