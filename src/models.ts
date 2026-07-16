@@ -237,10 +237,7 @@ async function fetchCataloguePage(
   pcfg: ProviderSpec,
   parserKind: string,
 ): Promise<ParsedModelsPage> {
-  const headers = {
-    "content-type": "application/json",
-    ...buildAuthHeaders(provider, pcfg),
-  };
+  const headers = buildCatalogueHeaders(provider, pcfg);
   const httpResp = await fetch(reqUrl, { method: "GET", headers });
   const text = await httpResp.text();
   if (!httpResp.ok) {
@@ -292,7 +289,7 @@ function parseSingleRecord(kind: string, body: string): ParsedModelRecord {
 //
 //
 //
-function appendCursor(
+export function appendCursor(
   rawUrl: string,
   cursorParam: string,
   cursor: string,
@@ -302,7 +299,7 @@ function appendCursor(
   return `${rawUrl}${sep}${cursorParam}=${encodeURIComponent(cursor)}`;
 }
 
-function buildCatalogueUrl(
+export function buildCatalogueUrl(
   provider: Provider,
   pcfg: ProviderSpec,
   endpoint: string,
@@ -314,6 +311,16 @@ function buildCatalogueUrl(
     url = `${url}${sep}${pcfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
   }
   return url;
+}
+
+//
+//
+//
+export function buildCatalogueHeaders(
+  provider: Provider,
+  pcfg: ProviderSpec,
+): Record<string, string> {
+  return buildAuthHeaders(provider, pcfg);
 }
 
 function mapCatalogueHttpErr(status: number, body: string): Error {
