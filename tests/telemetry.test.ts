@@ -10,12 +10,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { newClient } from "../src/llmkit.ts";
-import { ValidationError } from "../src/errors.ts";
+import { APIError, ValidationError } from "../src/errors.ts";
 import {
   buildOTLPTraces,
+  buildTelemetryPayloadAt,
   httpExport,
   telemetryMiddleware,
 } from "../src/telemetry.ts";
+import { firePost } from "../src/middleware.ts";
 import type { Event } from "../src/providers/middleware.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -81,6 +83,41 @@ describe("telemetry — OTLP wire parity", () => {
       END_NANO,
     );
     assertTelemetryGolden("telemetry-rejection", payload);
+  });
+
+  // Exercises classification end-to-end (ADR-071 ETY-004): a typed API error
+  // routes through the REAL firePost stamping seam, and the stamped event
+  // renders to the shared telemetry-error golden via the pure builder — no
+  // error.type is hand-fed anywhere.
+  test("error payload stamps errType at the firePost seam and matches shared golden", () => {
+    let captured: Event | undefined;
+    firePost(
+      [
+        (_ctx, e) => {
+          captured = e;
+          return null;
+        },
+      ],
+      {
+        op: "llm_request",
+        phase: "post",
+        provider: "openai",
+        model: "gpt-4o",
+        err: new APIError(429, "rate limited", true),
+      },
+    );
+    expect(captured?.errType).toBe("api_error");
+    const payload = buildTelemetryPayloadAt(
+      captured as Event,
+      TRACE_ID,
+      SPAN_ID,
+      START_NANO,
+      END_NANO,
+    );
+    assertTelemetryGolden(
+      "telemetry-error",
+      new TextDecoder().decode(payload),
+    );
   });
 });
 

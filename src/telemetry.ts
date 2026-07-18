@@ -5,11 +5,11 @@
 // runtime, a sibling of the ADR-052 baseURL / custom-header overrides; the OTEL
 // semantic-convention bindings live in the generated telemetry_gen module.
 
-import { APIError, ValidationError } from "./errors.ts";
+import { ValidationError } from "./errors.ts";
 import { Client } from "./builders/builders.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import {
-  OTEL_ATTR_ERR,
+  OTEL_ATTR_ERR_TYPE,
   OTEL_ATTR_MODEL,
   OTEL_ATTR_OP,
   OTEL_ATTR_PROVIDER,
@@ -87,7 +87,7 @@ export function buildOTLPTraces(
     attributes,
   };
   if (errorType !== "") {
-    attributes.push(stringAttr(OTEL_ATTR_ERR, errorType));
+    attributes.push(stringAttr(OTEL_ATTR_ERR_TYPE, errorType));
     span.status = { code: 2 };
   }
 
@@ -109,14 +109,6 @@ export function buildOTLPTraces(
   return JSON.stringify(payload);
 }
 
-// classifyError maps an error to a stable OTEL error.type value.
-function classifyError(err: Error | undefined): string {
-  if (!err) return "";
-  if (err instanceof APIError) return "api_error";
-  if (err instanceof ValidationError) return "validation_error";
-  return "error";
-}
-
 function randHex(bytes: number): string {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
@@ -125,27 +117,40 @@ function randHex(bytes: number): string {
   return out;
 }
 
-// buildTelemetryPayload classifies a post-phase Event and renders it to the OTLP
-// traces bytes. Span identity + timing are stamped here (the pure builder takes
-// them as arguments so the parity goldens can inject fixed values). Returns bytes
-// so the Export contract is uniform with Go []byte / Python bytes / Rust &[u8].
-function buildTelemetryPayload(e: Event): Uint8Array {
+// buildTelemetryPayloadAt is the PURE event-level payload builder: span identity
+// + timing are injected so the parity goldens can drive a real post-phase Event
+// with fixed values. It reads e.errType verbatim — the kind was stamped at the
+// firePost seam, where the typed error still exists (ADR-071); no classification
+// happens here. Returns bytes so the Export contract is uniform with Go []byte /
+// Python bytes / Rust &[u8].
+export function buildTelemetryPayloadAt(
+  e: Event,
+  traceId: string,
+  spanId: string,
+  startNano: string,
+  endNano: string,
+): Uint8Array {
   const op = TELEMETRY_OPERATION_NAME[e.op] ?? e.op;
-  const errType = classifyError(e.err);
-  const now = String(BigInt(Date.now()) * 1_000_000n);
   const json = buildOTLPTraces(
     op,
     e.provider,
     e.model,
     e.usage?.input ?? 0,
     e.usage?.output ?? 0,
-    errType,
-    randHex(16),
-    randHex(8),
-    now,
-    now,
+    e.errType ?? "",
+    traceId,
+    spanId,
+    startNano,
+    endNano,
   );
   return new TextEncoder().encode(json);
+}
+
+// buildTelemetryPayload is the production wrapper: fresh span identity + the
+// wall clock around the pure builder.
+function buildTelemetryPayload(e: Event): Uint8Array {
+  const now = String(BigInt(Date.now()) * 1_000_000n);
+  return buildTelemetryPayloadAt(e, randHex(16), randHex(8), now, now);
 }
 
 // httpExport returns an Export callback that POSTs each OTLP payload to
