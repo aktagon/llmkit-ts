@@ -1200,6 +1200,8 @@ async function sigV4PostJson(
   const region = process.env[cfg.regionEnvVar] || "";
   const secret = process.env[cfg.secretKeyEnvVar] || "";
   const session = process.env[cfg.sessionTokenEnvVar] || "";
+  // Content-Type is signed (CR-002 pack contract): the signer folds it into
+  // the signed set and returns it, so the sent header equals the signed one.
   const headers = await signSigV4(
     url,
     new TextEncoder().encode(jsonBody),
@@ -1208,8 +1210,9 @@ async function sigV4PostJson(
     session,
     region,
     cfg.serviceName,
+    "POST",
+    "application/json",
   );
-  headers["Content-Type"] = "application/json";
   const resp = await fetch(url, { method: "POST", headers, body: jsonBody });
   const text = await resp.text();
   if (!resp.ok) {
