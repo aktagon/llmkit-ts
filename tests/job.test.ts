@@ -9,6 +9,8 @@ import type { Provider } from "../src/types.ts";
 import { TranscriptionHandle } from "../src/builders/transcription.ts";
 import { BatchHandle } from "../src/builders/batch.ts";
 import { PollTimeoutError, APIError } from "../src/errors.ts";
+import { pollJob, PollBody } from "../src/job.ts";
+import type { JobAdapter, LifecycleConfig } from "../src/job.ts";
 
 // completedTranscript is the AssemblyAI transcript object on terminal success.
 function completedTranscript(): Record<string, unknown> {
@@ -242,5 +244,68 @@ describe("wait abort (S06)", () => {
     } finally {
       server.stop(true);
     }
+  });
+});
+
+// runningAdapter is a fake JobAdapter whose poll() always classifies "running",
+// so pollJob is guaranteed to enter the inter-poll sleep(). onFirstPoll runs at
+// the first poll, letting a test drive the AbortController at a chosen event-loop
+// phase (microtask vs macrotask) — that phase deterministically selects which of
+// sleep()'s two abort branches runs, with NO HTTP-timing race (unlike the
+// handle-level test above, whose real fetch can outrun the abort timer and leave
+// the onAbort listener uncovered).
+function runningAdapter(onFirstPoll: () => void): JobAdapter<string> {
+  let polls = 0;
+  const cfg: LifecycleConfig = {
+    noun: "fake",
+    statusPath: "status",
+    doneValues: ["done"],
+    errorValues: [],
+    errorMessagePath: "",
+    pollIntervalMs: 60_000, // long: the abort, not the interval, ends the wait
+    pollTimeoutMs: 0,
+  };
+  return {
+    config: () => cfg,
+    poll: async () => {
+      polls += 1;
+      if (polls === 1) onFirstPoll();
+      return new PollBody({ status: "running" });
+    },
+    classify: (body) => ({
+      state: "running",
+      rawStatus: body.status("status"),
+    }),
+    result: async () => "unreachable",
+  };
+}
+
+describe("sleep abort branches (S06, deterministic — no HTTP race)", () => {
+  test("abort landing mid-sleep rejects via the abort listener (onAbort)", async () => {
+    const controller = new AbortController();
+    // MACROtask: fires only after the microtask chain has parked pollJob inside
+    // a pending sleep() timer, so sleep()'s addEventListener("abort", onAbort)
+    // is what clears the timer and rejects (job.ts onAbort branch).
+    const adapter = runningAdapter(() =>
+      setTimeout(() => controller.abort(new Error("cancelled mid-sleep")), 0),
+    );
+    await expect(pollJob(adapter, controller.signal)).rejects.toThrow(
+      "cancelled mid-sleep",
+    );
+  });
+
+  test("abort already set at sleep entry rejects via the fast path", async () => {
+    const controller = new AbortController();
+    // MICROtask: fires before pollJob reaches sleep(), so sleep() sees
+    // signal.aborted === true on entry and rejects immediately (the fast path,
+    // never registering the listener).
+    const adapter = runningAdapter(() =>
+      queueMicrotask(() =>
+        controller.abort(new Error("cancelled before sleep")),
+      ),
+    );
+    await expect(pollJob(adapter, controller.signal)).rejects.toThrow(
+      "cancelled before sleep",
+    );
   });
 });
