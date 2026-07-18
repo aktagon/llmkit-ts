@@ -15,9 +15,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { newClient } from "../src/builders/index.ts";
+import { BatchHandle } from "../src/builders/batch.ts";
 import { Providers } from "../src/providers/providers.ts";
 import type { ProviderName } from "../src/providers/providers.ts";
-import type { Response } from "../src/types.ts";
+import type { Provider, Response } from "../src/types.ts";
 import type { ImageResponse, SpeechResponse, TranscriptionResponse } from "../src/structs.ts";
 import { audioBytes } from "../src/image.ts";
 import type { ParsedModelsPage } from "../src/providers/models_parsers.ts";
@@ -249,6 +250,84 @@ function driveModels(shape: string, parse: (body: string) => ParsedModelsPage): 
   assertGolden(shape, modelsArtifact(parse(body)));
 }
 
+// Batch results (HANDOFF-036 A1): a completed batch's RESULTS file parse — one
+// succeeded line + one errored line (Anthropic result.type=errored carries no
+// result.message at the configured resultBodyPath). Every SDK must SKIP the
+// errored line and return the successful subset (count 1); a throwing parser
+// would destroy a completed batch. Driven through the real public path:
+// BatchHandle.poll against a two-hop Anthropic mock (status "ended" ->
+// GET .../results serving the anchored JSONL verbatim; the .jsonl extension
+// marks a JSONL results file, not a JSON document). Known shared assumption
+// (PROVENANCE.md): no SDK matches results by custom_id — all assume line order.
+function batchResultsBodyPath(): string {
+  return resolve(
+    REPO_ROOT,
+    "codegen",
+    "testdata",
+    "wire",
+    "response",
+    "v1",
+    "bodies",
+    "batch-results-anthropic.jsonl",
+  );
+}
+
+function batchResultsArtifact(responses: Response[]): unknown {
+  const first = responses[0];
+  return {
+    content: {
+      kind: "batch_results",
+      count: responses.length,
+      first: first
+        ? {
+            finishReason: first.finishReason ?? "",
+            text: first.text,
+            usage: {
+              input: first.usage.input,
+              output: first.usage.output,
+              cacheRead: first.usage.cacheRead,
+              cacheWrite: first.usage.cacheWrite,
+              reasoning: first.usage.reasoning,
+              cost: first.usage.cost,
+            },
+          }
+        : {},
+    },
+    error: null,
+  };
+}
+
+async function driveBatchResults(shape: string): Promise<void> {
+  const body = readFileSync(batchResultsBodyPath(), "utf8");
+  const server = Bun.serve({
+    port: 0,
+    fetch: (req) => {
+      const url = new URL(req.url);
+      if (req.method === "GET" && url.pathname.endsWith("/results")) {
+        return new Response(body);
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/v1/messages/batches/")) {
+        return new Response(JSON.stringify({ id: "batch_1", processing_status: "ended" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected " + url.pathname, { status: 404 });
+    },
+  });
+  try {
+    const provider: Provider = {
+      name: Providers.anthropic,
+      apiKey: "test-key",
+      baseUrl: `http://localhost:${server.port}`,
+    };
+    const st = await new BatchHandle("batch_1", provider).poll();
+    if (!st.result) throw new Error(`expected a succeeded result, got state ${st.state}`);
+    assertGolden(shape, batchResultsArtifact(st.result));
+  } finally {
+    server.stop(true);
+  }
+}
+
 async function driveStream(shape: string, provider: ProviderName): Promise<void> {
   const body = readFileSync(streamBodyPath(shape), "utf8");
   const server = streamMockServer(body);
@@ -312,6 +391,12 @@ describe("response wire — cross-SDK conformance (ADR-065)", () => {
 
   test("stream-google matches shared golden", async () => {
     await driveStream("stream-google", Providers.google);
+  });
+
+  // Batch results parse (HANDOFF-036 A1) — errored line skipped, successful
+  // subset returned.
+  test("batch-results-anthropic matches shared golden", async () => {
+    await driveBatchResults("batch-results-anthropic");
   });
 
   // Catalogue (/models) response parity (ADR-067 Fix B) — one golden per
