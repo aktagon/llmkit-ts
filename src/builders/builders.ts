@@ -54,6 +54,10 @@ import { Models, Providers } from "./catalogue.ts";
 
 export class Client {
   provider: ProviderConfig;
+  //
+  //
+  //
+ _middleware: MiddlewareFn[] = [];
   text: Text;
   image: Image;
   music: Music;
