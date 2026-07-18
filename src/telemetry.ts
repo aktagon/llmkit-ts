@@ -5,11 +5,11 @@
 //
 //
 
-import { APIError, ValidationError } from "./errors.ts";
+import { ValidationError } from "./errors.ts";
 import { Client } from "./builders/builders.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import {
-  OTEL_ATTR_ERR,
+  OTEL_ATTR_ERR_TYPE,
   OTEL_ATTR_MODEL,
   OTEL_ATTR_OP,
   OTEL_ATTR_PROVIDER,
@@ -87,7 +87,7 @@ export function buildOTLPTraces(
     attributes,
   };
   if (errorType !== "") {
-    attributes.push(stringAttr(OTEL_ATTR_ERR, errorType));
+    attributes.push(stringAttr(OTEL_ATTR_ERR_TYPE, errorType));
     span.status = { code: 2 };
   }
 
@@ -109,14 +109,6 @@ export function buildOTLPTraces(
   return JSON.stringify(payload);
 }
 
-//
-function classifyError(err: Error | undefined): string {
-  if (!err) return "";
-  if (err instanceof APIError) return "api_error";
-  if (err instanceof ValidationError) return "validation_error";
-  return "error";
-}
-
 function randHex(bytes: number): string {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
@@ -129,23 +121,36 @@ function randHex(bytes: number): string {
 //
 //
 //
-function buildTelemetryPayload(e: Event): Uint8Array {
+//
+//
+export function buildTelemetryPayloadAt(
+  e: Event,
+  traceId: string,
+  spanId: string,
+  startNano: string,
+  endNano: string,
+): Uint8Array {
   const op = TELEMETRY_OPERATION_NAME[e.op] ?? e.op;
-  const errType = classifyError(e.err);
-  const now = String(BigInt(Date.now()) * 1_000_000n);
   const json = buildOTLPTraces(
     op,
     e.provider,
     e.model,
     e.usage?.input ?? 0,
     e.usage?.output ?? 0,
-    errType,
-    randHex(16),
-    randHex(8),
-    now,
-    now,
+    e.errType ?? "",
+    traceId,
+    spanId,
+    startNano,
+    endNano,
   );
   return new TextEncoder().encode(json);
+}
+
+//
+//
+function buildTelemetryPayload(e: Event): Uint8Array {
+  const now = String(BigInt(Date.now()) * 1_000_000n);
+  return buildTelemetryPayloadAt(e, randHex(16), randHex(8), now, now);
 }
 
 //

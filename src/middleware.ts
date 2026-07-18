@@ -4,6 +4,7 @@
 //
 
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
+import { APIError, ValidationError } from "./errors.ts";
 
 export class MiddlewareVetoError extends Error {
   public override readonly cause: Error;
@@ -33,6 +34,7 @@ export function firePost(
 ): void {
   if (!middleware || middleware.length === 0) return;
   const ev: Event = { ...base, phase: "post" };
+  if (ev.err && !ev.errType) ev.errType = eventErrType(ev.err);
   for (const m of middleware) {
     try {
       m(undefined, ev);
@@ -40,6 +42,17 @@ export function firePost(
       //
     }
   }
+}
+
+//
+//
+//
+//
+//
+export function eventErrType(err: Error): string {
+  if (err instanceof APIError) return "api_error";
+  if (err instanceof ValidationError) return "validation_error";
+  return "error";
 }
 
 export type { Event, MiddlewareFn } from "./providers/middleware.ts";

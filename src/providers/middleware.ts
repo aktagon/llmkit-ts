@@ -46,6 +46,8 @@ export interface Event {
   //
   err?: Error;
   //
+  errType?: string;
+  //
   duration?: number;
 }
 
