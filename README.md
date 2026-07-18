@@ -4,13 +4,13 @@ One TypeScript API for Anthropic, OpenAI, Google, and 20+ other providers — in
 
 No runtime dependencies. Runs on Node ≥18, Bun, Deno, Cloudflare Workers, or any modern bundler (Vite, Next.js, esbuild, webpack 5+) — anywhere with `fetch` and Web Crypto.
 
-Also available for Go, Python, and Rust.
+Also available for Go, Python, Rust, Swift, and Java.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/aktagon/llmkit-ts/master/assets/logos/llmkit-languages.svg" alt="Go, TypeScript, Python, Rust" height="26">
+  <img src="https://raw.githubusercontent.com/aktagon/llmkit-ts/master/assets/logos/llmkit-languages.svg" alt="Go, TypeScript, Python, Rust, Swift, Java" height="26">
 </p>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/aktagon/llmkit-ts/master/assets/logos/llmkit-providers.svg" alt="Anthropic, OpenAI, Google, and 20+ more providers" height="26">
+  <img src="https://raw.githubusercontent.com/aktagon/llmkit-ts/master/assets/logos/llmkit-providers.svg" alt="Anthropic, OpenAI, Google, and 26 more providers" height="26">
 </p>
 
 ## Install
