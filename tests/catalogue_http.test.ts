@@ -13,6 +13,7 @@ import {
   ErrModelsScope,
   ErrModelsUnavailable,
 } from "../src/models.ts";
+import type { Event } from "../src/providers/middleware.ts";
 
 type FetchInput = string | URL | Request;
 type FetchInit = RequestInit | undefined;
@@ -315,5 +316,34 @@ describe("Models.live HTTP — typed ProviderError on failure", () => {
     const err = res.errors["openai"];
     expect(err).toBeDefined();
     expect(err!.kind).toBe("unavailable");
+  });
+});
+
+describe("ScopedModels.list HTTP — client-scoped middleware (HANDOFF-036 A3)", () => {
+  test("client hooks observe modelsList pre+post with a duration on post", async () => {
+    const body = JSON.stringify({
+      object: "list",
+      data: [
+        { id: "gpt-5", object: "model", created: 1715367049, owned_by: "system" },
+      ],
+    });
+    installFetchStub(() => ({ status: 200, body }));
+
+    const events: Event[] = [];
+    const c = openai("test-key");
+    c._middleware.push((_ctx, e) => {
+      events.push(e);
+      return null;
+    });
+    const models = await c.models
+      .provider({ name: "openai", apiKey: "test-key" })
+      .list();
+    expect(models.length).toBe(1);
+    expect(events.length).toBe(2);
+    expect(events[0]!.phase).toBe("pre");
+    expect(events[0]!.op).toBe("models_list");
+    expect(events[1]!.phase).toBe("post");
+    expect(events[1]!.op).toBe("models_list");
+    expect(events[1]!.duration).toBeGreaterThanOrEqual(0);
   });
 });
