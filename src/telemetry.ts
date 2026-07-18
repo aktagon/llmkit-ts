@@ -217,5 +217,8 @@ Client.prototype.addTelemetry = function (
   this.video._middleware = [...this.video._middleware, mw];
   this.agent._middleware = [...this.agent._middleware, mw];
   this.upload._middleware = [...this.upload._middleware, mw];
+  // Client-scoped seam: the models/catalogue runtime has no per-builder
+  // middleware chain, so it fires the client list (HANDOFF-036 A3).
+  this._middleware = [...this._middleware, mw];
   return this;
 };
