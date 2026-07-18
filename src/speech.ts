@@ -98,7 +98,12 @@ export async function generateSpeech(
     );
   }
 
-  return parseSpeechResponse(sgCfg.audioEncoding, model.outputMime, respBytes);
+  return parseSpeechResponse(
+    provider.name,
+    sgCfg.audioEncoding,
+    model.outputMime,
+    respBytes,
+  );
 }
 
 //
@@ -161,28 +166,48 @@ function findSpeechModel(
 //
 //
 //
+//
 function parseSpeechResponse(
+  providerName: string,
   audioEncoding: string,
   fallbackMime: string,
   body: Uint8Array,
 ): SpeechResponse {
-  let audio: AudioData = { mimeType: fallbackMime, bytes: new Uint8Array(0) };
+  let audio: AudioData;
   if (audioEncoding === "rawBody") {
     audio = { mimeType: fallbackMime, bytes: body };
   } else {
     //
-    const root = JSON.parse(new TextDecoder().decode(body)) as {
-      audioContent?: unknown;
-    };
-    if (typeof root.audioContent === "string" && root.audioContent) {
-      try {
-        audio = {
-          mimeType: fallbackMime,
-          bytes: base64ToBytes(root.audioContent),
-        };
-      } catch {
-        //
-      }
+    let root: { audioContent?: unknown };
+    try {
+      root = JSON.parse(new TextDecoder().decode(body)) as {
+        audioContent?: unknown;
+      };
+    } catch (err) {
+      throw new APIError(
+        200,
+        `${providerName} speech response: not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+        false,
+      );
+    }
+    if (typeof root.audioContent !== "string" || !root.audioContent) {
+      throw new APIError(
+        200,
+        `${providerName} speech response: missing or empty audioContent`,
+        false,
+      );
+    }
+    try {
+      audio = {
+        mimeType: fallbackMime,
+        bytes: base64ToBytes(root.audioContent),
+      };
+    } catch (err) {
+      throw new APIError(
+        200,
+        `${providerName} speech response: invalid base64 in audioContent: ${err instanceof Error ? err.message : String(err)}`,
+        false,
+      );
     }
   }
   return {
