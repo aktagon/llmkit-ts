@@ -54,6 +54,10 @@ import { Models, Providers } from "./catalogue.ts";
 
 export class Client {
   provider: ProviderConfig;
+  // Client-scoped hook list (ADR-054): addTelemetry appends here so
+  // paths without a per-builder middleware seam (the models/catalogue
+  // runtime, HANDOFF-036 A3) still fire client hooks.
+  /** @internal */ _middleware: MiddlewareFn[] = [];
   text: Text;
   image: Image;
   music: Music;
