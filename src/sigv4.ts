@@ -2,9 +2,10 @@
 //
 // @pre URL is parseable; secretKey non-empty.
 // @post returns headers with Authorization, X-Amz-Date, X-Amz-Content-Sha256,
-//   Host, and (when sessionToken is provided) X-Amz-Security-Token. The
-//   Authorization signature is byte-identical to Go's signSigV4 in
-//   go/sigv4.go for the same inputs.
+//   Host, (when sessionToken is provided) X-Amz-Security-Token, and (when
+//   contentType is provided) a SIGNED Content-Type. The Authorization
+//   signature is byte-identical to Go's signSigV4 in go/sigv4.go for the
+//   same inputs.
 // @invariant no mutation of the URL string.
 
 const ALGORITHM = "AWS4-HMAC-SHA256";
@@ -25,8 +26,47 @@ export async function signSigV4(
   // stays byte-identical; the Bedrock video poll signs a GET (mirrors Go's
   // doSigV4Get, which signs with req.Method).
   method: string = "POST",
+  // When non-empty, content-type joins the signed header set AND the returned
+  // headers carry it, so the caller sends exactly what was signed (pack
+  // contract, CR-002: Go signs content-type only when the request sends one).
+  contentType: string = "",
 ): Promise<Record<string, string>> {
-  const now = _testNow.value ?? new Date();
+  const { headers } = await signSigV4Parts(
+    url,
+    body,
+    accessKey,
+    secretKey,
+    sessionToken,
+    region,
+    service,
+    method,
+    contentType,
+    _testNow.value ?? new Date(),
+  );
+  return headers;
+}
+
+// signSigV4Parts is signSigV4 with an injected clock (CR-002): the timestamp is
+// the only non-deterministic signing input, so a fixed `now` makes the whole
+// signature chain reproducible for the cross-SDK golden. Test-only export —
+// deliberately NOT re-exported from the public barrel.
+export async function signSigV4Parts(
+  url: string,
+  body: Uint8Array,
+  accessKey: string,
+  secretKey: string,
+  sessionToken: string,
+  region: string,
+  service: string,
+  method: string,
+  contentType: string,
+  now: Date,
+): Promise<{
+  headers: Record<string, string>;
+  canonicalRequest: string;
+  stringToSign: string;
+  authorization: string;
+}> {
   const datestamp = formatDatestamp(now);
   const amzdate = formatAmzDate(now);
 
@@ -44,6 +84,9 @@ export async function signSigV4(
     "X-Amz-Date": amzdate,
     "X-Amz-Content-Sha256": payloadHash,
   };
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+  }
   if (sessionToken) {
     headers["X-Amz-Security-Token"] = sessionToken;
   }
@@ -81,10 +124,11 @@ export async function signSigV4(
     ),
   );
 
-  headers.Authorization =
+  const authorization =
     `${ALGORITHM} Credential=${accessKey}/${credentialScope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
-  return headers;
+  headers.Authorization = authorization;
+  return { headers, canonicalRequest, stringToSign, authorization };
 }
 
 function formatDatestamp(d: Date): string {

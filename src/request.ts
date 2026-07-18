@@ -1018,6 +1018,8 @@ export async function executeRequest(
     const region = process.env[cfg.regionEnvVar] || "";
     const secret = process.env[cfg.secretKeyEnvVar] || "";
     const session = process.env[cfg.sessionTokenEnvVar] || "";
+    // Content-Type is passed to the signer so it joins the signed header set
+    // (pack contract, CR-002) and arrives back in the signed headers.
     const signed = await signSigV4(
       url,
       new TextEncoder().encode(jsonBody),
@@ -1026,12 +1028,13 @@ export async function executeRequest(
       session,
       region,
       cfg.serviceName,
+      "POST",
+      "application/json",
     );
     // ADR-052: start from the AWS-signed headers, then add caller headers that
     // don't collide (case-insensitively) so the signature is never altered;
     // a gateway header still rides alongside the signed request.
     headers = { ...signed };
-    headers["Content-Type"] = "application/json";
     mergeCallerHeaders(headers, provider);
   } else {
     headers = {
