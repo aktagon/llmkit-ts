@@ -6,6 +6,7 @@
 //
 //
 //
+//
 
 const ALGORITHM = "AWS4-HMAC-SHA256";
 
@@ -25,8 +26,47 @@ export async function signSigV4(
   //
   //
   method: string = "POST",
+  //
+  //
+  //
+  contentType: string = "",
 ): Promise<Record<string, string>> {
-  const now = _testNow.value ?? new Date();
+  const { headers } = await signSigV4Parts(
+    url,
+    body,
+    accessKey,
+    secretKey,
+    sessionToken,
+    region,
+    service,
+    method,
+    contentType,
+    _testNow.value ?? new Date(),
+  );
+  return headers;
+}
+
+//
+//
+//
+//
+export async function signSigV4Parts(
+  url: string,
+  body: Uint8Array,
+  accessKey: string,
+  secretKey: string,
+  sessionToken: string,
+  region: string,
+  service: string,
+  method: string,
+  contentType: string,
+  now: Date,
+): Promise<{
+  headers: Record<string, string>;
+  canonicalRequest: string;
+  stringToSign: string;
+  authorization: string;
+}> {
   const datestamp = formatDatestamp(now);
   const amzdate = formatAmzDate(now);
 
@@ -44,6 +84,9 @@ export async function signSigV4(
     "X-Amz-Date": amzdate,
     "X-Amz-Content-Sha256": payloadHash,
   };
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+  }
   if (sessionToken) {
     headers["X-Amz-Security-Token"] = sessionToken;
   }
@@ -81,10 +124,11 @@ export async function signSigV4(
     ),
   );
 
-  headers.Authorization =
+  const authorization =
     `${ALGORITHM} Credential=${accessKey}/${credentialScope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
-  return headers;
+  headers.Authorization = authorization;
+  return { headers, canonicalRequest, stringToSign, authorization };
 }
 
 function formatDatestamp(d: Date): string {
