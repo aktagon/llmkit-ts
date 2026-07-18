@@ -1018,6 +1018,8 @@ export async function executeRequest(
     const region = process.env[cfg.regionEnvVar] || "";
     const secret = process.env[cfg.secretKeyEnvVar] || "";
     const session = process.env[cfg.sessionTokenEnvVar] || "";
+    //
+    //
     const signed = await signSigV4(
       url,
       new TextEncoder().encode(jsonBody),
@@ -1026,12 +1028,13 @@ export async function executeRequest(
       session,
       region,
       cfg.serviceName,
+      "POST",
+      "application/json",
     );
     //
     //
     //
     headers = { ...signed };
-    headers["Content-Type"] = "application/json";
     mergeCallerHeaders(headers, provider);
   } else {
     headers = {
