@@ -62,15 +62,28 @@ export function classifyCatalogueError(err: unknown): string {
 
 
 
+
+
+export function applyCapFilter(
+  models: ModelInfo[],
+  c: Capability | undefined,
+): ModelInfo[] {
+  if (!c) return [...models];
+  return models.filter((m) => m.capabilities.includes(c));
+}
+
+
+
+
 export function catalogueFilter(c: Capability | undefined): ModelInfo[] {
-  if (!c) return [...compiledInModels];
-  return compiledInModels.filter((m) => m.capabilities.includes(c));
+  return applyCapFilter(compiledInModels, c);
 }
 
 
 export function catalogueLookup(id: string): ModelInfo | undefined {
   return compiledInModels.find((m) => m.id === id);
 }
+
 
 
 
@@ -110,18 +123,16 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
     }
   }
 
-  let filtered = all;
-  if (models.capFilter) {
-    filtered = all.filter((m) => m.capabilities.includes(models.capFilter!));
-  }
-  filtered.sort((a, b) => {
+  all.sort((a, b) => {
     if (a.provider.name !== b.provider.name) {
       return a.provider.name < b.provider.name ? -1 : 1;
     }
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
-  return { models: filtered, errors };
+  return { models: all, errors };
 }
+
+
 
 
 
@@ -180,7 +191,7 @@ export async function catalogueRunList(
   });
 
   if (caught) throw caught;
-  return enrich(scoped, records);
+  return applyCapFilter(enrich(scoped, records), scoped.capFilter);
 }
 
 
