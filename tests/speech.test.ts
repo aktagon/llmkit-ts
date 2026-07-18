@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { newClient } from "../src/builders/index.ts";
 import { Providers } from "../src/providers/providers.ts";
-import { ValidationError } from "../src/llmkit.ts";
+import { APIError, ValidationError } from "../src/llmkit.ts";
 
 const inworldTTS2 = "inworld-tts-2";
 
@@ -102,6 +102,40 @@ describe("Speech.generate — Inworld (SpeechInworld)", () => {
       c.speech.model(inworldTTS2).voice("Dennis").generate("Hi"),
     ).rejects.toBeInstanceOf(ValidationError);
   });
+
+  // HANDOFF-036 A5: a 2xx whose body does not parse to audio is a decoding
+  // error naming the provider and field — never silent empty audio.
+  for (const [name, body, want] of [
+    ["missing audioContent", `{"usage":{"processedCharactersCount":8}}`, "missing or empty audioContent"],
+    ["empty audioContent", `{"audioContent":""}`, "missing or empty audioContent"],
+    ["invalid base64", `{"audioContent":"%%not-base64%%"}`, "invalid base64"],
+    ["non-JSON body", "<html>Bad Gateway</html>", "not valid JSON"],
+  ] as const) {
+    test(`malformed 2xx is a decoding error: ${name}`, async () => {
+      const server = Bun.serve({
+        port: 0,
+        fetch: () =>
+          new Response(body, {
+            headers: { "content-type": "application/json" },
+          }),
+      });
+      try {
+        const c = newClient(Providers.inworld, "test-token");
+        c.provider.baseUrl = `http://localhost:${server.port}`;
+        const p = c.speech
+          .model(inworldTTS2)
+          .voice("Dennis")
+          .generate("Hello from llmkit.");
+        await expect(p).rejects.toBeInstanceOf(APIError);
+        await p.catch((err: Error) => {
+          expect(err.message).toContain(want);
+          expect(err.message).toContain("inworld");
+        });
+      } finally {
+        server.stop(true);
+      }
+    });
+  }
 });
 
 describe("Speech.generate — OpenAI (SpeechOpenAI)", () => {
