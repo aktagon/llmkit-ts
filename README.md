@@ -499,7 +499,7 @@ client.addTelemetry({ export: (b) => batchProcessor.enqueue(b) });
 const resp = await client.text.prompt("Hello");
 ```
 
-`httpExport` is a fail-open POST — convenient for low volume; for high volume hand your own callback into your OTEL SDK's batch processor. The same OTLP span shape is emitted byte-for-byte across all four SDKs, so one collector serves a polyglot fleet. A telemetry config with no `export` throws a `ValidationError`.
+`httpExport` is a fail-open POST — convenient for low volume; for high volume hand your own callback into your OTEL SDK's batch processor. The same OTLP span shape is emitted byte-for-byte across all six SDKs, so one collector serves a polyglot fleet. A telemetry config with no `export` throws a `ValidationError`.
 
 ## Self-hosted endpoints
 
