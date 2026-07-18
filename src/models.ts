@@ -141,8 +141,11 @@ export async function catalogueRunList(
     provider: scoped.target.name,
     model: "",
   };
+  //
+  //
+  const mws = scoped.client._middleware;
   const start = performance.now();
-  const veto = firePre(undefined, baseEvent);
+  const veto = firePre(mws, baseEvent);
   if (veto) throw veto;
 
   let cursor = "";
@@ -169,10 +172,11 @@ export async function catalogueRunList(
     caught = err;
   }
 
-  firePost(undefined, {
+  firePost(mws, {
     ...baseEvent,
     phase: "post" as const,
     duration: performance.now() - start,
+    ...(caught ? { err: caught instanceof Error ? caught : new Error(String(caught)) } : {}),
   });
 
   if (caught) throw caught;
@@ -205,7 +209,10 @@ export async function catalogueRunGet(
     provider: scoped.target.name,
     model: id,
   };
-  const veto = firePre(undefined, baseEvent);
+  //
+  const mws = scoped.client._middleware;
+  const start = performance.now();
+  const veto = firePre(mws, baseEvent);
   if (veto) throw veto;
   let caught: unknown = null;
   let record: ParsedModelRecord | undefined;
@@ -224,7 +231,12 @@ export async function catalogueRunGet(
   } catch (err) {
     caught = err;
   }
-  firePost(undefined, { ...baseEvent, phase: "post" as const });
+  firePost(mws, {
+    ...baseEvent,
+    phase: "post" as const,
+    duration: performance.now() - start,
+    ...(caught ? { err: caught instanceof Error ? caught : new Error(String(caught)) } : {}),
+  });
   if (caught) throw caught;
   return enrich(scoped, [record!])[0]!;
 }

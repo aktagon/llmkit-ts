@@ -217,5 +217,8 @@ Client.prototype.addTelemetry = function (
   this.video._middleware = [...this.video._middleware, mw];
   this.agent._middleware = [...this.agent._middleware, mw];
   this.upload._middleware = [...this.upload._middleware, mw];
+  //
+  //
+  this._middleware = [...this._middleware, mw];
   return this;
 };
