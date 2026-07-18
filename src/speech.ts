@@ -98,7 +98,12 @@ export async function generateSpeech(
     );
   }
 
-  return parseSpeechResponse(sgCfg.audioEncoding, model.outputMime, respBytes);
+  return parseSpeechResponse(
+    provider.name,
+    sgCfg.audioEncoding,
+    model.outputMime,
+    respBytes,
+  );
 }
 
 // dispatchSpeechHTTP picks a wire shape per provider config (never by provider
@@ -160,29 +165,49 @@ function findSpeechModel(
 // parseSpeechResponse decodes the synthesized audio per the wire shape's audio
 // response encoding (ADR-051 OAA-002). "rawBody" (OpenAI) takes the response
 // body verbatim as the audio bytes; "base64Envelope" (Inworld) parses a JSON
-// envelope and base64-decodes the audio field.
+// envelope and base64-decodes the audio field. A 2xx body that does not parse
+// to audio is a decoding error (HANDOFF-036 A5) — never a silent empty clip.
 function parseSpeechResponse(
+  providerName: string,
   audioEncoding: string,
   fallbackMime: string,
   body: Uint8Array,
 ): SpeechResponse {
-  let audio: AudioData = { mimeType: fallbackMime, bytes: new Uint8Array(0) };
+  let audio: AudioData;
   if (audioEncoding === "rawBody") {
     audio = { mimeType: fallbackMime, bytes: body };
   } else {
     // base64Envelope: {"audioContent": "<base64>", "usage": {...}}.
-    const root = JSON.parse(new TextDecoder().decode(body)) as {
-      audioContent?: unknown;
-    };
-    if (typeof root.audioContent === "string" && root.audioContent) {
-      try {
-        audio = {
-          mimeType: fallbackMime,
-          bytes: base64ToBytes(root.audioContent),
-        };
-      } catch {
-        // leave empty on malformed payload
-      }
+    let root: { audioContent?: unknown };
+    try {
+      root = JSON.parse(new TextDecoder().decode(body)) as {
+        audioContent?: unknown;
+      };
+    } catch (err) {
+      throw new APIError(
+        200,
+        `${providerName} speech response: not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+        false,
+      );
+    }
+    if (typeof root.audioContent !== "string" || !root.audioContent) {
+      throw new APIError(
+        200,
+        `${providerName} speech response: missing or empty audioContent`,
+        false,
+      );
+    }
+    try {
+      audio = {
+        mimeType: fallbackMime,
+        bytes: base64ToBytes(root.audioContent),
+      };
+    } catch (err) {
+      throw new APIError(
+        200,
+        `${providerName} speech response: invalid base64 in audioContent: ${err instanceof Error ? err.message : String(err)}`,
+        false,
+      );
     }
   }
   return {
