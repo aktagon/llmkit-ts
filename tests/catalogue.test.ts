@@ -106,29 +106,38 @@ describe("Models.live aggregation", () => {
   test("aggregates + sorts + filters when scoped list resolves", async () => {
     // Phase 3 stub returns ErrModelsUnavailable; monkey-patch the
     // ScopedModels prototype so live() sees fulfilled values and we
-    // exercise the merge/sort/filter closures in catalogueRunLive.
+    // exercise the merge/sort closures in catalogueRunLive. Since
+    // HANDOFF-036 A4 the capability filter is applied inside
+    // scoped.list() itself, so the stub mirrors that contract by
+    // filtering on this.capFilter — live() no longer re-filters at the
+    // aggregate.
     const { ScopedModels } = await import("../src/builders/catalogue.ts");
     const { Providers: ProviderRegistry } =
       await import("../src/providers/providers.ts");
+    const { applyCapFilter } = await import("../src/models.ts");
     const original = ScopedModels.prototype.list;
     ScopedModels.prototype.list = async function (this: {
       target: { name: string };
+      capFilter?: (typeof Capabilities)[keyof typeof Capabilities];
     }) {
       const name = this.target
         .name as (typeof ProviderRegistry)[keyof typeof ProviderRegistry];
       // Return two records out of (provider, id) order to exercise the sort.
-      return [
-        {
-          id: "z-model",
-          provider: { name, apiKey: "" },
-          capabilities: [Capabilities.ChatCompletion],
-        },
-        {
-          id: "a-model",
-          provider: { name, apiKey: "" },
-          capabilities: [Capabilities.ImageGeneration],
-        },
-      ];
+      return applyCapFilter(
+        [
+          {
+            id: "z-model",
+            provider: { name, apiKey: "" },
+            capabilities: [Capabilities.ChatCompletion],
+          },
+          {
+            id: "a-model",
+            provider: { name, apiKey: "" },
+            capabilities: [Capabilities.ImageGeneration],
+          },
+        ],
+        this.capFilter,
+      );
     };
     try {
       const c = anthropic("test-key");

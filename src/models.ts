@@ -59,12 +59,24 @@ export function classifyCatalogueError(err: unknown): string {
   return "unavailable";
 }
 
-/** Walk the compiled-in slice and return records whose capabilities array
- *  contains c. Returns a fresh array so callers cannot mutate the
- *  module-level constant. */
+/** Return the records whose capabilities array contains c; no filter when
+ *  c is unset. Always a fresh array. The single capability predicate
+ *  (HANDOFF-036 A4): shared by the compiled-in path (catalogueFilter),
+ *  the scoped live list (catalogueRunList), and — through it — the live
+ *  aggregate. get stays an unfiltered point lookup by id. */
+export function applyCapFilter(
+  models: ModelInfo[],
+  c: Capability | undefined,
+): ModelInfo[] {
+  if (!c) return [...models];
+  return models.filter((m) => m.capabilities.includes(c));
+}
+
+/** Walk the compiled-in slice through the shared capability predicate.
+ *  Returns a fresh array so callers cannot mutate the module-level
+ *  constant. */
 export function catalogueFilter(c: Capability | undefined): ModelInfo[] {
-  if (!c) return [...compiledInModels];
-  return compiledInModels.filter((m) => m.capabilities.includes(c));
+  return applyCapFilter(compiledInModels, c);
 }
 
 /** Linear scan over the compiled-in slice. Returns undefined on miss. */
@@ -73,8 +85,9 @@ export function catalogueLookup(id: string): ModelInfo | undefined {
 }
 
 /** Fan out per-provider live calls and aggregate into LiveResult.
- *  WithCapability composes post-fetch. Errors land in result.errors as
- *  typed ProviderError per Amendment 1. */
+ *  capFilter is applied per-provider inside scoped.list()
+ *  (HANDOFF-036 A4). Errors land in result.errors as typed
+ *  ProviderError per Amendment 1. */
 export async function catalogueRunLive(models: Models): Promise<LiveResult> {
   // The secret-free ProviderInfo list reports WHICH providers are eligible;
   // the live fetch needs credentials, which the Client carries for its one
@@ -110,23 +123,21 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
     }
   }
 
-  let filtered = all;
-  if (models.capFilter) {
-    filtered = all.filter((m) => m.capabilities.includes(models.capFilter!));
-  }
-  filtered.sort((a, b) => {
+  all.sort((a, b) => {
     if (a.provider.name !== b.provider.name) {
       return a.provider.name < b.provider.name ? -1 : 1;
     }
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
-  return { models: filtered, errors };
+  return { models: all, errors };
 }
 
 /** Single-provider live HTTP. Paginates per the catalogue config until
  *  the parser reports no next cursor, then enriches each record with
- *  the ontology-derived capability slice. Middleware fires once per
- *  call (not per page). */
+ *  the ontology-derived capability slice and applies the chain's
+ *  capFilter (withCapability composes with provider(p).list() —
+ *  HANDOFF-036 A4; get stays an unfiltered point lookup by id).
+ *  Middleware fires once per call (not per page). */
 export async function catalogueRunList(
   scoped: ScopedModels,
 ): Promise<ModelInfo[]> {
@@ -180,7 +191,7 @@ export async function catalogueRunList(
   });
 
   if (caught) throw caught;
-  return enrich(scoped, records);
+  return applyCapFilter(enrich(scoped, records), scoped.capFilter);
 }
 
 /** Single-provider live model fetch. URL shapes pinned in plan 025

@@ -14,6 +14,7 @@ import {
   ErrModelsUnavailable,
 } from "../src/models.ts";
 import type { Event } from "../src/providers/middleware.ts";
+import { Capabilities } from "../src/types.ts";
 
 type FetchInput = string | URL | Request;
 type FetchInit = RequestInit | undefined;
@@ -316,6 +317,30 @@ describe("Models.live HTTP — typed ProviderError on failure", () => {
     const err = res.errors["openai"];
     expect(err).toBeDefined();
     expect(err!.kind).toBe("unavailable");
+  });
+});
+
+describe("ScopedModels.list HTTP — capability filter (HANDOFF-036 A4)", () => {
+  test("withCapability composes with provider(p).list()", async () => {
+    const body = JSON.stringify({
+      object: "list",
+      data: [
+        { id: "gpt-4o-mini", object: "model", created: 1715367049, owned_by: "system" },
+        { id: "gpt-image-1", object: "model", created: 1715367049, owned_by: "system" },
+      ],
+    });
+    installFetchStub(() => ({ status: 200, body }));
+
+    const c = openai("test-key");
+    const target = { name: "openai", apiKey: "test-key" } as const;
+    const unfiltered = await c.models.provider(target).list();
+    expect(unfiltered.map((m) => m.id)).toEqual(["gpt-4o-mini", "gpt-image-1"]);
+
+    const filtered = await c.models
+      .withCapability(Capabilities.ImageGeneration)
+      .provider(target)
+      .list();
+    expect(filtered.map((m) => m.id)).toEqual(["gpt-image-1"]);
   });
 });
 
