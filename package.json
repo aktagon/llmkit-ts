@@ -1,6 +1,6 @@
 {
   "name": "@aktagon/llmkit-ts",
-  "version": "1.3.2",
+  "version": "2.0.0",
   "description": "Unified LLM client library for TypeScript — one API for many providers (Anthropic, OpenAI, Google Gemini, AWS Bedrock, Mistral, Groq, DeepSeek, and more), zero runtime dependencies. Bun, Node, Deno, Cloudflare Workers.",
   "type": "module",
   "main": "./dist/llmkit.js",
