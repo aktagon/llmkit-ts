@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-07-20
+
+### Fixed
+
+- Internal builder state (`_model`, `_history`, and other private fields) is no longer emitted into the published type declarations, so it is not part of the public typed surface.
+
+### Added
+
+- `VideoResponse`, `VideoData`, and `VideoHandle` are now exported from the package root, so the result of a video generation (`client.video()…submit(…).wait()`) can be named like the other media capabilities' results.
+
 ## [2.0.0] — 2026-07-19
 
 ### Breaking
