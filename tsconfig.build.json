@@ -11,6 +11,10 @@
     "emitDeclarationOnly": true,
     "declaration": true,
     "declarationMap": true,
+    // Strip /** @internal */-tagged members (builder private state: _model,
+    // _history, client, ...) from the emitted .d.ts so they are not part of
+    // the public, frozen type surface. Without this the tags are inert.
+    "stripInternal": true,
     "rewriteRelativeImportExtensions": true,
     "outDir": "dist"
   },
