@@ -102,6 +102,11 @@ export type {
   SpeechResponse,
   SpeechOptions,
 } from "./speech.ts";
+// Video generation (ADR-034): the async handle class and its result
+// containers, mirroring the other media capabilities so a consumer can name
+// the type of `client.video()...submit(...).wait()`.
+export { VideoHandle } from "./builders/video.ts";
+export type { VideoResponse, VideoData } from "./structs.ts";
 // Per-model capability introspection (BUG-011): query the supported models and
 // their advisory caps (maxInputImages, supportsImageToVideo, ...) so a consumer
 // can gate input — e.g. how many seed/reference images a model accepts —
