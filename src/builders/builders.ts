@@ -7,11 +7,9 @@
 // Phase 4 will move the surface into the main llmkit module once the
 // legacy functional API is deleted.
 
-import type { Capability, File, Message, Response, SafetySetting, Tool } from "../types.ts";
-import type { ImageData, ImageResponse, MediaRef, Part } from "../image.ts";
-import type { AudioData, MusicResponse } from "../music.ts";
-import type { SpeechResponse } from "../speech.ts";
-import type { TranscriptionResponse } from "../structs.ts";
+import type { Capability, SafetySetting, Tool } from "../types.ts";
+import type { Part } from "../image.ts";
+import type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse } from "../structs.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { batchConfig } from "../providers/batch.ts";
 import { cachingConfig } from "../providers/caching.ts";
@@ -22,7 +20,9 @@ import { BatchHandle } from "./batch.ts";
 import { VideoHandle } from "./video.ts";
 import { TranscriptionHandle } from "./transcription.ts";
 
-export type { File, Message, Response, SafetySetting, Tool, ImageData, ImageResponse, MediaRef, Part, AudioData, MusicResponse, SpeechResponse, TranscriptionResponse, MiddlewareFn };
+// ADR-072 PXP-006: public struct re-exports derived from api:GeneratedStruct
+// (top-level-public data interfaces; handle classes value-exported below).
+export type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse, SafetySetting, Tool, Part, MiddlewareFn };
 export { BatchHandle, VideoHandle, TranscriptionHandle };
 
 export interface ProviderConfig {

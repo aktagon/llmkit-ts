@@ -107,6 +107,10 @@ export type {
 // the type of `client.video()...submit(...).wait()`.
 export { VideoHandle } from "./builders/video.ts";
 export type { VideoResponse, VideoData } from "./structs.ts";
+// Model catalogue return types (ADR-019): what
+// client.models.provider(...).capability(...).list() and .live() return, so a
+// consumer can name the type of a catalogue result at the package boundary.
+export type { ModelInfo, LiveResult } from "./structs.ts";
 // Per-model capability introspection (BUG-011): query the supported models and
 // their advisory caps (maxInputImages, supportsImageToVideo, ...) so a consumer
 // can gate input — e.g. how many seed/reference images a model accepts —
