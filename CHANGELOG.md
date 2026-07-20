@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-07-20
+
+### Added
+
+- Every response and catalogue type is now importable from both entry points — `@aktagon/llmkit-ts` and `@aktagon/llmkit-ts/builders` — uniformly: `SpeechResponse`, `TranscriptionResponse`, `TranscriptSegment`, `VideoResponse`, `VideoData`, `ModelInfo`, and `LiveResult`. Previously some were reachable from only one of the two entry points, so a consumer importing from `/builders`, or naming a model-catalogue result (`ModelInfo` / `LiveResult`), could hit a missing export.
+
 ## [2.0.1] — 2026-07-20
 
 ### Fixed
