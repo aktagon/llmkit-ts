@@ -110,6 +110,10 @@ export type { VideoResponse, VideoData } from "./structs.ts";
 //
 //
 //
+export type { ModelInfo, LiveResult } from "./structs.ts";
+//
+//
+//
 //
 //
 export { imageGenConfig } from "./providers/image_gen.ts";
