@@ -26,9 +26,9 @@ npm install @aktagon/llmkit-ts
 From GitHub (skip the npm publish loop):
 
 ```bash
-bun add github:aktagon/llmkit-ts#ts-v1.0.1
+bun add github:aktagon/llmkit-ts#ts-v2.1.0
 # or
-npm install github:aktagon/llmkit-ts#ts-v1.0.1
+npm install github:aktagon/llmkit-ts#ts-v2.1.0
 ```
 
 The package ships compiled ESM in `dist/` (works in plain Node ESM, Workers, Deno) plus the TypeScript source in `src/` (consumed for type info by Bun, Vite, Next.js, and any bundler with `moduleResolution: "bundler"`). No build step required at the consumer.
