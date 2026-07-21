@@ -31,6 +31,8 @@ import {
   type LifecycleConfig,
 } from "../job.ts";
 import { buildAuthHeaders } from "../request.ts";
+import { firePost, firePre } from "../middleware.ts";
+import type { Event, MiddlewareFn } from "../providers/middleware.ts";
 import type { MediaRef, Part } from "../image.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
@@ -214,19 +216,68 @@ export async function transcriptionSubmit(
 
   const { url, bytes } = normalizeAudioPart(audioParts);
 
+  //
+  //
+  if (bytes && !tcCfg.uploadEndpoint) {
+    throw new ValidationError(
+      "parts",
+      `${provider.name} does not accept audio bytes; pass a public audio URL`,
+    );
+  }
+
   const base = transcriptionBaseUrl(provider, cfg);
   const headers = buildAuthHeaders(provider, cfg);
 
+  const baseEvent: Event = {
+    op: "transcription",
+    phase: "pre",
+    provider: provider.name,
+    model: b._model,
+  };
+  const veto = firePre(b._middleware as MiddlewareFn[], baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
+
+  try {
+    const id = await dispatchTranscriptionSubmit(
+      base,
+      tcCfg,
+      headers,
+      url,
+      bytes,
+    );
+    firePost(b._middleware as MiddlewareFn[], {
+      ...baseEvent,
+      duration: performance.now() - start,
+    });
+    return new TranscriptionHandle(id, provider);
+  } catch (err) {
+    firePost(b._middleware as MiddlewareFn[], {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
+  }
+}
+
+
+
+
+
+
+
+async function dispatchTranscriptionSubmit(
+  base: string,
+  tcCfg: TranscriptionDef,
+  headers: Record<string, string>,
+  audioUrl: string,
+  bytes: Uint8Array | undefined,
+): Promise<string> {
   //
   //
-  let audioURL = url;
+  let audioURL = audioUrl;
   if (bytes) {
-    if (!tcCfg.uploadEndpoint) {
-      throw new ValidationError(
-        "parts",
-        `${provider.name} does not accept audio bytes; pass a public audio URL`,
-      );
-    }
     const uploadHeaders = {
       ...headers,
       "content-type": "application/octet-stream",
@@ -271,7 +322,7 @@ export async function transcriptionSubmit(
       false,
     );
   }
-  return new TranscriptionHandle(id, provider);
+  return id;
 }
 
 
@@ -334,21 +385,46 @@ export async function transcriptionTranscribe(
   const filename = "audio." + audioExtForMime(ref.mimeType);
   form.append("file", new Blob([ref.bytes], { type: mimeType }), filename);
 
-  const resp = await fetch(base + tcCfg.submitEndpoint, {
-    method: "POST",
-    headers,
-    body: form,
-  });
-  const respText = await resp.text();
-  if (!resp.ok) {
-    throw new APIError(
-      resp.status,
-      respText,
-      resp.status === 429 || resp.status >= 500,
-    );
+  const baseEvent: Event = {
+    op: "transcription",
+    phase: "pre",
+    provider: provider.name,
+    model: b._model,
+  };
+  const veto = firePre(b._middleware as MiddlewareFn[], baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
+
+  try {
+    const resp = await fetch(base + tcCfg.submitEndpoint, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    const respText = await resp.text();
+    if (!resp.ok) {
+      throw new APIError(
+        resp.status,
+        respText,
+        resp.status === 429 || resp.status >= 500,
+      );
+    }
+    const raw = JSON.parse(respText) as Record<string, unknown>;
+    const result = transcriptionResultFromOpenAI(raw);
+    firePost(b._middleware as MiddlewareFn[], {
+      ...baseEvent,
+      usage: result.usage,
+      duration: performance.now() - start,
+    });
+    return result;
+  } catch (err) {
+    firePost(b._middleware as MiddlewareFn[], {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
   }
-  const raw = JSON.parse(respText) as Record<string, unknown>;
-  return transcriptionResultFromOpenAI(raw);
 }
 
 //

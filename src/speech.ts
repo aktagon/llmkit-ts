@@ -13,6 +13,8 @@ import {
 } from "./providers/speech_gen.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { buildAuthHeaders } from "./request.ts";
+import { firePost, firePre } from "./middleware.ts";
+import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import type { Provider } from "./types.ts";
 
 export type { AudioData, SpeechResponse } from "./structs.ts";
@@ -31,6 +33,12 @@ export interface SpeechRequest {
 
 export interface SpeechOptions {
   signal?: AbortSignal;
+
+
+
+
+
+  middleware?: MiddlewareFn[];
 }
 
 export async function generateSpeech(
@@ -76,34 +84,59 @@ export async function generateSpeech(
     );
   }
 
-  const baseUrl = provider.baseUrl || cfg.baseUrl;
-  const authHeaders = buildAuthHeaders(provider, cfg);
-  const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl);
+  const baseEvent: Event = {
+    op: "speech_generation",
+    phase: "pre",
+    provider: provider.name,
+    model: request.model,
+  };
+  const veto = firePre(options.middleware, baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
 
-  const httpResp = await fetch(url, {
-    method: "POST",
-    headers: { ...authHeaders, "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
+  try {
+    const baseUrl = provider.baseUrl || cfg.baseUrl;
+    const authHeaders = buildAuthHeaders(provider, cfg);
+    const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl);
 
-  //
-  //
-  const respBytes = new Uint8Array(await httpResp.arrayBuffer());
-  if (!httpResp.ok) {
-    throw new APIError(
-      httpResp.status,
-      new TextDecoder().decode(respBytes),
-      httpResp.status === 429 || httpResp.status >= 500,
+    const httpResp = await fetch(url, {
+      method: "POST",
+      headers: { ...authHeaders, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+
+    //
+    //
+    const respBytes = new Uint8Array(await httpResp.arrayBuffer());
+    if (!httpResp.ok) {
+      throw new APIError(
+        httpResp.status,
+        new TextDecoder().decode(respBytes),
+        httpResp.status === 429 || httpResp.status >= 500,
+      );
+    }
+
+    const result = parseSpeechResponse(
+      provider.name,
+      sgCfg.audioEncoding,
+      model.outputMime,
+      respBytes,
     );
+    firePost(options.middleware, {
+      ...baseEvent,
+      usage: result.usage,
+      duration: performance.now() - start,
+    });
+    return result;
+  } catch (err) {
+    firePost(options.middleware, {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
   }
-
-  return parseSpeechResponse(
-    provider.name,
-    sgCfg.audioEncoding,
-    model.outputMime,
-    respBytes,
-  );
 }
 
 //

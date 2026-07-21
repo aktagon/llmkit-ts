@@ -284,11 +284,13 @@ export class Music {
 
 export class Speech {
  client: Client;
+ _middleware: MiddlewareFn[] = [];
  _model: string = "";
  _voice: string = "";
 
   constructor(client: Client) { this.client = client; }
 
+  addMiddleware(...fns: MiddlewareFn[]): Speech { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Speech { const out = clone(this); out._model = name; return out; }
   voice(id: string): Speech { const out = clone(this); out._voice = id; return out; }
   async generate(msg: string): Promise<SpeechResponse> {
@@ -300,10 +302,12 @@ export class Speech {
 
 export class Transcription {
  client: Client;
+ _middleware: MiddlewareFn[] = [];
  _model: string = "";
 
   constructor(client: Client) { this.client = client; }
 
+  addMiddleware(...fns: MiddlewareFn[]): Transcription { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Transcription { const out = clone(this); out._model = name; return out; }
   async submit(...audioParts: Part[]): Promise<TranscriptionHandle> {
     return transcriptionSubmit(this, ...audioParts);
