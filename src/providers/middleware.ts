@@ -24,7 +24,9 @@ export type MiddlewareOp =
   | "image_generation"
   | "music_generation"
   | "video_generation"
-  | "models_list";
+  | "models_list"
+  | "speech_generation"
+  | "transcription";
 
 export interface Event {
   //
