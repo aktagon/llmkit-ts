@@ -7,6 +7,7 @@ import {
   type SpeechRequest,
   type SpeechResponse,
 } from "../speech.ts";
+import type { MiddlewareFn } from "../providers/middleware.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
 import type { Speech } from "./builders.ts";
@@ -30,5 +31,7 @@ export async function speechGenerate(
     text: msg,
   };
 
-  return await runSpeechGeneration(provider, request);
+  return await runSpeechGeneration(provider, request, {
+    middleware: b._middleware as MiddlewareFn[],
+  });
 }
