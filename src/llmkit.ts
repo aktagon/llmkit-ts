@@ -68,6 +68,11 @@ export type {
 export { Capabilities } from "./types.ts";
 export type { Capability } from "./types.ts";
 export { APIError, ValidationError, PollTimeoutError } from "./errors.ts";
+// Symmetric response codec (ADR-076): the keyless, IO-free pair that translates
+// a provider response body to the canonical Response and back. decodeResponse
+// is the same reader the send paths call (SYM-004); encodeResponse is its
+// inverse, refusing to fabricate a field whose mapping is one-way (SYM-007).
+export { decodeResponse, encodeResponse } from "./response.ts";
 // Async-job poll surface (ADR-062 / ADR-063): the normalized JobStatus that
 // BatchHandle.poll / TranscriptionHandle.poll return, plus its JobState and
 // failure cause. Public because they are what poll() returns (POLL-004).
