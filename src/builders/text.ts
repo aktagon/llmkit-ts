@@ -18,12 +18,11 @@
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import { APIError, ValidationError } from "../errors.ts";
-import { extractPath, extractIntPath, extractFloatPath } from "../paths.ts";
-import { applyCaching, parseCacheUsage } from "../caching.ts";
+import { applyCaching } from "../caching.ts";
+import { decodeResponse } from "../response.ts";
 import {
   buildRequest as buildLegacyRequest,
   executeRequest,
-  parseResponsesEnvelope,
   resolveChatProtocol,
   validateOptions,
 } from "../request.ts";
@@ -180,39 +179,15 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
       );
     }
 
-    const raw = JSON.parse(resp.text) as unknown;
-    // ADR-055: only ChatResponsesOpenAI diverges (the output[] envelope); every
-    // other wire shape uses the provider's declared response paths.
-    let result: Response;
-    if (effCfg.chatWireShape === "ChatResponsesOpenAI") {
-      result = parseResponsesEnvelope(raw);
-    } else {
-      const cache = parseCacheUsage(raw, provider.name);
-      result = {
-        text: extractPath(raw, effCfg.responseTextPath),
-        usage: {
-          input: extractIntPath(raw, effCfg.usageInputPath),
-          output: extractIntPath(raw, effCfg.usageOutputPath),
-          cacheWrite: cache.write,
-          cacheRead: cache.read,
-          reasoning: effCfg.reasoningTokensPath
-            ? extractIntPath(raw, effCfg.reasoningTokensPath)
-            : 0,
-          cost: effCfg.usageCostPath
-            ? extractFloatPath(raw, effCfg.usageCostPath) * effCfg.usageCostScale
-            : 0,
-        },
-      };
-      if (effCfg.finishReasonPath) {
-        const reason = extractPath(raw, effCfg.finishReasonPath);
-        if (reason) result.finishReason = reason;
-      }
-      if (effCfg.finishMessagePath) {
-        const message = extractPath(raw, effCfg.finishMessagePath);
-        if (message) result.finishMessage = message;
-      }
-    }
-    if (b._raw) result.raw = raw;
+    // ADR-076 SYM-004: the public decodeResponse IS this send path's reader.
+    // ADR-055's ChatResponsesOpenAI arm is selected inside it by the effective
+    // wire shape, so the branch does not live here.
+    const result: Response = decodeResponse(
+      provider.name,
+      effCfg.chatWireShape,
+      resp.text,
+    );
+    if (b._raw) result.raw = JSON.parse(resp.text) as unknown;
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.usage,
