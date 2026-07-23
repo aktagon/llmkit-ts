@@ -5,8 +5,9 @@ import {
   batchConfig,
 } from "./providers/batch.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { extractPath, extractIntPath, extractFloatPath } from "./paths.ts";
-import { applyCaching, parseCacheUsage } from "./caching.ts";
+import { extractPath } from "./paths.ts";
+import { applyCaching } from "./caching.ts";
+import { decodeResponse } from "./response.ts";
 import {
   appendBeta,
   buildAuthHeaders,
@@ -412,7 +413,6 @@ function parseBatchResults(
   bc: BatchDef,
   raw: boolean,
 ): PromptResponse[] {
-  const cfg = PROVIDERS[provider as keyof typeof PROVIDERS];
   const out: PromptResponse[] = [];
   for (const rawLine of data.split("\n")) {
     const line = rawLine.trim();
@@ -427,30 +427,14 @@ function parseBatchResults(
       ? navigatePath(parsed, bc.resultBodyPath)
       : parsed;
     if (!inner || typeof inner !== "object") continue;
-    const cache = parseCacheUsage(inner, provider as keyof typeof PROVIDERS);
-    const entry: PromptResponse = {
-      text: extractPath(inner, cfg.responseTextPath),
-      usage: {
-        input: extractIntPath(inner, cfg.usageInputPath),
-        output: extractIntPath(inner, cfg.usageOutputPath),
-        cacheWrite: cache.write,
-        cacheRead: cache.read,
-        reasoning: cfg.reasoningTokensPath
-          ? extractIntPath(inner, cfg.reasoningTokensPath)
-          : 0,
-        cost: cfg.usageCostPath
-          ? extractFloatPath(inner, cfg.usageCostPath) * cfg.usageCostScale
-          : 0,
-      },
-    };
-    if (cfg.finishReasonPath) {
-      const reason = extractPath(inner, cfg.finishReasonPath);
-      if (reason) entry.finishReason = reason;
-    }
-    if (cfg.finishMessagePath) {
-      const message = extractPath(inner, cfg.finishMessagePath);
-      if (message) entry.finishMessage = message;
-    }
+    //
+    //
+    //
+    const entry = decodeResponse(
+      provider as keyof typeof PROVIDERS,
+      "",
+      JSON.stringify(inner),
+    );
     if (raw) entry.raw = inner;
     out.push(entry);
   }

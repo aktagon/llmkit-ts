@@ -9,7 +9,7 @@
 
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { extractIntPath, extractFloatPath, extractPath } from "./paths.ts";
+import { decodeResponse } from "./response.ts";
 import {
   buildRequest,
   executeRequest,
@@ -129,7 +129,7 @@ export class Agent {
       const llmStart = performance.now();
 
       let raw: unknown;
-      let turnUsage: Usage;
+      let decoded: PromptResponse;
       try {
         const extraHeaders: Record<string, string> = {};
         const body = buildRequest(
@@ -161,19 +161,17 @@ export class Agent {
           );
         }
         raw = JSON.parse(resp.text);
-        turnUsage = {
-          input: extractIntPath(raw, cfg.usageInputPath),
-          output: extractIntPath(raw, cfg.usageOutputPath),
-          cacheWrite: 0,
-          cacheRead: 0,
-          reasoning: 0,
-          cost: cfg.usageCostPath
-            ? extractFloatPath(raw, cfg.usageCostPath) * cfg.usageCostScale
-            : 0,
-        };
-        totalUsage.input += turnUsage.input;
-        totalUsage.output += turnUsage.output;
-        totalUsage.cost += turnUsage.cost;
+        //
+        //
+        //
+        decoded = decodeResponse(
+          this.provider.name,
+          cfg.chatWireShape,
+          resp.text,
+        );
+        totalUsage.input += decoded.usage.input;
+        totalUsage.output += decoded.usage.output;
+        totalUsage.cost += decoded.usage.cost;
       } catch (err) {
         firePost(mw, {
           ...llmEvent,
@@ -184,23 +182,19 @@ export class Agent {
       }
       firePost(mw, {
         ...llmEvent,
-        usage: turnUsage,
+        usage: decoded.usage,
         duration: performance.now() - llmStart,
       });
 
       const calls = extractToolCalls(raw, cfg);
       if (calls.length === 0) {
-        const text = extractPath(raw, cfg.responseTextPath);
-        this.history.push({ role: "assistant", content: text });
-        const result: PromptResponse = { text, usage: totalUsage };
-        if (cfg.finishReasonPath) {
-          const reason = extractPath(raw, cfg.finishReasonPath);
-          if (reason) result.finishReason = reason;
-        }
-        if (cfg.finishMessagePath) {
-          const message = extractPath(raw, cfg.finishMessagePath);
-          if (message) result.finishMessage = message;
-        }
+        this.history.push({ role: "assistant", content: decoded.text });
+        const result: PromptResponse = {
+          text: decoded.text,
+          usage: totalUsage,
+        };
+        if (decoded.finishReason) result.finishReason = decoded.finishReason;
+        if (decoded.finishMessage) result.finishMessage = decoded.finishMessage;
         if (this.options.raw) result.raw = raw;
         return result;
       }
