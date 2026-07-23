@@ -17,13 +17,11 @@ import {
 } from "./providers/options.ts";
 import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
-import { extractIntPath, extractPath } from "./paths.ts";
 import type {
   InputImage,
   Provider,
   Request as PromptRequest,
   PromptOptions,
-  Response,
   Tool,
 } from "./types.ts";
 import type { File, Message, ToolCall, ToolResult } from "./structs.ts";
@@ -85,55 +83,6 @@ export function resolveChatProtocol(
     "protocol",
     `provider "${cfg.name}" does not support protocol "${token}"`,
   );
-}
-
-//
-//
-//
-//
-//
-//
-//
-export function parseResponsesEnvelope(raw: unknown): Response {
-  const result: Response = {
-    text: extractResponsesText(raw),
-    usage: {
-      input: extractIntPath(raw, "usage.input_tokens"),
-      output: extractIntPath(raw, "usage.output_tokens"),
-      cacheWrite: 0,
-      cacheRead: extractIntPath(raw, "usage.input_tokens_details.cached_tokens"),
-      reasoning: extractIntPath(
-        raw,
-        "usage.output_tokens_details.reasoning_tokens",
-      ),
-      cost: 0,
-    },
-  };
-  const status = extractPath(raw, "status");
-  if (status) result.finishReason = status;
-  return result;
-}
-
-//
-//
-//
-function extractResponsesText(raw: unknown): string {
-  if (typeof raw !== "object" || raw === null) return "";
-  const output = (raw as Record<string, unknown>).output;
-  if (!Array.isArray(output)) return "";
-  for (const item of output) {
-    if (typeof item !== "object" || item === null) continue;
-    const m = item as Record<string, unknown>;
-    if (m.type !== "message" || !Array.isArray(m.content)) continue;
-    for (const block of m.content) {
-      if (typeof block !== "object" || block === null) continue;
-      const cm = block as Record<string, unknown>;
-      if (cm.type === "output_text" && typeof cm.text === "string") {
-        return cm.text;
-      }
-    }
-  }
-  return "";
 }
 
 export function buildRequest(

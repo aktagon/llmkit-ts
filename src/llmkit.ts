@@ -71,6 +71,11 @@ export { APIError, ValidationError, PollTimeoutError } from "./errors.ts";
 //
 //
 //
+//
+export { decodeResponse, encodeResponse } from "./response.ts";
+//
+//
+//
 export type { JobState, JobStatus, JobFailure } from "./job.ts";
 export type { Tool } from "./types.ts";
 export type {
