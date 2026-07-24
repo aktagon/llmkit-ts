@@ -61,7 +61,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "prepack": "bun run build",
-    "prepare": "bun run build"
+    "prepare": "bun run build",
+    "prepublishOnly": "python3 ../scripts/verify_public_artifact.py --tree src"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
