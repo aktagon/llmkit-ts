@@ -467,14 +467,7 @@ function buildMusicResponse(
   const out: MusicResponse = {
     audio,
     text,
-    usage: {
-      input: 0,
-      output: 0,
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: 0,
-      cost: 0,
-    },
+    usage: {},
   };
   if (finishReason) out.finishReason = finishReason;
   if (finishMessage) out.finishMessage = finishMessage;
