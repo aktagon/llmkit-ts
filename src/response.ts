@@ -14,12 +14,12 @@ import { cachingConfig } from "./providers/caching.ts";
 import { ValidationError } from "./errors.ts";
 import {
   extractPath,
-  extractIntPath,
-  extractFloatPath,
+  optIntPath,
+  optFloatPath,
   setWirePath,
 } from "./paths.ts";
 import { parseCacheUsage } from "./caching.ts";
-import type { Response } from "./types.ts";
+import type { Response, Usage } from "./types.ts";
 
 /**
  * decodeResponse extracts text and usage from a provider response body into the
@@ -47,16 +47,14 @@ export function decodeResponse(
   const result: Response = {
     text: extractPath(raw, cfg.responseTextPath),
     usage: {
-      input: extractIntPath(raw, cfg.usageInputPath),
-      output: extractIntPath(raw, cfg.usageOutputPath),
+      input: optIntPath(raw, cfg.usageInputPath),
+      output: optIntPath(raw, cfg.usageOutputPath),
       cacheWrite: cache.write,
       cacheRead: cache.read,
-      reasoning: cfg.reasoningTokensPath
-        ? extractIntPath(raw, cfg.reasoningTokensPath)
-        : 0,
-      cost: cfg.usageCostPath
-        ? extractFloatPath(raw, cfg.usageCostPath) * cfg.usageCostScale
-        : 0,
+      reasoning: optIntPath(raw, cfg.reasoningTokensPath),
+      // Scaling preserves absence: an unreported cost stays unreported rather
+      // than becoming 0 x scale (AVAIL-007).
+      cost: scaleCost(optFloatPath(raw, cfg.usageCostPath), cfg.usageCostScale),
     },
   };
   if (cfg.finishReasonPath) {
@@ -102,7 +100,7 @@ export function encodeResponse(
     setWirePath(raw, cc.writeTokensPath, response.usage.cacheWrite);
     setWirePath(raw, cc.readTokensPath, response.usage.cacheRead);
   }
-  if (cfg.usageCostScale) {
+  if (cfg.usageCostScale && response.usage.cost !== undefined) {
     setWirePath(raw, cfg.usageCostPath, response.usage.cost / cfg.usageCostScale);
   }
   setWirePath(raw, cfg.reasoningTokensPath, response.usage.reasoning);
@@ -140,15 +138,15 @@ function parseResponsesEnvelope(raw: unknown): Response {
   const result: Response = {
     text: extractResponsesText(raw),
     usage: {
-      input: extractIntPath(raw, "usage.input_tokens"),
-      output: extractIntPath(raw, "usage.output_tokens"),
-      cacheWrite: 0,
-      cacheRead: extractIntPath(raw, "usage.input_tokens_details.cached_tokens"),
-      reasoning: extractIntPath(
+      input: optIntPath(raw, "usage.input_tokens"),
+      output: optIntPath(raw, "usage.output_tokens"),
+      cacheWrite: undefined,
+      cacheRead: optIntPath(raw, "usage.input_tokens_details.cached_tokens"),
+      reasoning: optIntPath(
         raw,
         "usage.output_tokens_details.reasoning_tokens",
       ),
-      cost: 0,
+      cost: undefined,
     },
   };
   const status = extractPath(raw, "status");
@@ -207,4 +205,45 @@ function extractResponsesText(raw: unknown): string {
     }
   }
   return "";
+}
+
+
+// scaleCost applies the provider's USD conversion while preserving absence.
+function scaleCost(
+  cost: number | undefined,
+  scale: number,
+): number | undefined {
+  return cost === undefined ? undefined : cost * scale;
+}
+
+// addOpt sums one dimension across two responses. Absence is ABSORBING
+// (ADR-081 AVAIL-005): if either side did not report the dimension, neither
+// does the sum. Summing what is present and calling it a total is the defect at
+// aggregate scale — nine reported turns would hide the tenth unreported one,
+// and the answer gets less trustworthy the longer a loop runs while looking
+// more authoritative.
+function addOpt(a: number | undefined, b: number | undefined) {
+  return a === undefined || b === undefined ? undefined : a + b;
+}
+
+/**
+ * accumulateUsage folds one turn's usage into a run's running total, every
+ * dimension, absorbing. Named and single so there is exactly one place in this
+ * SDK where "add a turn's usage to a run's usage" is defined — three of the
+ * seven SDKs hand-wrote it with three of the six dimensions (BUG-045), which is
+ * what having no such place produces.
+ *
+ * Callers seed from the first turn rather than from a zero value: the identity
+ * for absorbing addition is a REPORTED zero, so an all-unreported seed would
+ * absorb every subsequent turn to nothing.
+ */
+export function accumulateUsage(total: Usage, turn: Usage): Usage {
+  return {
+    input: addOpt(total.input, turn.input),
+    output: addOpt(total.output, turn.output),
+    cacheWrite: addOpt(total.cacheWrite, turn.cacheWrite),
+    cacheRead: addOpt(total.cacheRead, turn.cacheRead),
+    reasoning: addOpt(total.reasoning, turn.reasoning),
+    cost: addOpt(total.cost, turn.cost),
+  };
 }

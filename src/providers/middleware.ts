@@ -1,16 +1,22 @@
 // Code generated — DO NOT EDIT.
 
 
+/**
+ * A dimension is either reported — carrying a value that may legitimately be
+ * zero — or not reported at all. The two are different claims: a provider
+ * that says it used no cached tokens and a provider that never mentions
+ * caching are not the same fact, and neither is a zero.
+ */
 export interface Usage {
-  input: number;
-  output: number;
-  cacheWrite: number;
-  cacheRead: number;
-  reasoning: number;
+  input?: number;
+  output?: number;
+  cacheWrite?: number;
+  cacheRead?: number;
+  reasoning?: number;
   /**
-   * cost is the provider-reported request cost in USD (ADR-027). Not a TokenDimension — a distinct monetary field. Only OpenRouter (the request must opt in with usage: {include: true}) and xAI report it. 0 is ambiguous: unreported or genuinely free — providers whose usageCostPath is empty never report cost.
+   * cost is the provider-reported request cost in USD (ADR-027). Not a TokenDimension — a distinct monetary field. Only OpenRouter (the request must opt in with usage: {include: true}) and xAI report it. Providers whose usageCostPath is empty never report cost, and the field is then ABSENT, not 0.0 — an unreported cost is not a free request (ADR-081 AVAIL-007).
    */
-  cost: number;
+  cost?: number;
 }
 
 export type MiddlewarePhase = "pre" | "post";
@@ -43,7 +49,7 @@ export interface Event {
   args?: Record<string, unknown>;
   // Only set when Op=tool_call, Phase=post. Internal-only.
   result?: string;
-  // Set for Op=llm_request, Phase=post. Expanded to gen_ai.usage.* via otelUsageAttribute on each TokenDimension, not a single attribute.
+  // Set for Op=llm_request, Phase=post. Expanded to gen_ai.usage.* via otelUsageAttribute on each TokenDimension, not a single attribute. Its optional dimensions are SHARED with the response the middleware observes (ADR-081): read them, do not write through them — mutating one rewrites what the caller receives.
   usage?: Usage;
   // Set in Phase=post when the operation failed. Human-readable; telemetry never re-parses it (ADR-071).
   err?: Error;

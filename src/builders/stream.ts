@@ -45,9 +45,11 @@ import { buildPromptArgs } from "./text.ts";
 // instead of growing the queue unboundedly.
 const STREAM_QUEUE_MAX = 64;
 
+// Optional, like the canonical Usage this feeds: a stream reports usage in one
+// late frame, and until it arrives neither dimension has been reported.
 interface StreamUsage {
-  input: number;
-  output: number;
+  input?: number;
+  output?: number;
 }
 
 interface StreamOutcome {
@@ -144,13 +146,12 @@ async function runStream(
 
     const result: PromptResponse = {
       text: chunks.join(""),
+      // Only the two dimensions a stream frame can carry. The other four are
+      // not reported on this path — padding them with zeroes claimed four
+      // measurements that were never made (ADR-081).
       usage: {
         input: outcome.usage.input,
         output: outcome.usage.output,
-        cacheWrite: 0,
-        cacheRead: 0,
-        reasoning: 0,
-        cost: 0,
       },
     };
     if (outcome.finishReason) result.finishReason = outcome.finishReason;
@@ -176,7 +177,9 @@ async function consumeSSE(
   finishReasonPath: string,
   emit: (text: string) => void | Promise<void>,
 ): Promise<StreamOutcome> {
-  const usage: StreamUsage = { input: 0, output: 0 };
+  // Nothing is reported until a usage frame arrives; a 0/0 seed claimed both
+  // dimensions were reported before the first byte (ADR-081 AVAIL-001).
+  const usage: StreamUsage = {};
   const [finishEvent, finishJSONPath] = parseStreamFinishPath(finishReasonPath);
   let finishReason = "";
   const reader = body.getReader();
