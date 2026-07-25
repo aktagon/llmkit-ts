@@ -8,6 +8,40 @@ export function extractPath(data: unknown, path: string): string {
   return String(raw);
 }
 
+// optIntPath is extractIntPath's honest form (ADR-081 AVAIL-001): undefined
+// when the provider declares no location for this dimension (empty path) or
+// the location is absent from the body, and the value — which may be a genuine
+// zero — when the provider reported one.
+//
+// This is where the ambiguity used to be manufactured. extractIntPath answers
+// "unreported" and "reported as zero" with the same 0, and every Usage
+// dimension flowed through it, so the lie was created once and copied
+// everywhere.
+export function optIntPath(data: unknown, path: string): number | undefined {
+  if (!path) return undefined;
+  const raw = extractRaw(data, path);
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "string") {
+    const n = parseInt(raw, 10);
+    return Number.isNaN(n) ? undefined : n;
+  }
+  return undefined;
+}
+
+// optFloatPath is optIntPath for the fractional ADR-027 cost field.
+export function optFloatPath(data: unknown, path: string): number | undefined {
+  if (!path) return undefined;
+  const raw = extractRaw(data, path);
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "string") {
+    const n = parseFloat(raw);
+    return Number.isNaN(n) ? undefined : n;
+  }
+  return undefined;
+}
+
 export function extractIntPath(data: unknown, path: string): number {
   const raw = extractRaw(data, path);
   if (typeof raw === "number") return raw;
@@ -18,15 +52,6 @@ export function extractIntPath(data: unknown, path: string): number {
   return 0;
 }
 
-export function extractFloatPath(data: unknown, path: string): number {
-  const raw = extractRaw(data, path);
-  if (typeof raw === "number") return raw;
-  if (typeof raw === "string") {
-    const n = parseFloat(raw);
-    return Number.isNaN(n) ? 0 : n;
-  }
-  return 0;
-}
 
 // setWirePath places `value` at a dot-notation path with array index support
 // ("choices[0].message.content"), creating intermediate objects and array
@@ -101,9 +126,14 @@ function childObject(
 // isEmptyWireValue reports whether `value` is the zero of its canonical type.
 // Empty values are skipped rather than written, so the encoder never claims a
 // provider reported zero tokens when the canonical Response simply had none.
+// undefined is the one case encodeResponse must not write: the field was NOT
+// REPORTED, and materializing a value there would invent one the provider never
+// sent. A reported ZERO is written, and that is the change ADR-081 forces here
+// — the old rule dropped every zero because the type could not tell the two
+// apart, so an explicit `cached_tokens: 0` round-tripped to a body that omitted
+// the field.
 function isEmptyWireValue(value: unknown): boolean {
   if (typeof value === "string") return value === "";
-  if (typeof value === "number") return value === 0;
   return value === undefined || value === null;
 }
 

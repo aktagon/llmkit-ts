@@ -245,14 +245,7 @@ function parseSpeechResponse(
   }
   return {
     audio,
-    usage: {
-      input: 0,
-      output: 0,
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: 0,
-      cost: 0,
-    },
+    usage: {},
   };
 }
 

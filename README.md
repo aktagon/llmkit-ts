@@ -85,11 +85,21 @@ const resp = await c.text
   .prompt("What is 2+2?");
 
 console.log(resp.text); // "4"
-console.log(resp.usage.input); // prompt tokens
-console.log(resp.usage.output); // completion tokens
-console.log(resp.usage.cacheRead); // tokens served from cache
-console.log(resp.usage.cacheWrite); // tokens written to cache (Anthropic explicit)
-console.log(resp.usage.reasoning); // internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
+
+// Every Usage dimension is optional. undefined means the provider did not
+// report the value, which is NOT the same as reporting zero: a provider that
+// says it used no cached tokens and one that never mentions caching are
+// different facts, and a plain 0 cannot tell you which you have.
+resp.usage.input; // number | undefined — prompt tokens
+resp.usage.output; // number | undefined — completion tokens
+resp.usage.cacheRead; // number | undefined — tokens served from cache
+resp.usage.cacheWrite; // number | undefined — tokens written to cache (Anthropic explicit)
+resp.usage.reasoning; // number | undefined — internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
+resp.usage.cost; // number | undefined — provider-reported USD; undefined is unreported, never "free"
+
+if (resp.usage.cacheRead !== undefined) {
+  console.log(resp.usage.cacheRead, "tokens served from cache");
+}
 ```
 
 Capability-scoped fields (`cacheRead`, `cacheWrite`, `reasoning`) are zero when the provider doesn't report them separately.

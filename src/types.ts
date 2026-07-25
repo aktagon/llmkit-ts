@@ -79,15 +79,13 @@ export interface InputImage {
   detail: string;
 }
 
-export interface Usage {
-  input: number;
-  output: number;
-  cacheWrite: number;
-  cacheRead: number;
-  reasoning: number;
-  /** Provider-reported cost (USD); 0 when unreported (ADR-027). */
-  cost: number;
-}
+// Usage is GENERATED from the TokenDimension instances (plus the ADR-027
+// cost field) into ./providers/middleware.ts, and re-exported here so the
+// hand-written surface keeps one name for it. It used to be redeclared in this
+// file, which meant two definitions of one type in one package: the generated
+// one gained optional dimensions (ADR-081) while this copy still promised six
+// non-optional numbers, and nothing but the typechecker was going to notice.
+export type { Usage } from "./providers/middleware.ts";
 
 /** Per-category content safety filter for Gemini providers. */
 export interface SafetySetting {
