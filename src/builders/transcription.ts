@@ -450,14 +450,7 @@ function transcriptionResultFromOpenAI(
   return {
     text,
     segments,
-    usage: {
-      input: 0,
-      output: 0,
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: 0,
-      cost: 0,
-    },
+    usage: {},
   };
 }
 
@@ -576,14 +569,7 @@ function transcriptionResultFromAssemblyAI(
   return {
     text,
     segments,
-    usage: {
-      input: 0,
-      output: 0,
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: 0,
-      cost: 0,
-    },
+    usage: {},
   };
 }
 

@@ -38,7 +38,13 @@ class SpendCap {
     }
     const p = this.prices[e.model];
     if (!p || !e.usage) return null;
-    this.spent += (e.usage.input * p.input + e.usage.output * p.output) / 1e6;
+    // A spend cap must not charge for tokens nobody reported. Both dimensions
+    // are optional (ADR-081): unreported is not zero, so a turn that reported
+    // no counts contributes nothing rather than a confident $0.00 — and a
+    // budget built on those silent zeroes would never trip.
+    const { input, output } = e.usage;
+    if (input === undefined || output === undefined) return null;
+    this.spent += (input * p.input + output * p.output) / 1e6;
     return null;
   };
 

@@ -92,12 +92,12 @@ export interface ImageResponse {
   text: string;
 
   /**
-   * usage holds token consumption metrics for the image-generation call. Google reports image-output tokens in usageMetadata.candidatesTokenCount; OpenAI Images API and Vertex Imagen do not return token counts so this stays zero on those providers.
+   * usage holds token consumption metrics for the image-generation call. Google reports image-output tokens in usageMetadata.candidatesTokenCount; OpenAI Images API and Vertex Imagen do not return token counts, so on those providers no dimension is reported at all — absent, not zero.
    */
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal. Examples per provider: Google STOP/IMAGE_OTHER/SAFETY/MAX_TOKENS; OpenAI Images API has no equivalent field (always empty); xAI Grok has no equivalent field (always empty); Vertex Imagen surfaces the RAI filter reason when content is blocked.
+   * finishReason is the provider stop signal. Examples per provider: Google STOP/IMAGE_OTHER/SAFETY/MAX_TOKENS; OpenAI Images API has no equivalent field (always absent); xAI Grok has no equivalent field (always absent); Vertex Imagen surfaces the RAI filter reason when content is blocked.
    */
   finishReason?: string;
 
@@ -232,7 +232,7 @@ export interface MusicResponse {
   text: string;
 
   /**
-   * usage holds token consumption metrics for the music-generation call. None of the three verified providers report audio-output tokens as a distinct dimension; this stays zero unless a provider surfaces counts (ADR-033 OQ-3).
+   * usage holds token consumption metrics for the music-generation call. None of the three verified providers report audio-output tokens as a distinct dimension; the dimension is unreported unless a provider surfaces counts (ADR-033 OQ-3). Unreported is not zero.
    */
   usage: Usage;
 
@@ -282,12 +282,12 @@ export interface Response {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal, passed through verbatim. Empty when the provider response carries no signal or the parser does not yet read this provider's location. Examples per provider: Google STOP/MAX_TOKENS/SAFETY/RECITATION; OpenAI stop/length/content_filter/tool_calls; Anthropic end_turn/max_tokens/stop_sequence/tool_use; xAI stop/length/content_filter.
+   * finishReason is the provider stop signal, passed through verbatim. ABSENT (not empty) when the provider response carries no signal or the provider declares no path for it — the two are the same observation, and neither is an empty string (ADR-081). Examples per provider: Google STOP/MAX_TOKENS/SAFETY/RECITATION; OpenAI stop/length/content_filter/tool_calls; Anthropic end_turn/max_tokens/stop_sequence/tool_use; xAI stop/length/content_filter.
    */
   finishReason?: string;
 
   /**
-   * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI do not carry an equivalent field, so this stays empty for them.
+   * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI carry no equivalent field, so it is ABSENT for them rather than empty (ADR-081).
    */
   finishMessage?: string;
 
@@ -307,7 +307,7 @@ export interface SpeechResponse {
   audio: AudioData;
 
   /**
-   * usage holds provider-reported usage. Inworld returns usage.processedCharactersCount, but the SDK does not yet surface it: the Usage carrier has no characters axis and OQ-3 declined to overload a token axis, so this stays zero pending a typed characters dimension (ADR-049 OQ-3, deferred).
+   * usage holds provider-reported usage. Inworld returns usage.processedCharactersCount, but the SDK does not yet surface it: the Usage carrier has no characters axis and OQ-3 declined to overload a token axis, so it is left UNREPORTED pending a typed characters dimension (ADR-049 OQ-3, deferred) — honest absence rather than a zero that would read as a measurement.
    */
   usage: Usage;
 
@@ -407,7 +407,7 @@ export interface TranscriptionResponse {
   segments: TranscriptSegment[];
 
   /**
-   * usage holds provider-reported usage. AssemblyAI bills by audio duration, not tokens; this stays zero unless a provider surfaces a token axis (ADR-048 OQ-2).
+   * usage holds provider-reported usage. AssemblyAI bills by audio duration, not tokens; no dimension is reported unless a provider surfaces a token axis (ADR-048 OQ-2). Unreported is not zero.
    */
   usage: Usage;
 }
@@ -472,7 +472,7 @@ export interface VideoResponse {
   videos: VideoData[];
 
   /**
-   * usage holds token consumption metrics for the video-generation call. No verified provider reports a video usage axis yet; this stays zero unless a provider surfaces counts (ADR-034 OQ-3).
+   * usage holds token consumption metrics for the video-generation call. No verified provider reports a video usage axis yet; the dimensions stay unreported unless a provider surfaces counts (ADR-034 OQ-3). Unreported is not zero.
    */
   usage: Usage;
 
