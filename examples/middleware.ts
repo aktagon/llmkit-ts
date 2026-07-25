@@ -38,7 +38,13 @@ class SpendCap {
     }
     const p = this.prices[e.model];
     if (!p || !e.usage) return null;
-    this.spent += (e.usage.input * p.input + e.usage.output * p.output) / 1e6;
+    //
+    //
+    //
+    //
+    const { input, output } = e.usage;
+    if (input === undefined || output === undefined) return null;
+    this.spent += (input * p.input + output * p.output) / 1e6;
     return null;
   };
 

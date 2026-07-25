@@ -11,7 +11,7 @@ import {
   type ProviderName,
 } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { extractIntPath, extractPath } from "./paths.ts";
+import { optIntPath, extractIntPath, extractPath } from "./paths.ts";
 import { mergeCallerHeaders, resolveModel } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
@@ -176,11 +176,13 @@ async function applyResource(
 export function parseCacheUsage(
   raw: unknown,
   provider: ProviderName,
-): { write: number; read: number } {
+): { write: number | undefined; read: number | undefined } {
   const cc = cachingConfig(provider);
-  if (!cc) return { write: 0, read: 0 };
+  //
+  //
+  if (!cc) return { write: undefined, read: undefined };
   return {
-    write: cc.writeTokensPath ? extractIntPath(raw, cc.writeTokensPath) : 0,
-    read: cc.readTokensPath ? extractIntPath(raw, cc.readTokensPath) : 0,
+    write: optIntPath(raw, cc.writeTokensPath),
+    read: optIntPath(raw, cc.readTokensPath),
   };
 }

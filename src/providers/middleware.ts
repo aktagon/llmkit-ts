@@ -1,16 +1,22 @@
 // Code generated — DO NOT EDIT.
 
 
+
+
+
+
+
+
 export interface Usage {
-  input: number;
-  output: number;
-  cacheWrite: number;
-  cacheRead: number;
-  reasoning: number;
+  input?: number;
+  output?: number;
+  cacheWrite?: number;
+  cacheRead?: number;
+  reasoning?: number;
 
 
 
-  cost: number;
+  cost?: number;
 }
 
 export type MiddlewarePhase = "pre" | "post";

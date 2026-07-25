@@ -13,7 +13,7 @@ import {
   imageGenConfig,
 } from "./providers/image_gen.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { extractIntPath } from "./paths.ts";
+import { extractIntPath, optIntPath } from "./paths.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
@@ -651,14 +651,7 @@ function parseVertexImageResponse(raw: unknown): ImageResponse {
   const out: ImageResponse = {
     images,
     text: "",
-    usage: {
-      input: 0,
-      output: 0,
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: 0,
-      cost: 0,
-    },
+    usage: {},
   };
   if (finishReason) out.finishReason = finishReason;
   return out;
@@ -776,12 +769,8 @@ function parseImageResponse(
     images,
     text,
     usage: {
-      input: extractIntPath(raw, inputPath),
-      output: extractIntPath(raw, outputPath),
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: 0,
-      cost: 0,
+      input: optIntPath(raw, inputPath),
+      output: optIntPath(raw, outputPath),
     },
   };
   if (finishReason) out.finishReason = finishReason;
@@ -840,12 +829,8 @@ function parseImageResponseDataArray(
     images,
     text: revised.join("\n"),
     usage: {
-      input: inputPath ? extractIntPath(raw, inputPath) : 0,
-      output: outputPath ? extractIntPath(raw, outputPath) : 0,
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: 0,
-      cost: 0,
+      input: optIntPath(raw, inputPath),
+      output: optIntPath(raw, outputPath),
     },
   };
 }

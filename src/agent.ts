@@ -9,7 +9,7 @@
 
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { decodeResponse } from "./response.ts";
+import { accumulateUsage, decodeResponse } from "./response.ts";
 import {
   buildRequest,
   executeRequest,
@@ -105,14 +105,10 @@ export class Agent {
     const cfg = PROVIDERS[this.provider.name]!;
     const maxIters =
       this.options.maxToolIterations ?? DEFAULT_MAX_TOOL_ITERATIONS;
-    const totalUsage: Usage = {
-      input: 0,
-      output: 0,
-      cacheWrite: 0,
-      cacheRead: 0,
-      reasoning: 0,
-      cost: 0,
-    };
+    //
+    //
+    //
+    let totalUsage: Usage | undefined;
 
     const model = resolveModel(this.provider, cfg);
     const mw = this.options.middleware;
@@ -169,9 +165,10 @@ export class Agent {
           cfg.chatWireShape,
           resp.text,
         );
-        totalUsage.input += decoded.usage.input;
-        totalUsage.output += decoded.usage.output;
-        totalUsage.cost += decoded.usage.cost;
+        totalUsage =
+          totalUsage === undefined
+            ? decoded.usage
+            : accumulateUsage(totalUsage, decoded.usage);
       } catch (err) {
         firePost(mw, {
           ...llmEvent,
@@ -191,7 +188,7 @@ export class Agent {
         this.history.push({ role: "assistant", content: decoded.text });
         const result: PromptResponse = {
           text: decoded.text,
-          usage: totalUsage,
+          usage: totalUsage ?? {},
         };
         if (decoded.finishReason) result.finishReason = decoded.finishReason;
         if (decoded.finishMessage) result.finishMessage = decoded.finishMessage;

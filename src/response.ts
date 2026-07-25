@@ -14,12 +14,12 @@ import { cachingConfig } from "./providers/caching.ts";
 import { ValidationError } from "./errors.ts";
 import {
   extractPath,
-  extractIntPath,
-  extractFloatPath,
+  optIntPath,
+  optFloatPath,
   setWirePath,
 } from "./paths.ts";
 import { parseCacheUsage } from "./caching.ts";
-import type { Response } from "./types.ts";
+import type { Response, Usage } from "./types.ts";
 
 
 
@@ -47,16 +47,14 @@ export function decodeResponse(
   const result: Response = {
     text: extractPath(raw, cfg.responseTextPath),
     usage: {
-      input: extractIntPath(raw, cfg.usageInputPath),
-      output: extractIntPath(raw, cfg.usageOutputPath),
+      input: optIntPath(raw, cfg.usageInputPath),
+      output: optIntPath(raw, cfg.usageOutputPath),
       cacheWrite: cache.write,
       cacheRead: cache.read,
-      reasoning: cfg.reasoningTokensPath
-        ? extractIntPath(raw, cfg.reasoningTokensPath)
-        : 0,
-      cost: cfg.usageCostPath
-        ? extractFloatPath(raw, cfg.usageCostPath) * cfg.usageCostScale
-        : 0,
+      reasoning: optIntPath(raw, cfg.reasoningTokensPath),
+      //
+      //
+      cost: scaleCost(optFloatPath(raw, cfg.usageCostPath), cfg.usageCostScale),
     },
   };
   if (cfg.finishReasonPath) {
@@ -102,7 +100,7 @@ export function encodeResponse(
     setWirePath(raw, cc.writeTokensPath, response.usage.cacheWrite);
     setWirePath(raw, cc.readTokensPath, response.usage.cacheRead);
   }
-  if (cfg.usageCostScale) {
+  if (cfg.usageCostScale && response.usage.cost !== undefined) {
     setWirePath(raw, cfg.usageCostPath, response.usage.cost / cfg.usageCostScale);
   }
   setWirePath(raw, cfg.reasoningTokensPath, response.usage.reasoning);
@@ -140,15 +138,15 @@ function parseResponsesEnvelope(raw: unknown): Response {
   const result: Response = {
     text: extractResponsesText(raw),
     usage: {
-      input: extractIntPath(raw, "usage.input_tokens"),
-      output: extractIntPath(raw, "usage.output_tokens"),
-      cacheWrite: 0,
-      cacheRead: extractIntPath(raw, "usage.input_tokens_details.cached_tokens"),
-      reasoning: extractIntPath(
+      input: optIntPath(raw, "usage.input_tokens"),
+      output: optIntPath(raw, "usage.output_tokens"),
+      cacheWrite: undefined,
+      cacheRead: optIntPath(raw, "usage.input_tokens_details.cached_tokens"),
+      reasoning: optIntPath(
         raw,
         "usage.output_tokens_details.reasoning_tokens",
       ),
-      cost: 0,
+      cost: undefined,
     },
   };
   const status = extractPath(raw, "status");
@@ -207,4 +205,45 @@ function extractResponsesText(raw: unknown): string {
     }
   }
   return "";
+}
+
+
+//
+function scaleCost(
+  cost: number | undefined,
+  scale: number,
+): number | undefined {
+  return cost === undefined ? undefined : cost * scale;
+}
+
+//
+//
+//
+//
+//
+//
+function addOpt(a: number | undefined, b: number | undefined) {
+  return a === undefined || b === undefined ? undefined : a + b;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+export function accumulateUsage(total: Usage, turn: Usage): Usage {
+  return {
+    input: addOpt(total.input, turn.input),
+    output: addOpt(total.output, turn.output),
+    cacheWrite: addOpt(total.cacheWrite, turn.cacheWrite),
+    cacheRead: addOpt(total.cacheRead, turn.cacheRead),
+    reasoning: addOpt(total.reasoning, turn.reasoning),
+    cost: addOpt(total.cost, turn.cost),
+  };
 }

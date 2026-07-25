@@ -8,6 +8,40 @@ export function extractPath(data: unknown, path: string): string {
   return String(raw);
 }
 
+//
+//
+//
+//
+//
+//
+//
+//
+//
+export function optIntPath(data: unknown, path: string): number | undefined {
+  if (!path) return undefined;
+  const raw = extractRaw(data, path);
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "string") {
+    const n = parseInt(raw, 10);
+    return Number.isNaN(n) ? undefined : n;
+  }
+  return undefined;
+}
+
+//
+export function optFloatPath(data: unknown, path: string): number | undefined {
+  if (!path) return undefined;
+  const raw = extractRaw(data, path);
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "string") {
+    const n = parseFloat(raw);
+    return Number.isNaN(n) ? undefined : n;
+  }
+  return undefined;
+}
+
 export function extractIntPath(data: unknown, path: string): number {
   const raw = extractRaw(data, path);
   if (typeof raw === "number") return raw;
@@ -18,15 +52,6 @@ export function extractIntPath(data: unknown, path: string): number {
   return 0;
 }
 
-export function extractFloatPath(data: unknown, path: string): number {
-  const raw = extractRaw(data, path);
-  if (typeof raw === "number") return raw;
-  if (typeof raw === "string") {
-    const n = parseFloat(raw);
-    return Number.isNaN(n) ? 0 : n;
-  }
-  return 0;
-}
 
 //
 //
@@ -101,9 +126,14 @@ function childObject(
 //
 //
 //
+//
+//
+//
+//
+//
+//
 function isEmptyWireValue(value: unknown): boolean {
   if (typeof value === "string") return value === "";
-  if (typeof value === "number") return value === 0;
   return value === undefined || value === null;
 }
 

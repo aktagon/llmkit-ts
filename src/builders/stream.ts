@@ -45,9 +45,11 @@ import { buildPromptArgs } from "./text.ts";
 //
 const STREAM_QUEUE_MAX = 64;
 
+//
+//
 interface StreamUsage {
-  input: number;
-  output: number;
+  input?: number;
+  output?: number;
 }
 
 interface StreamOutcome {
@@ -144,13 +146,12 @@ async function runStream(
 
     const result: PromptResponse = {
       text: chunks.join(""),
+      //
+      //
+      //
       usage: {
         input: outcome.usage.input,
         output: outcome.usage.output,
-        cacheWrite: 0,
-        cacheRead: 0,
-        reasoning: 0,
-        cost: 0,
       },
     };
     if (outcome.finishReason) result.finishReason = outcome.finishReason;
@@ -176,7 +177,9 @@ async function consumeSSE(
   finishReasonPath: string,
   emit: (text: string) => void | Promise<void>,
 ): Promise<StreamOutcome> {
-  const usage: StreamUsage = { input: 0, output: 0 };
+  //
+  //
+  const usage: StreamUsage = {};
   const [finishEvent, finishJSONPath] = parseStreamFinishPath(finishReasonPath);
   let finishReason = "";
   const reader = body.getReader();
