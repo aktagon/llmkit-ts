@@ -46,7 +46,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     slug: "azure",
     envVar: "AZURE_OPENAI_API_KEY",
     defaultModel: "gpt-4o",
-    baseUrl: "https://REPLACE-WITH-YOUR-RESOURCE.openai.azure.com",
+    baseUrl: "https://{resource}.openai.azure.com",
     browserCallable: false,
   },
   bedrock: {
