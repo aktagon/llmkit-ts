@@ -101,7 +101,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     id: "fireworks",
     slug: "fireworks",
     envVar: "FIREWORKS_API_KEY",
-    defaultModel: "accounts/fireworks/models/llama-v3p3-70b-instruct",
+    defaultModel: "accounts/fireworks/models/gpt-oss-120b",
     baseUrl: "https://api.fireworks.ai/inference",
     browserCallable: false,
   },
