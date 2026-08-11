@@ -225,7 +225,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
   },
   azure: {
     name: "azure",
-    baseUrl: "https://REPLACE-WITH-YOUR-RESOURCE.openai.azure.com",
+    baseUrl: "https://{resource}.openai.azure.com",
     endpoint: "/openai/deployments/{model}/chat/completions?api-version=2024-10-21",
     defaultModel: "gpt-4o",
     envVar: "AZURE_OPENAI_API_KEY",
