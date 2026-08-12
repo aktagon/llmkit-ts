@@ -9,7 +9,7 @@
 
 import type { Capability, SafetySetting, Tool } from "../types.ts";
 import type { Part } from "../image.ts";
-import type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse } from "../structs.ts";
+import type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse } from "../structs.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { batchConfig } from "../providers/batch.ts";
 import { cachingConfig } from "../providers/caching.ts";
@@ -22,7 +22,7 @@ import { TranscriptionHandle } from "./transcription.ts";
 
 //
 //
-export type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse, SafetySetting, Tool, Part, MiddlewareFn };
+export type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse, SafetySetting, Tool, Part, MiddlewareFn };
 export { BatchHandle, VideoHandle, TranscriptionHandle };
 
 export interface ProviderConfig {

@@ -165,6 +165,11 @@ export interface Message {
 
 
   toolResult: ToolResult | null;
+
+
+
+
+  providerTurn?: ProviderTurn;
 }
 
 
@@ -270,6 +275,21 @@ export interface ProviderError {
 
 
 
+export interface ProviderTurn {
+
+
+
+  wireShape: string;
+
+
+
+
+  wire: string;
+}
+
+
+
+
 export interface Response {
 
 
@@ -295,6 +315,11 @@ export interface Response {
 
 
   raw?: unknown;
+
+
+
+
+  providerTurn?: ProviderTurn;
 }
 
 

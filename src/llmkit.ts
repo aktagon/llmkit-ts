@@ -62,6 +62,7 @@ export type {
   AgentOptions,
   ToolCall,
   ToolResult,
+  ProviderTurn,
 } from "./types.ts";
 //
 //
