@@ -277,7 +277,7 @@ export interface ProviderError {
  */
 export interface ProviderTurn {
   /**
-   * wireShape is the ChatWireShape value that produced this payload (chat_openai, chat_anthropic, chat_google, chat_responses_openai, chat_bedrock). Load-bearing: a payload captured under one shape is never replayed under another, because the shapes disagree on what an assistant turn even is — an array of blocks on Anthropic, a message object on OpenAI, an item list on Responses. On a mismatch the payload is dropped and the turn reconstructed (ADR-085 RSN-006).
+   * wireShape is the ChatWireShape value that produced this payload, spelled exactly as the SDK constant: ChatOpenAI, ChatAnthropic, ChatGoogle, ChatResponsesOpenAI, ChatBedrock. The spelling is part of the contract, not decoration — a payload whose wire_shape does not match is dropped rather than rejected, so a caller who hand-writes a lower-case variant gets silent reconstruction with no error to explain it. Load-bearing: a payload captured under one shape is never replayed under another, because the shapes disagree on what an assistant turn even is — an array of blocks on Anthropic, a message object on OpenAI, an item list on Responses. On a mismatch the payload is dropped and the turn reconstructed (ADR-085 RSN-006).
    */
   wireShape: string;
 
