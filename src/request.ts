@@ -17,6 +17,7 @@ import {
 } from "./providers/options.ts";
 import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
+import { resolveTurns } from "./provider_turn.ts";
 import type {
   InputImage,
   Provider,
@@ -121,7 +122,10 @@ export function buildRequest(
     setNestedField(body, maxTokensKey, maxTokensValue);
   }
 
-  const msgs = toMessageList(request);
+  // resolveTurns runs first and only here: it is the one place cfg and the
+  // message list meet, so the ADR-085 RSN-006 shape check is made once rather
+  // than remembered in each builder below.
+  const msgs = resolveTurns(toMessageList(request), cfg);
   if (cfg.chatWireShape === "ChatBedrock") {
     if (request.system) {
       body.system = [{ text: request.system }];
@@ -549,10 +553,17 @@ export function toolCallInput(call: ToolCall): Record<string, unknown> {
 // combinations; this internal union cannot, so the builders below dispatch on
 // `kind` exhaustively — a missing case is a compile error, with no silent-drop
 // branch and no runtime carrier guard.
-type Msg =
+export type Msg =
   | { kind: "text"; role: string; text: string }
   | { kind: "calls"; calls: ToolCall[] }
-  | { kind: "result"; result: ToolResult };
+  | { kind: "result"; result: ToolResult }
+  // An assistant turn the provider itself serialized, replayed verbatim instead
+  // of rebuilt (ADR-085). It carries the projection it replaces so resolveTurns
+  // can drop back to reconstruction when the payload was captured under a
+  // different wire shape — the alternative, deciding that at build time, would
+  // put the same check in three places. Not a fourth carrier: it WRAPS one of the
+  // other three, which stays the projection consumers read.
+  | { kind: "turn"; shape: string; wire: string; fallback: Msg };
 
 // Exhaustiveness at each Msg dispatch is enforced inline (ADR-026 PIPE-007):
 // the `const _: never = m` in every `default:` makes adding a fourth kind
@@ -573,9 +584,24 @@ function toInternal(messages: Message[]): Msg[] {
         "must carry only one of text, toolCalls, or toolResult",
       );
     }
-    if (hasResult) return { kind: "result", result: m.toolResult! };
-    if (hasCalls) return { kind: "calls", calls: m.toolCalls! };
-    return { kind: "text", role: m.role, text: m.content ?? "" };
+    const projected: Msg = hasResult
+      ? { kind: "result", result: m.toolResult! }
+      : hasCalls
+        ? { kind: "calls", calls: m.toolCalls! }
+        : { kind: "text", role: m.role, text: m.content ?? "" };
+    // providerTurn is not a fourth carrier — it is the same turn in the provider's
+    // own serialization, so it never participates in the one-carrier check above.
+    // When present it supersedes the projection on the wire while the projection
+    // stays what consumers read.
+    if (m.providerTurn) {
+      return {
+        kind: "turn",
+        shape: m.providerTurn.wireShape,
+        wire: m.providerTurn.wire,
+        fallback: projected,
+      };
+    }
+    return projected;
   });
 }
 
@@ -598,6 +624,13 @@ function buildBedrockMessages(
   images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
   return msgs.map((m): Record<string, unknown> => {
+    // Bedrock never replays: ChatBedrock declares assistantTurnUnanchored
+    // rather than a position (ADR-085 OQ-5), so there is no container to splice
+    // into. Reconstruct from the projection instead of falling through to the
+    // exhaustiveness throw — resolveTurns should already have unwrapped this, and
+    // a throw reaching a caller is the wrong way to report that it did not. When
+    // OQ-5 anchors Converse, this becomes a real splice.
+    while (m.kind === "turn") m = m.fallback;
     switch (m.kind) {
       case "result":
         return {
@@ -644,42 +677,74 @@ function buildGoogleContents(
 ): Array<Record<string, unknown>> {
   const hasMedia = files.length > 0 || images.length > 0;
   return msgs.map((m): Record<string, unknown> => {
-    switch (m.kind) {
-      case "result":
-        return {
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name: m.result.toolUseId,
-                response: { result: m.result.content },
-              },
-            },
-          ],
-        };
-      case "calls":
-        return {
-          role: cfg.roleMappings.assistant ?? "model",
-          parts: m.calls.map((c) => ({
-            functionCall: { name: c.name, args: toolCallInput(c) },
-          })),
-        };
-      case "text":
-        return {
-          role: cfg.roleMappings[m.role] ?? m.role,
-          parts:
-            hasMedia && m.role === "user" && msgs.length === 1
-              ? buildGoogleContentParts(m.text, files, images)
-              : [{ text: m.text }],
-        };
-      default: {
-        const _exhaustive: never = m;
-        throw new Error(
-          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
-        );
+    // A replayed Google turn is candidates[0].content verbatim — the same
+    // {role, parts} object the contents array takes, so it drops straight in.
+    if (m.kind === "turn" && m.shape === "ChatGoogle") {
+      try {
+        const payload: unknown = JSON.parse(m.wire);
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          return payload as Record<string, unknown>;
+        }
+      } catch {
+        // fall through to the projection
       }
     }
+    return googleProjectedEntry(m, cfg, files, images, hasMedia, msgs.length);
   });
+}
+
+// googleProjectedEntry renders one canonical message as a Google `contents`
+// entry — the reconstruction path. Mirrors flatProjectedEntry, final arm included.
+function googleProjectedEntry(
+  m: Msg,
+  cfg: ProviderSpec,
+  files: File[],
+  images: InputImage[],
+  hasMedia: boolean,
+  msgCount: number,
+): Record<string, unknown> {
+  switch (m.kind) {
+    case "result":
+      return {
+        role: "user",
+        parts: [
+          {
+            functionResponse: {
+              name: m.result.toolUseId,
+              response: { result: m.result.content },
+            },
+          },
+        ],
+      };
+    case "calls":
+      return {
+        role: cfg.roleMappings.assistant ?? "model",
+        parts: m.calls.map((c) => ({
+          functionCall: { name: c.name, args: toolCallInput(c) },
+        })),
+      };
+    case "text":
+      return {
+        role: cfg.roleMappings[m.role] ?? m.role,
+        parts:
+          hasMedia && m.role === "user" && msgCount === 1
+            ? buildGoogleContentParts(m.text, files, images)
+            : [{ text: m.text }],
+      };
+    case "turn":
+      return googleProjectedEntry(
+        m.fallback,
+        cfg,
+        files,
+        images,
+        hasMedia,
+        msgCount,
+      );
+    default: {
+      const _exhaustive: never = m;
+      throw new Error(`unhandled Msg variant: ${JSON.stringify(_exhaustive)}`);
+    }
+  }
 }
 
 // buildFlatContentParts builds the OpenAI/Anthropic user-message content array
@@ -807,35 +872,102 @@ function buildMessages(
 
   const hasMedia = files.length > 0 || images.length > 0;
   for (const m of msgs) {
-    switch (m.kind) {
-      case "result":
-        out.push(toolResultMsg(m.result, cfg));
-        break;
-      case "calls":
-        out.push(toolCallMsg(m.calls, cfg));
-        break;
-      case "text":
-        // Attach media only on the degenerate single-turn user path, matching
-        // Go's `len(msgs)==0 && req.User != ""` media branch — history turns
-        // carry plain-string content.
-        out.push({
-          role: cfg.roleMappings[m.role] ?? m.role,
-          content:
-            hasMedia && m.role === "user" && msgs.length === 1
-              ? buildFlatContentParts(m.text, files, images, cfg)
-              : m.text,
-        });
-        break;
-      default: {
-        const _exhaustive: never = m;
-        throw new Error(
-          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
-        );
-      }
-    }
+    if (m.kind === "turn" && appendFlatReplayedTurn(out, m, cfg)) continue;
+    out.push(flatProjectedEntry(m, cfg, files, images, hasMedia, msgs.length));
   }
 
   return out;
+}
+
+// flatProjectedEntry renders one canonical message as a flat-envelope entry — the
+// reconstruction path, unchanged from before ADR-085 and still what every
+// caller-authored turn takes.
+function flatProjectedEntry(
+  m: Msg,
+  cfg: ProviderSpec,
+  files: File[],
+  images: InputImage[],
+  hasMedia: boolean,
+  msgCount: number,
+): Record<string, unknown> {
+  switch (m.kind) {
+    case "result":
+      return toolResultMsg(m.result, cfg);
+    case "calls":
+      return toolCallMsg(m.calls, cfg);
+    case "text":
+      // Attach media only on the degenerate single-turn user path, matching
+      // Go's `len(msgs)==0 && req.User != ""` media branch — history turns
+      // carry plain-string content.
+      return {
+        role: cfg.roleMappings[m.role] ?? m.role,
+        content:
+          hasMedia && m.role === "user" && msgCount === 1
+            ? buildFlatContentParts(m.text, files, images, cfg)
+            : m.text,
+      };
+    case "turn":
+      // A payload the splice could not place falls back to its projection.
+      // resolveTurns should already have unwrapped anything unplaceable — this
+      // arm is what keeps "should" from being load-bearing.
+      return flatProjectedEntry(
+        m.fallback,
+        cfg,
+        files,
+        images,
+        hasMedia,
+        msgCount,
+      );
+    default: {
+      const _exhaustive: never = m;
+      throw new Error(`unhandled Msg variant: ${JSON.stringify(_exhaustive)}`);
+    }
+  }
+}
+
+// appendFlatReplayedTurn appends a captured assistant turn to a flat-envelope
+// array in whatever container that wire family expects, returning false when the
+// payload cannot be placed so the caller reconstructs instead.
+//
+// The three families disagree on what assistantTurnPath even points at, which
+// is why this cannot be one push:
+//
+//   - ChatOpenAI     "choices[0].message"  -> an assistant message object
+//   - ChatAnthropic  "content"             -> the block ARRAY, with no message
+//     object around it; the role wrapper below is llmkit's, the blocks are the
+//     provider's
+//   - ChatResponses  "output"              -> an ITEM LIST that spreads across N
+//     input entries rather than becoming one (ADR-085 OQ-1)
+function appendFlatReplayedTurn(
+  out: Array<Record<string, unknown>>,
+  turn: Extract<Msg, { kind: "turn" }>,
+  cfg: ProviderSpec,
+): boolean {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(turn.wire);
+  } catch {
+    return false;
+  }
+  if (turn.shape === "ChatAnthropic") {
+    out.push({
+      role: cfg.roleMappings.assistant ?? "assistant",
+      content: payload,
+    });
+    return true;
+  }
+  if (turn.shape === "ChatResponsesOpenAI") {
+    if (!Array.isArray(payload)) return false;
+    for (const item of payload) {
+      out.push(item as Record<string, unknown>);
+    }
+    return true;
+  }
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  out.push(payload as Record<string, unknown>);
+  return true;
 }
 
 // attachToolDefs writes the provider-shaped tool definitions onto the body.

@@ -63,6 +63,17 @@ interface WireMessage {
   content: string;
   tool_calls: WireToolCall[];
   tool_result: WireToolResult | null;
+  // ADR-085. Optional, unlike tool_result: STAB-004's emit-null rule is scoped to
+  // the role discriminator, and provider_turn is not one — a turn that never had a
+  // payload and a turn whose payload was dropped are the same thing to a reader.
+  // Omitting also keeps the canonical messages.json golden byte-identical, since
+  // the wire.ttl fixture declares no payload.
+  provider_turn?: WireProviderTurn;
+}
+
+interface WireProviderTurn {
+  wire_shape: string;
+  wire: string;
 }
 
 interface WireToolCall {
@@ -130,7 +141,7 @@ export function loadHistory(data: string): Message[] {
 }
 
 function toWireMessage(m: Message): WireMessage {
-  return {
+  const out: WireMessage = {
     role: m.role,
     content: m.content,
     tool_calls: m.toolCalls.map(toWireToolCall),
@@ -139,6 +150,13 @@ function toWireMessage(m: Message): WireMessage {
         ? null
         : toWireToolResult(m.toolResult),
   };
+  if (m.providerTurn) {
+    out.provider_turn = {
+      wire_shape: m.providerTurn.wireShape,
+      wire: m.providerTurn.wire,
+    };
+  }
+  return out;
 }
 
 function toWireToolCall(tc: ToolCall): WireToolCall {
@@ -186,10 +204,26 @@ function fromWireMessage(raw: unknown): Message {
       content: String(trObj.content ?? ""),
     };
   }
-  return {
+  // ADR-085 RSN-009, the unknown-field hazard. An OLD reader — one built before
+  // provider_turn existed — silently drops this key, and on Anthropic a dropped
+  // payload is a REJECTED request once the provider enforces the echo, not a
+  // degraded one. Unknown-field tolerance is benign in general and is not benign
+  // here. Nothing in the format can fix that (the key is additive under the same
+  // `_v` by ADR-085 §9); it is documented so a consumer reading a document written
+  // by a newer SDK knows what a silent reconstruction means.
+  const out: Message = {
     role: String(obj.role ?? ""),
     content: String(obj.content ?? ""),
     toolCalls,
     toolResult,
   };
+  const ptRaw = obj.provider_turn;
+  if (ptRaw !== null && typeof ptRaw === "object" && !Array.isArray(ptRaw)) {
+    const pt = ptRaw as Record<string, unknown>;
+    out.providerTurn = {
+      wireShape: String(pt.wire_shape ?? ""),
+      wire: String(pt.wire ?? ""),
+    };
+  }
+  return out;
 }
