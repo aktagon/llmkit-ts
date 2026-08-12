@@ -17,6 +17,7 @@ import {
 } from "./providers/options.ts";
 import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
+import { resolveTurns } from "./provider_turn.ts";
 import type {
   InputImage,
   Provider,
@@ -121,7 +122,10 @@ export function buildRequest(
     setNestedField(body, maxTokensKey, maxTokensValue);
   }
 
-  const msgs = toMessageList(request);
+  //
+  //
+  //
+  const msgs = resolveTurns(toMessageList(request), cfg);
   if (cfg.chatWireShape === "ChatBedrock") {
     if (request.system) {
       body.system = [{ text: request.system }];
@@ -549,10 +553,17 @@ export function toolCallInput(call: ToolCall): Record<string, unknown> {
 //
 //
 //
-type Msg =
+export type Msg =
   | { kind: "text"; role: string; text: string }
   | { kind: "calls"; calls: ToolCall[] }
-  | { kind: "result"; result: ToolResult };
+  | { kind: "result"; result: ToolResult }
+  //
+  //
+  //
+  //
+  //
+  //
+  | { kind: "turn"; shape: string; wire: string; fallback: Msg };
 
 //
 //
@@ -573,9 +584,24 @@ function toInternal(messages: Message[]): Msg[] {
         "must carry only one of text, toolCalls, or toolResult",
       );
     }
-    if (hasResult) return { kind: "result", result: m.toolResult! };
-    if (hasCalls) return { kind: "calls", calls: m.toolCalls! };
-    return { kind: "text", role: m.role, text: m.content ?? "" };
+    const projected: Msg = hasResult
+      ? { kind: "result", result: m.toolResult! }
+      : hasCalls
+        ? { kind: "calls", calls: m.toolCalls! }
+        : { kind: "text", role: m.role, text: m.content ?? "" };
+    //
+    //
+    //
+    //
+    if (m.providerTurn) {
+      return {
+        kind: "turn",
+        shape: m.providerTurn.wireShape,
+        wire: m.providerTurn.wire,
+        fallback: projected,
+      };
+    }
+    return projected;
   });
 }
 
@@ -598,6 +624,13 @@ function buildBedrockMessages(
   images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
   return msgs.map((m): Record<string, unknown> => {
+    //
+    //
+    //
+    //
+    //
+    //
+    while (m.kind === "turn") m = m.fallback;
     switch (m.kind) {
       case "result":
         return {
@@ -644,42 +677,74 @@ function buildGoogleContents(
 ): Array<Record<string, unknown>> {
   const hasMedia = files.length > 0 || images.length > 0;
   return msgs.map((m): Record<string, unknown> => {
-    switch (m.kind) {
-      case "result":
-        return {
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name: m.result.toolUseId,
-                response: { result: m.result.content },
-              },
-            },
-          ],
-        };
-      case "calls":
-        return {
-          role: cfg.roleMappings.assistant ?? "model",
-          parts: m.calls.map((c) => ({
-            functionCall: { name: c.name, args: toolCallInput(c) },
-          })),
-        };
-      case "text":
-        return {
-          role: cfg.roleMappings[m.role] ?? m.role,
-          parts:
-            hasMedia && m.role === "user" && msgs.length === 1
-              ? buildGoogleContentParts(m.text, files, images)
-              : [{ text: m.text }],
-        };
-      default: {
-        const _exhaustive: never = m;
-        throw new Error(
-          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
-        );
+    //
+    //
+    if (m.kind === "turn" && m.shape === "ChatGoogle") {
+      try {
+        const payload: unknown = JSON.parse(m.wire);
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          return payload as Record<string, unknown>;
+        }
+      } catch {
+        //
       }
     }
+    return googleProjectedEntry(m, cfg, files, images, hasMedia, msgs.length);
   });
+}
+
+//
+//
+function googleProjectedEntry(
+  m: Msg,
+  cfg: ProviderSpec,
+  files: File[],
+  images: InputImage[],
+  hasMedia: boolean,
+  msgCount: number,
+): Record<string, unknown> {
+  switch (m.kind) {
+    case "result":
+      return {
+        role: "user",
+        parts: [
+          {
+            functionResponse: {
+              name: m.result.toolUseId,
+              response: { result: m.result.content },
+            },
+          },
+        ],
+      };
+    case "calls":
+      return {
+        role: cfg.roleMappings.assistant ?? "model",
+        parts: m.calls.map((c) => ({
+          functionCall: { name: c.name, args: toolCallInput(c) },
+        })),
+      };
+    case "text":
+      return {
+        role: cfg.roleMappings[m.role] ?? m.role,
+        parts:
+          hasMedia && m.role === "user" && msgCount === 1
+            ? buildGoogleContentParts(m.text, files, images)
+            : [{ text: m.text }],
+      };
+    case "turn":
+      return googleProjectedEntry(
+        m.fallback,
+        cfg,
+        files,
+        images,
+        hasMedia,
+        msgCount,
+      );
+    default: {
+      const _exhaustive: never = m;
+      throw new Error(`unhandled Msg variant: ${JSON.stringify(_exhaustive)}`);
+    }
+  }
 }
 
 //
@@ -807,35 +872,102 @@ function buildMessages(
 
   const hasMedia = files.length > 0 || images.length > 0;
   for (const m of msgs) {
-    switch (m.kind) {
-      case "result":
-        out.push(toolResultMsg(m.result, cfg));
-        break;
-      case "calls":
-        out.push(toolCallMsg(m.calls, cfg));
-        break;
-      case "text":
-        //
-        //
-        //
-        out.push({
-          role: cfg.roleMappings[m.role] ?? m.role,
-          content:
-            hasMedia && m.role === "user" && msgs.length === 1
-              ? buildFlatContentParts(m.text, files, images, cfg)
-              : m.text,
-        });
-        break;
-      default: {
-        const _exhaustive: never = m;
-        throw new Error(
-          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
-        );
-      }
-    }
+    if (m.kind === "turn" && appendFlatReplayedTurn(out, m, cfg)) continue;
+    out.push(flatProjectedEntry(m, cfg, files, images, hasMedia, msgs.length));
   }
 
   return out;
+}
+
+//
+//
+//
+function flatProjectedEntry(
+  m: Msg,
+  cfg: ProviderSpec,
+  files: File[],
+  images: InputImage[],
+  hasMedia: boolean,
+  msgCount: number,
+): Record<string, unknown> {
+  switch (m.kind) {
+    case "result":
+      return toolResultMsg(m.result, cfg);
+    case "calls":
+      return toolCallMsg(m.calls, cfg);
+    case "text":
+      //
+      //
+      //
+      return {
+        role: cfg.roleMappings[m.role] ?? m.role,
+        content:
+          hasMedia && m.role === "user" && msgCount === 1
+            ? buildFlatContentParts(m.text, files, images, cfg)
+            : m.text,
+      };
+    case "turn":
+      //
+      //
+      //
+      return flatProjectedEntry(
+        m.fallback,
+        cfg,
+        files,
+        images,
+        hasMedia,
+        msgCount,
+      );
+    default: {
+      const _exhaustive: never = m;
+      throw new Error(`unhandled Msg variant: ${JSON.stringify(_exhaustive)}`);
+    }
+  }
+}
+
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+function appendFlatReplayedTurn(
+  out: Array<Record<string, unknown>>,
+  turn: Extract<Msg, { kind: "turn" }>,
+  cfg: ProviderSpec,
+): boolean {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(turn.wire);
+  } catch {
+    return false;
+  }
+  if (turn.shape === "ChatAnthropic") {
+    out.push({
+      role: cfg.roleMappings.assistant ?? "assistant",
+      content: payload,
+    });
+    return true;
+  }
+  if (turn.shape === "ChatResponsesOpenAI") {
+    if (!Array.isArray(payload)) return false;
+    for (const item of payload) {
+      out.push(item as Record<string, unknown>);
+    }
+    return true;
+  }
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  out.push(payload as Record<string, unknown>);
+  return true;
 }
 
 //

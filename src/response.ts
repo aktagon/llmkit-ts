@@ -19,6 +19,7 @@ import {
   setWirePath,
 } from "./paths.ts";
 import { parseCacheUsage } from "./caching.ts";
+import { captureProviderTurn } from "./provider_turn.ts";
 import type { Response, Usage } from "./types.ts";
 
 
@@ -38,11 +39,18 @@ export function decodeResponse(
   body: string,
 ): Response {
   const raw: unknown = JSON.parse(body);
+  const cfg = PROVIDERS[provider];
+  //
+  //
+  //
+  const providerTurn = captureProviderTurn(body, cfg, chatWireShape);
+
   if (chatWireShape === "ChatResponsesOpenAI") {
-    return parseResponsesEnvelope(raw);
+    const envelope = parseResponsesEnvelope(raw);
+    if (providerTurn) envelope.providerTurn = providerTurn;
+    return envelope;
   }
 
-  const cfg = PROVIDERS[provider];
   const cache = parseCacheUsage(raw, provider);
   const result: Response = {
     text: extractPath(raw, cfg.responseTextPath),
@@ -65,6 +73,7 @@ export function decodeResponse(
     const message = extractPath(raw, cfg.finishMessagePath);
     if (message) result.finishMessage = message;
   }
+  if (providerTurn) result.providerTurn = providerTurn;
   return result;
 }
 

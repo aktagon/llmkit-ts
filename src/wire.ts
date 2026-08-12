@@ -63,6 +63,17 @@ interface WireMessage {
   content: string;
   tool_calls: WireToolCall[];
   tool_result: WireToolResult | null;
+  //
+  //
+  //
+  //
+  //
+  provider_turn?: WireProviderTurn;
+}
+
+interface WireProviderTurn {
+  wire_shape: string;
+  wire: string;
 }
 
 interface WireToolCall {
@@ -130,7 +141,7 @@ export function loadHistory(data: string): Message[] {
 }
 
 function toWireMessage(m: Message): WireMessage {
-  return {
+  const out: WireMessage = {
     role: m.role,
     content: m.content,
     tool_calls: m.toolCalls.map(toWireToolCall),
@@ -139,6 +150,13 @@ function toWireMessage(m: Message): WireMessage {
         ? null
         : toWireToolResult(m.toolResult),
   };
+  if (m.providerTurn) {
+    out.provider_turn = {
+      wire_shape: m.providerTurn.wireShape,
+      wire: m.providerTurn.wire,
+    };
+  }
+  return out;
 }
 
 function toWireToolCall(tc: ToolCall): WireToolCall {
@@ -186,10 +204,26 @@ function fromWireMessage(raw: unknown): Message {
       content: String(trObj.content ?? ""),
     };
   }
-  return {
+  //
+  //
+  //
+  //
+  //
+  //
+  //
+  const out: Message = {
     role: String(obj.role ?? ""),
     content: String(obj.content ?? ""),
     toolCalls,
     toolResult,
   };
+  const ptRaw = obj.provider_turn;
+  if (ptRaw !== null && typeof ptRaw === "object" && !Array.isArray(ptRaw)) {
+    const pt = ptRaw as Record<string, unknown>;
+    out.providerTurn = {
+      wireShape: String(pt.wire_shape ?? ""),
+      wire: String(pt.wire ?? ""),
+    };
+  }
+  return out;
 }

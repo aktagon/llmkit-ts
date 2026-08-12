@@ -6,6 +6,7 @@ import {
 } from "./providers/batch.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { extractPath } from "./paths.ts";
+import { extractRawJsonPath } from "./provider_turn.ts";
 import { applyCaching } from "./caching.ts";
 import { decodeResponse } from "./response.ts";
 import {
@@ -417,15 +418,21 @@ function parseBatchResults(
   for (const rawLine of data.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
-    let parsed: unknown;
+    //
+    //
+    //
+    //
+    //
+    const innerText = bc.resultBodyPath
+      ? extractRawJsonPath(line, bc.resultBodyPath)
+      : line;
+    if (innerText === undefined) continue;
+    let inner: unknown;
     try {
-      parsed = JSON.parse(line);
+      inner = JSON.parse(innerText);
     } catch {
       continue;
     }
-    const inner = bc.resultBodyPath
-      ? navigatePath(parsed, bc.resultBodyPath)
-      : parsed;
     if (!inner || typeof inner !== "object") continue;
     //
     //
@@ -433,21 +440,12 @@ function parseBatchResults(
     const entry = decodeResponse(
       provider as keyof typeof PROVIDERS,
       "",
-      JSON.stringify(inner),
+      innerText,
     );
     if (raw) entry.raw = inner;
     out.push(entry);
   }
   return out;
-}
-
-function navigatePath(data: unknown, path: string): unknown {
-  let cur: unknown = data;
-  for (const part of path.split(".")) {
-    if (typeof cur !== "object" || cur === null) return null;
-    cur = (cur as Record<string, unknown>)[part];
-  }
-  return cur;
 }
 
 async function fetchText(

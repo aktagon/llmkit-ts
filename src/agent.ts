@@ -28,13 +28,22 @@ import type {
   Tool,
   Usage,
 } from "./types.ts";
-import type { Message, ToolCall, ToolResult } from "./structs.ts";
+import type {
+  Message,
+  ProviderTurn,
+  ToolCall,
+  ToolResult,
+} from "./structs.ts";
 
 interface InternalMessage {
   role: "user" | "assistant" | "tool_result";
   content?: string;
   toolCalls?: ToolCall[];
   toolResult?: ToolResult;
+  //
+  //
+  //
+  providerTurn?: ProviderTurn;
 }
 
 const DEFAULT_MAX_TOOL_ITERATIONS = 10;
@@ -92,6 +101,10 @@ export class Agent {
       if (m.content) entry.content = m.content;
       if (m.toolCalls && m.toolCalls.length > 0) entry.toolCalls = m.toolCalls;
       if (m.toolResult) entry.toolResult = m.toolResult;
+      //
+      //
+      //
+      if (m.providerTurn) entry.providerTurn = m.providerTurn;
       this.history.push(entry);
     }
   }
@@ -185,18 +198,35 @@ export class Agent {
 
       const calls = extractToolCalls(raw, cfg);
       if (calls.length === 0) {
-        this.history.push({ role: "assistant", content: decoded.text });
+        //
+        //
+        //
+        //
+        const terminal: InternalMessage = {
+          role: "assistant",
+          content: decoded.text,
+        };
+        if (decoded.providerTurn) terminal.providerTurn = decoded.providerTurn;
+        this.history.push(terminal);
         const result: PromptResponse = {
           text: decoded.text,
           usage: totalUsage ?? {},
         };
+        if (decoded.providerTurn) result.providerTurn = decoded.providerTurn;
         if (decoded.finishReason) result.finishReason = decoded.finishReason;
         if (decoded.finishMessage) result.finishMessage = decoded.finishMessage;
         if (this.options.raw) result.raw = raw;
         return result;
       }
 
-      this.history.push({ role: "assistant", toolCalls: calls });
+      //
+      //
+      //
+      //
+      //
+      const assistantTurn: InternalMessage = { role: "assistant", toolCalls: calls };
+      if (decoded.providerTurn) assistantTurn.providerTurn = decoded.providerTurn;
+      this.history.push(assistantTurn);
       for (const call of calls) {
         const callArgs = toolCallInput(call);
         const tool = this.tools.find((t) => t.name === call.name);
@@ -247,12 +277,20 @@ export class Agent {
   //
   //
   private toRequest(): Request {
-    const messages: Message[] = this.history.map((m) => ({
-      role: m.role,
-      content: m.content ?? "",
-      toolCalls: m.toolCalls ?? [],
-      toolResult: m.toolResult ?? null,
-    }));
+    const messages: Message[] = this.history.map((m) => {
+      const out: Message = {
+        role: m.role,
+        content: m.content ?? "",
+        toolCalls: m.toolCalls ?? [],
+        toolResult: m.toolResult ?? null,
+      };
+      //
+      //
+      //
+      //
+      if (m.providerTurn) out.providerTurn = m.providerTurn;
+      return out;
+    });
     const request: Request = { messages };
     if (this.system) request.system = this.system;
     return request;
