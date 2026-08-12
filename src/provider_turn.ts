@@ -19,7 +19,6 @@
 //
 //
 
-import { PROVIDERS } from "./providers/providers.ts";
 import type { ProviderSpec } from "./providers/providers.ts";
 import type { ProviderTurn } from "./structs.ts";
 import type { Msg } from "./request.ts";
@@ -249,20 +248,6 @@ export function captureProviderTurn(
   const trimmed = wire.trim();
   if (!trimmed || trimmed === "null") return undefined;
   return { wireShape: shape, wire };
-}
-
-
-
-
-
-export function captureProviderTurnByName(
-  provider: keyof typeof PROVIDERS,
-  chatWireShape: string,
-  body: string,
-): ProviderTurn | undefined {
-  const cfg = PROVIDERS[provider];
-  if (!cfg) return undefined;
-  return captureProviderTurn(body, cfg, chatWireShape);
 }
 
 
