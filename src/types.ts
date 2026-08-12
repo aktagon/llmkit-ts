@@ -12,6 +12,7 @@ export type {
   BatchHandle,
   File,
   Message,
+  ProviderTurn,
   Response,
   ToolCall,
   ToolResult,
