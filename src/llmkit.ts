@@ -62,6 +62,7 @@ export type {
   AgentOptions,
   ToolCall,
   ToolResult,
+  ProviderTurn,
 } from "./types.ts";
 // Capability vocabulary (ADR-019 catalogue filter + ADR-030
 // Client.supports query).
