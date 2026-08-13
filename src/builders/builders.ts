@@ -187,6 +187,16 @@ export class Text {
   caching(): Text { const out = clone(this); out._caching = true; return out; }
   file(id: string): Text { const out = clone(this); out._files = [...out._files, { id, uri: "", name: "", mimeType: "" }]; return out; }  // ordered
   frequencyPenalty(v: number): Text { const out = clone(this); out._frequencyPenalty = v; return out; }
+  /**
+   * Replaces the conversation history for this call.
+   *
+   * ADR-085 RSN-005 — a message you author here carries no captured
+   * provider payload, so an assistant turn with tool calls is rebuilt from
+   * its role, content and tool calls alone, and any reasoning the provider
+   * returned with that turn is absent from the next request. To preserve
+   * it, pass back the messages this SDK produced rather than
+   * reconstructing them by hand.
+   */
   history(...msgs: Message[]): Text { const out = clone(this); out._history = msgs; return out; }
   image(mime: string, data: Uint8Array): Text { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   maxTokens(n: number): Text { const out = clone(this); out._maxTokens = n; return out; }
@@ -371,6 +381,16 @@ export class Agent {
   addTool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
   frequencyPenalty(v: number): Agent { const out = clone(this); out._frequencyPenalty = v; out._state = undefined; return out; }
+  /**
+   * Replaces the conversation history for this call.
+   *
+   * ADR-085 RSN-005 — a message you author here carries no captured
+   * provider payload, so an assistant turn with tool calls is rebuilt from
+   * its role, content and tool calls alone, and any reasoning the provider
+   * returned with that turn is absent from the next request. To preserve
+   * it, pass back the messages this SDK produced rather than
+   * reconstructing them by hand.
+   */
   history(...msgs: Message[]): Agent { const out = clone(this); out._history = msgs; out._state = undefined; return out; }
   maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
   maxToolIterations(n: number): Agent { const out = clone(this); out._maxToolIterations = n; out._state = undefined; return out; }
