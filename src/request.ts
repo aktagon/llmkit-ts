@@ -1075,6 +1075,19 @@ function toolResultMsg(
       ],
     };
   }
+  //
+  //
+  //
+  //
+  //
+  //
+  if (cfg.chatWireShape === "ChatResponsesOpenAI") {
+    return {
+      type: "function_call_output",
+      call_id: result.toolUseId,
+      output: result.content,
+    };
+  }
   return {
     role: "tool",
     content: result.content,
