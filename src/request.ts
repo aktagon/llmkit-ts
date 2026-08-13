@@ -1075,6 +1075,19 @@ function toolResultMsg(
       ],
     };
   }
+  // Responses (ADR-055) does not accept the Chat Completions tool message:
+  // input[] entries carry only the roles assistant/system/developer/user, and
+  // a tool result is a top-level typed item instead. LIVE-ANCHORED 2026-08-13
+  // — the shape below returns 200, the role:"tool" fallthrough is rejected 400
+  // invalid_value on input[3]. Witnessed by
+  // replay-responses-openai-reasoning.json.
+  if (cfg.chatWireShape === "ChatResponsesOpenAI") {
+    return {
+      type: "function_call_output",
+      call_id: result.toolUseId,
+      output: result.content,
+    };
+  }
   return {
     role: "tool",
     content: result.content,
