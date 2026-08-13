@@ -873,15 +873,19 @@ function buildMessages(
   const hasMedia = files.length > 0 || images.length > 0;
   for (const m of msgs) {
     if (m.kind === "turn" && appendFlatReplayedTurn(out, m, cfg)) continue;
-    out.push(flatProjectedEntry(m, cfg, files, images, hasMedia, msgs.length));
+    out.push(
+      ...flatProjectedEntry(m, cfg, files, images, hasMedia, msgs.length),
+    );
   }
 
   return out;
 }
 
-// flatProjectedEntry renders one canonical message as a flat-envelope entry — the
-// reconstruction path, unchanged from before ADR-085 and still what every
-// caller-authored turn takes.
+// flatProjectedEntry renders one canonical message as flat-envelope entries —
+// the reconstruction path, and the counterpart of appendFlatReplayedTurn below.
+// Both return a LIST for the same reason: on ChatResponsesOpenAI a single
+// assistant turn is not a single wire entry, whether its bytes are the
+// provider's (replay) or llmkit's (reconstruction).
 function flatProjectedEntry(
   m: Msg,
   cfg: ProviderSpec,
@@ -889,23 +893,25 @@ function flatProjectedEntry(
   images: InputImage[],
   hasMedia: boolean,
   msgCount: number,
-): Record<string, unknown> {
+): Array<Record<string, unknown>> {
   switch (m.kind) {
     case "result":
-      return toolResultMsg(m.result, cfg);
+      return [toolResultMsg(m.result, cfg)];
     case "calls":
       return toolCallMsg(m.calls, cfg);
     case "text":
       // Attach media only on the degenerate single-turn user path, matching
       // Go's `len(msgs)==0 && req.User != ""` media branch — history turns
       // carry plain-string content.
-      return {
-        role: cfg.roleMappings[m.role] ?? m.role,
-        content:
-          hasMedia && m.role === "user" && msgCount === 1
-            ? buildFlatContentParts(m.text, files, images, cfg)
-            : m.text,
-      };
+      return [
+        {
+          role: cfg.roleMappings[m.role] ?? m.role,
+          content:
+            hasMedia && m.role === "user" && msgCount === 1
+              ? buildFlatContentParts(m.text, files, images, cfg)
+              : m.text,
+        },
+      ];
     case "turn":
       // A payload the splice could not place falls back to its projection.
       // resolveTurns should already have unwrapped anything unplaceable — this
@@ -1031,32 +1037,54 @@ function attachToolDefs(
   );
 }
 
+// Returns a LIST because one canonical assistant turn is not always one wire
+// entry. Chat Completions and Anthropic fold N calls into a single message
+// carrying an array; Responses has no assistant envelope for tool calls at all
+// and spreads the same N calls across N peer input[] items (BUG-050).
 function toolCallMsg(
   calls: ToolCall[],
   cfg: ProviderSpec,
-): Record<string, unknown> {
+): Array<Record<string, unknown>> {
   if (cfg.chatWireShape === "ChatAnthropic") {
-    return {
-      role: cfg.roleMappings.assistant ?? "assistant",
-      content: calls.map((c) => ({
-        type: "tool_use",
-        id: c.id,
-        name: c.name,
-        input: toolCallInput(c),
-      })),
-    };
-  }
-  return {
-    role: cfg.roleMappings.assistant ?? "assistant",
-    tool_calls: calls.map((c) => ({
-      id: c.id,
-      type: "function",
-      function: {
-        name: c.name,
-        arguments: JSON.stringify(toolCallInput(c)),
+    return [
+      {
+        role: cfg.roleMappings.assistant ?? "assistant",
+        content: calls.map((c) => ({
+          type: "tool_use",
+          id: c.id,
+          name: c.name,
+          input: toolCallInput(c),
+        })),
       },
-    })),
-  };
+    ];
+  }
+  // Responses (ADR-055): each call is its own top-level input[] item, paired to
+  // its output by call_id rather than by position in a tool_calls array.
+  // LIVE-ANCHORED 2026-08-13 — the collapsed form below is rejected 400
+  // missing_required_parameter on input[1].content (Responses accepts the
+  // assistant role, then demands the content a tool_calls-only message lacks).
+  // Witnessed by reconstruct-responses-openai-parallel-calls.json.
+  if (cfg.chatWireShape === "ChatResponsesOpenAI") {
+    return calls.map((c) => ({
+      type: "function_call",
+      call_id: c.id,
+      name: c.name,
+      arguments: JSON.stringify(toolCallInput(c)),
+    }));
+  }
+  return [
+    {
+      role: cfg.roleMappings.assistant ?? "assistant",
+      tool_calls: calls.map((c) => ({
+        id: c.id,
+        type: "function",
+        function: {
+          name: c.name,
+          arguments: JSON.stringify(toolCallInput(c)),
+        },
+      })),
+    },
+  ];
 }
 
 function toolResultMsg(
