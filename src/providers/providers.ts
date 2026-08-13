@@ -45,7 +45,6 @@ export type ProviderName = typeof Providers[keyof typeof Providers];
 export interface ChatProtocol {
   wireShape: string;
   endpoint: string;
-  stateModel: string;
   assistantTurnPath: string;
 }
 
@@ -110,7 +109,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -156,7 +155,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "TopLevelField",
     chatWireShape: "ChatAnthropic",
     chatProtocols: [
-      { wireShape: "ChatAnthropic", endpoint: "/v1/messages", stateModel: "Stateless", assistantTurnPath: "content" },
+      { wireShape: "ChatAnthropic", endpoint: "/v1/messages", assistantTurnPath: "content" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -241,7 +240,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/openai/deployments/{model}/chat/completions?api-version=2024-10-21", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/openai/deployments/{model}/chat/completions?api-version=2024-10-21", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -287,7 +286,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "TopLevelField",
     chatWireShape: "ChatBedrock",
     chatProtocols: [
-      { wireShape: "ChatBedrock", endpoint: "/model/{model}/converse", stateModel: "Stateless", assistantTurnPath: "" },
+      { wireShape: "ChatBedrock", endpoint: "/model/{model}/converse", assistantTurnPath: "" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -331,7 +330,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -377,7 +376,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -423,7 +422,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -469,7 +468,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -515,7 +514,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -561,7 +560,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -607,7 +606,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "SiblingObject",
     chatWireShape: "ChatGoogle",
     chatProtocols: [
-      { wireShape: "ChatGoogle", endpoint: "/v1beta/models/{model}:generateContent", stateModel: "Stateless", assistantTurnPath: "candidates[0].content" },
+      { wireShape: "ChatGoogle", endpoint: "/v1beta/models/{model}:generateContent", assistantTurnPath: "candidates[0].content" },
     ],
     roleMappings: {
       assistant: "model",
@@ -651,7 +650,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -697,7 +696,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -784,7 +783,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -830,7 +829,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -876,7 +875,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -922,7 +921,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/text/chatcompletion_v2", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/text/chatcompletion_v2", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -968,7 +967,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1014,7 +1013,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1060,7 +1059,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1106,8 +1105,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
-      { wireShape: "ChatResponsesOpenAI", endpoint: "/v1/responses", stateModel: "ServerSideState", assistantTurnPath: "output" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatResponsesOpenAI", endpoint: "/v1/responses", assistantTurnPath: "output" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1153,7 +1152,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1199,7 +1198,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1285,7 +1284,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1372,7 +1371,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1418,7 +1417,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1546,7 +1545,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1592,7 +1591,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1638,7 +1637,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v1/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
@@ -1683,7 +1682,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     systemPlacement: "MessageInArray",
     chatWireShape: "ChatOpenAI",
     chatProtocols: [
-      { wireShape: "ChatOpenAI", endpoint: "/v4/chat/completions", stateModel: "Stateless", assistantTurnPath: "choices[0].message" },
+      { wireShape: "ChatOpenAI", endpoint: "/v4/chat/completions", assistantTurnPath: "choices[0].message" },
     ],
     roleMappings: {
       assistant: "assistant",
