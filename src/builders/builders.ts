@@ -187,6 +187,16 @@ export class Text {
   caching(): Text { const out = clone(this); out._caching = true; return out; }
   file(id: string): Text { const out = clone(this); out._files = [...out._files, { id, uri: "", name: "", mimeType: "" }]; return out; }  // ordered
   frequencyPenalty(v: number): Text { const out = clone(this); out._frequencyPenalty = v; return out; }
+
+
+
+
+
+
+
+
+
+
   history(...msgs: Message[]): Text { const out = clone(this); out._history = msgs; return out; }
   image(mime: string, data: Uint8Array): Text { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   maxTokens(n: number): Text { const out = clone(this); out._maxTokens = n; return out; }
@@ -371,6 +381,16 @@ export class Agent {
   addTool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
   frequencyPenalty(v: number): Agent { const out = clone(this); out._frequencyPenalty = v; out._state = undefined; return out; }
+
+
+
+
+
+
+
+
+
+
   history(...msgs: Message[]): Agent { const out = clone(this); out._history = msgs; out._state = undefined; return out; }
   maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
   maxToolIterations(n: number): Agent { const out = clone(this); out._maxToolIterations = n; out._state = undefined; return out; }
