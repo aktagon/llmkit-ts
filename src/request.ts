@@ -873,12 +873,16 @@ function buildMessages(
   const hasMedia = files.length > 0 || images.length > 0;
   for (const m of msgs) {
     if (m.kind === "turn" && appendFlatReplayedTurn(out, m, cfg)) continue;
-    out.push(flatProjectedEntry(m, cfg, files, images, hasMedia, msgs.length));
+    out.push(
+      ...flatProjectedEntry(m, cfg, files, images, hasMedia, msgs.length),
+    );
   }
 
   return out;
 }
 
+//
+//
 //
 //
 //
@@ -889,23 +893,25 @@ function flatProjectedEntry(
   images: InputImage[],
   hasMedia: boolean,
   msgCount: number,
-): Record<string, unknown> {
+): Array<Record<string, unknown>> {
   switch (m.kind) {
     case "result":
-      return toolResultMsg(m.result, cfg);
+      return [toolResultMsg(m.result, cfg)];
     case "calls":
       return toolCallMsg(m.calls, cfg);
     case "text":
       //
       //
       //
-      return {
-        role: cfg.roleMappings[m.role] ?? m.role,
-        content:
-          hasMedia && m.role === "user" && msgCount === 1
-            ? buildFlatContentParts(m.text, files, images, cfg)
-            : m.text,
-      };
+      return [
+        {
+          role: cfg.roleMappings[m.role] ?? m.role,
+          content:
+            hasMedia && m.role === "user" && msgCount === 1
+              ? buildFlatContentParts(m.text, files, images, cfg)
+              : m.text,
+        },
+      ];
     case "turn":
       //
       //
@@ -1031,32 +1037,54 @@ function attachToolDefs(
   );
 }
 
+//
+//
+//
+//
 function toolCallMsg(
   calls: ToolCall[],
   cfg: ProviderSpec,
-): Record<string, unknown> {
+): Array<Record<string, unknown>> {
   if (cfg.chatWireShape === "ChatAnthropic") {
-    return {
-      role: cfg.roleMappings.assistant ?? "assistant",
-      content: calls.map((c) => ({
-        type: "tool_use",
-        id: c.id,
-        name: c.name,
-        input: toolCallInput(c),
-      })),
-    };
-  }
-  return {
-    role: cfg.roleMappings.assistant ?? "assistant",
-    tool_calls: calls.map((c) => ({
-      id: c.id,
-      type: "function",
-      function: {
-        name: c.name,
-        arguments: JSON.stringify(toolCallInput(c)),
+    return [
+      {
+        role: cfg.roleMappings.assistant ?? "assistant",
+        content: calls.map((c) => ({
+          type: "tool_use",
+          id: c.id,
+          name: c.name,
+          input: toolCallInput(c),
+        })),
       },
-    })),
-  };
+    ];
+  }
+  //
+  //
+  //
+  //
+  //
+  //
+  if (cfg.chatWireShape === "ChatResponsesOpenAI") {
+    return calls.map((c) => ({
+      type: "function_call",
+      call_id: c.id,
+      name: c.name,
+      arguments: JSON.stringify(toolCallInput(c)),
+    }));
+  }
+  return [
+    {
+      role: cfg.roleMappings.assistant ?? "assistant",
+      tool_calls: calls.map((c) => ({
+        id: c.id,
+        type: "function",
+        function: {
+          name: c.name,
+          arguments: JSON.stringify(toolCallInput(c)),
+        },
+      })),
+    },
+  ];
 }
 
 function toolResultMsg(
