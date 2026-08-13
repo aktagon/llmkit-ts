@@ -61,7 +61,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     id: "cerebras",
     slug: "cerebras",
     envVar: "CEREBRAS_API_KEY",
-    defaultModel: "llama-3.3-70b",
+    defaultModel: "gpt-oss-120b",
     baseUrl: "https://api.cerebras.ai",
     browserCallable: false,
   },
