@@ -56,17 +56,17 @@ Runnable examples for each capability live in [`examples/`](./examples); `tests/
 | Provider  | Default model                               | Env var           |
 | --------- | ------------------------------------------- | ----------------- |
 | anthropic | claude-sonnet-4-6                           | ANTHROPIC_API_KEY |
-| openai    | gpt-4o                                      | OPENAI_API_KEY    |
+| openai    | gpt-4o-2024-08-06                           | OPENAI_API_KEY    |
 | google    | gemini-2.5-flash                            | GOOGLE_API_KEY    |
 | bedrock   | anthropic.claude-sonnet-4-20250514-v1:0     | AWS_ACCESS_KEY_ID |
-| grok      | grok-3-fast                                 | GROK_API_KEY      |
+| grok      | grok-3-fast                                 | XAI_API_KEY       |
 | mistral   | mistral-large-latest                        | MISTRAL_API_KEY   |
 | deepseek  | deepseek-chat                               | DEEPSEEK_API_KEY  |
 | groq      | llama-3.3-70b-versatile                     | GROQ_API_KEY      |
 | together  | meta-llama/Llama-3.3-70B-Instruct-Turbo     | TOGETHER_API_KEY  |
 | cohere    | command-r-plus                              | COHERE_API_KEY    |
 | ai21      | jamba-1.5-large                             | AI21_API_KEY      |
-| cerebras  | llama-3.3-70b                               | CEREBRAS_API_KEY  |
+| cerebras  | gpt-oss-120b                                | CEREBRAS_API_KEY  |
 | ...       | (full list in `src/providers/providers.ts`) |                   |
 
 36 providers, 4 API shapes (OpenAI-compatible, Anthropic Messages, Google Generative AI, AWS Bedrock Converse). Bedrock auth uses SigV4; other providers use API-key auth.
