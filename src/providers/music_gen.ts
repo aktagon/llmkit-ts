@@ -23,6 +23,8 @@ export interface MusicGenDef {
   wireShape: MusicWireShape;
   // genEndpoint is an override; empty = use provider main endpoint.
   genEndpoint: string;
+  // baseUrl is the music API base when it differs from the chat base; "" = use chat base.
+  baseUrl: string;
   models: MusicModelDef[];
 }
 
@@ -30,6 +32,7 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
   google: {
     wireShape: "MusicGenerateContent",
     genEndpoint: "",
+    baseUrl: "",
     models: [
       {
         modelId: "lyria-3-clip-preview",
@@ -53,7 +56,8 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
   },
   minimax: {
     wireShape: "MusicMinimax",
-    genEndpoint: "https://api.minimax.io/v1/music_generation",
+    genEndpoint: "/v1/music_generation",
+    baseUrl: "https://api.minimax.io",
     models: [
       {
         modelId: "music-2.6",
@@ -69,6 +73,7 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
   vertex: {
     wireShape: "MusicPredict",
     genEndpoint: "",
+    baseUrl: "",
     models: [
       {
         modelId: "lyria-002",
