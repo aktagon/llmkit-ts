@@ -115,7 +115,10 @@ export async function generateMusic(
   const start = performance.now();
 
   try {
-    const baseUrl = provider.baseUrl || cfg.baseUrl;
+    // Explicit override > the provider's distinct music base > the chat base.
+    // Mirrors videoBaseUrl; mgCfg.baseUrl is "" for every provider whose music
+    // API shares the chat host, so this is a no-op except for MiniMax.
+    const baseUrl = provider.baseUrl || mgCfg.baseUrl || cfg.baseUrl;
     const authHeaders = buildAuthHeaders(provider, cfg);
 
     const { url, body } = dispatchMusicHTTP(
@@ -193,10 +196,7 @@ function dispatchMusicHTTP(
     }
     case "MusicMinimax": {
       const body = buildMinimaxMusicBody(parts, model);
-      const url = mgCfg.genEndpoint.startsWith("http")
-        ? mgCfg.genEndpoint
-        : baseUrl + mgCfg.genEndpoint;
-      return { url, body };
+      return { url: baseUrl + mgCfg.genEndpoint, body };
     }
     default: {
       // MusicGenerateContent (Gemini).
