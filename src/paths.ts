@@ -137,6 +137,48 @@ function isEmptyWireValue(value: unknown): boolean {
   return value === undefined || value === null;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function matchingBlocks(
+  data: unknown,
+  blocksPath: string,
+  markerPath: string,
+  markerValue: string,
+): Record<string, unknown>[] {
+  const arr = extractRaw(data, blocksPath);
+  if (!Array.isArray(arr)) return [];
+
+  const out: Record<string, unknown>[] = [];
+  for (const elem of arr) {
+    if (typeof elem !== "object" || elem === null || Array.isArray(elem)) continue;
+    const block = elem as Record<string, unknown>;
+    if (markerPath !== "") {
+      if (!(markerPath in block)) continue;
+      if (markerValue !== "" && block[markerPath] !== markerValue) continue;
+    }
+    out.push(block);
+  }
+  return out;
+}
+
 function extractRaw(data: unknown, path: string): unknown {
   if (!path) return undefined;
   let current: unknown = data;

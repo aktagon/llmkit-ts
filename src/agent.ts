@@ -10,6 +10,7 @@
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { accumulateUsage, decodeResponse } from "./response.ts";
+import { matchingBlocks } from "./paths.ts";
 import {
   buildRequest,
   executeRequest,
@@ -359,15 +360,14 @@ function extractGoogleToolCalls(raw: unknown): ToolCall[] {
   return calls;
 }
 
+//
+//
+//
+//
+//
 function extractAnthropicToolCalls(raw: unknown): ToolCall[] {
-  if (typeof raw !== "object" || raw === null) return [];
-  const content = (raw as Record<string, unknown>).content;
-  if (!Array.isArray(content)) return [];
   const calls: ToolCall[] = [];
-  for (const block of content) {
-    if (typeof block !== "object" || block === null) continue;
-    const b = block as Record<string, unknown>;
-    if (b.type !== "tool_use") continue;
+  for (const b of matchingBlocks(raw, "content", "type", "tool_use")) {
     calls.push({
       id: String(b.id ?? ""),
       name: String(b.name ?? ""),

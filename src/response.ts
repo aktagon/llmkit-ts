@@ -8,12 +8,13 @@
 //
 //
 
-import { PROVIDERS } from "./providers/providers.ts";
-import type { ProviderName } from "./providers/providers.ts";
+import { PROVIDERS, RESPONSE_TEXT_CONFIGS } from "./providers/providers.ts";
+import type { ProviderName, ProviderSpec } from "./providers/providers.ts";
 import { cachingConfig } from "./providers/caching.ts";
 import { ValidationError } from "./errors.ts";
 import {
   extractPath,
+  matchingBlocks,
   optIntPath,
   optFloatPath,
   setWirePath,
@@ -21,6 +22,66 @@ import {
 import { parseCacheUsage } from "./caching.ts";
 import { captureProviderTurn } from "./provider_turn.ts";
 import type { Response, Usage } from "./types.ts";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function extractResponseText(
+  raw: unknown,
+  cfg: ProviderSpec,
+  chatWireShape: string,
+): string {
+  const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
+  if (!textCfg) return extractPath(raw, cfg.responseTextPath);
+  const blocks = matchingBlocks(
+    raw,
+    textCfg.blocksPath,
+    textCfg.markerPath,
+    textCfg.markerValue,
+  );
+  if (blocks.length === 0) return "";
+  return extractPath(blocks[0], textCfg.valuePath);
+}
+
+
+
+
+
+
+
+
+
+
+
+function encodeResponseText(
+  raw: Record<string, unknown>,
+  cfg: ProviderSpec,
+  chatWireShape: string,
+  text: string,
+): void {
+  const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
+  if (!textCfg) {
+    setWirePath(raw, cfg.responseTextPath, text);
+    return;
+  }
+  const block = `${textCfg.blocksPath}[0]`;
+  if (textCfg.markerValue !== "") {
+    setWirePath(raw, `${block}.${textCfg.markerPath}`, textCfg.markerValue);
+  }
+  setWirePath(raw, `${block}.${textCfg.valuePath}`, text);
+}
 
 
 
@@ -53,7 +114,7 @@ export function decodeResponse(
 
   const cache = parseCacheUsage(raw, provider);
   const result: Response = {
-    text: extractPath(raw, cfg.responseTextPath),
+    text: extractResponseText(raw, cfg, chatWireShape),
     usage: {
       input: optIntPath(raw, cfg.usageInputPath),
       output: optIntPath(raw, cfg.usageOutputPath),
@@ -101,7 +162,7 @@ export function encodeResponse(
 
   const cfg = PROVIDERS[provider];
   const raw: Record<string, unknown> = {};
-  setWirePath(raw, cfg.responseTextPath, response.text);
+  encodeResponseText(raw, cfg, chatWireShape, response.text);
   setWirePath(raw, cfg.usageInputPath, response.usage.input);
   setWirePath(raw, cfg.usageOutputPath, response.usage.output);
   const cc = cachingConfig(provider);
