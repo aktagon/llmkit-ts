@@ -48,6 +48,33 @@ export interface ChatProtocol {
   assistantTurnPath: string;
 }
 
+// ResponseTextConfig locates the assistant's text inside a response whose
+// content is an ARRAY OF BLOCKS, by discriminator rather than array position:
+// a leading thinking block or non-text part shifts text out from under a
+// fixed path (BUG-053).
+//
+//   markerPath === ""                     every element is a text block
+//   markerPath set, markerValue === ""    element is text if the key is PRESENT
+//   both set                              element is text if the key EQUALS the value
+//
+// markerValue is also a WRITE instruction: encodeResponse stamps it onto the
+// block it writes, so an emitted body reads back through this same table.
+export interface ResponseTextConfig {
+  blocksPath: string;
+  markerPath: string;
+  markerValue: string;
+  valuePath: string;
+}
+
+// Keyed by chat wire shape. A shape ABSENT from this map carries text as a
+// plain scalar — absence selects the responseTextPath reader, it does not
+// mean the shape has no text.
+export const RESPONSE_TEXT_CONFIGS: Record<string, ResponseTextConfig> = {
+  ChatAnthropic: { blocksPath: "content", markerPath: "type", markerValue: "text", valuePath: "text" },
+  ChatBedrock: { blocksPath: "output.message.content", markerPath: "text", markerValue: "", valuePath: "text" },
+  ChatGoogle: { blocksPath: "candidates[0].content.parts", markerPath: "text", markerValue: "", valuePath: "text" },
+};
+
 // ProviderSpec is HOW the library talks to a provider [PRIVATE]: the
 // internal wire/transform spec consumed only by the runtime. Volatile;
 // not exported from the package barrel.
@@ -165,7 +192,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     usageOutputPath: "usage.output_tokens",
     usageCostPath: "",
     usageCostScale: 1.0,
-    reasoningTokensPath: "",
+    reasoningTokensPath: "usage.output_tokens_details.thinking_tokens",
     finishReasonPath: "stop_reason",
     finishMessagePath: "",
     streamFinishReasonPath: "message_stop:stop_reason",
