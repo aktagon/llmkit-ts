@@ -63,9 +63,22 @@ async function readFileFromPath(path: string): Promise<Uint8Array> {
   if (bunGlobal && typeof bunGlobal.file === "function") {
     return await bunGlobal.file(path).bytes();
   }
-  // Node: dynamic import keeps Bun bundlers from pulling node:fs in.
+  // Node: the specifier is held in a VARIABLE, not written inline.
+  //
+  // `await import("node:fs/promises")` is a static string literal, and every
+  // bundler resolves and inlines it regardless of the dynamic import form. The
+  // comment that used to sit here claimed the dynamic form was enough; it was
+  // not, and the specifier was measured in the shipped chunk. Held in a
+  // variable, bun emits `var SPEC = "node:fs/promises"; await import(SPEC)` —
+  // it does not constant-fold through the binding — which is not statically
+  // analyzable, so a Worker consumer stops seeing the warning.
+  //
+  // tests/dist_no_createrequire.test.ts asserts on the emitted CALL SHAPE, so
+  // this cannot silently come back. It deliberately does not grep for a bare
+  // `node:` — the string below is still in the bundle, and should be.
+  const nodeFsSpecifier = "node:fs/promises";
   try {
-    const fs = await import("node:fs/promises");
+    const fs = await import(nodeFsSpecifier);
     const buf = await fs.readFile(path);
     return new Uint8Array(buf);
   } catch (err) {
