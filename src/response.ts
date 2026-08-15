@@ -94,11 +94,29 @@ function encodeResponseText(
  * network, no clock. The wire shape is required, not derived — one provider can
  * serve two chat protocols, and inferring it silently mis-parses (SYM-003).
  */
+/**
+ * Fill in an unspecified wire shape with the provider's DEFAULT chat protocol.
+ * 
+ * Callers that decode a body they know is Chat Completions — batch result lines,
+ * chiefly — pass "" to mean "not the Responses envelope". Harmless while the shape
+ * only chose between the Responses arm and the provider's declared paths; NOT
+ * harmless once it also selects the TEXT READER, because "" resolved to no config,
+ * which is the positional reader BUG-053 removed. Batched Anthropic replies with a
+ * leading thinking block decoded to "" long after the send path was fixed.
+ * 
+ * Resolving here keeps N=1. ADR-055 requires every provider's default protocol to
+ * be a Chat Completions family, so this can never resolve INTO the Responses arm.
+ */
+function resolveChatWireShape(provider: ProviderName, chatWireShape: string): string {
+  return chatWireShape !== "" ? chatWireShape : PROVIDERS[provider].chatWireShape;
+}
+
 export function decodeResponse(
   provider: ProviderName,
   chatWireShape: string,
   body: string,
 ): Response {
+  chatWireShape = resolveChatWireShape(provider, chatWireShape);
   const raw: unknown = JSON.parse(body);
   const cfg = PROVIDERS[provider];
   // ADR-085: capture the assistant turn as the provider serialized it, from the
@@ -155,6 +173,7 @@ export function encodeResponse(
   chatWireShape: string,
   response: Response,
 ): string {
+  chatWireShape = resolveChatWireShape(provider, chatWireShape);
   guardOneWayFields(provider, response);
   if (chatWireShape === "ChatResponsesOpenAI") {
     return JSON.stringify(encodeResponsesEnvelope(response));
