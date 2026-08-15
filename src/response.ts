@@ -94,11 +94,29 @@ function encodeResponseText(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+function resolveChatWireShape(provider: ProviderName, chatWireShape: string): string {
+  return chatWireShape !== "" ? chatWireShape : PROVIDERS[provider].chatWireShape;
+}
+
 export function decodeResponse(
   provider: ProviderName,
   chatWireShape: string,
   body: string,
 ): Response {
+  chatWireShape = resolveChatWireShape(provider, chatWireShape);
   const raw: unknown = JSON.parse(body);
   const cfg = PROVIDERS[provider];
   //
@@ -155,6 +173,7 @@ export function encodeResponse(
   chatWireShape: string,
   response: Response,
 ): string {
+  chatWireShape = resolveChatWireShape(provider, chatWireShape);
   guardOneWayFields(provider, response);
   if (chatWireShape === "ChatResponsesOpenAI") {
     return JSON.stringify(encodeResponsesEnvelope(response));
