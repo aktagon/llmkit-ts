@@ -51,6 +51,33 @@ export interface ChatProtocol {
 //
 //
 //
+//
+//
+//
+//
+//
+//
+//
+//
+export interface ResponseTextConfig {
+  blocksPath: string;
+  markerPath: string;
+  markerValue: string;
+  valuePath: string;
+}
+
+//
+//
+//
+export const RESPONSE_TEXT_CONFIGS: Record<string, ResponseTextConfig> = {
+  ChatAnthropic: { blocksPath: "content", markerPath: "type", markerValue: "text", valuePath: "text" },
+  ChatBedrock: { blocksPath: "output.message.content", markerPath: "text", markerValue: "", valuePath: "text" },
+  ChatGoogle: { blocksPath: "candidates[0].content.parts", markerPath: "text", markerValue: "", valuePath: "text" },
+};
+
+//
+//
+//
 export interface ProviderSpec {
   name: string;
   baseUrl: string;
@@ -165,7 +192,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     usageOutputPath: "usage.output_tokens",
     usageCostPath: "",
     usageCostScale: 1.0,
-    reasoningTokensPath: "",
+    reasoningTokensPath: "usage.output_tokens_details.thinking_tokens",
     finishReasonPath: "stop_reason",
     finishMessagePath: "",
     streamFinishReasonPath: "message_stop:stop_reason",
