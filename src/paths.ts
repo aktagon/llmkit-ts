@@ -137,6 +137,48 @@ function isEmptyWireValue(value: unknown): boolean {
   return value === undefined || value === null;
 }
 
+/**
+ * matchingBlocks returns the elements of the array at `blocksPath` that the
+ * marker identifies, in wire order. It is the single primitive behind every
+ * "which blocks in this response are of kind X" question — text extraction and
+ * tool-call extraction both run through it, so the two cannot come to disagree
+ * about what an array element is.
+ *
+ * Marker semantics are exactly the generated config contract:
+ *
+ *   markerPath === ""                    homogeneous array; every element matches
+ *   markerPath set, markerValue === ""   element matches if the key is PRESENT
+ *   markerPath and markerValue both set  element matches if the key EQUALS the value
+ *
+ * Presence rather than equality is not a shortcut: a Bedrock ContentBlock and a
+ * Gemini Part are UNIONS whose text member carries no type key at all, so an
+ * equality test there would match nothing.
+ *
+ * Navigation reuses extractRaw, so there is no second path grammar here — which
+ * is what kept this fix clear of the rejected content[type=text].text syntax.
+ */
+export function matchingBlocks(
+  data: unknown,
+  blocksPath: string,
+  markerPath: string,
+  markerValue: string,
+): Record<string, unknown>[] {
+  const arr = extractRaw(data, blocksPath);
+  if (!Array.isArray(arr)) return [];
+
+  const out: Record<string, unknown>[] = [];
+  for (const elem of arr) {
+    if (typeof elem !== "object" || elem === null || Array.isArray(elem)) continue;
+    const block = elem as Record<string, unknown>;
+    if (markerPath !== "") {
+      if (!(markerPath in block)) continue;
+      if (markerValue !== "" && block[markerPath] !== markerValue) continue;
+    }
+    out.push(block);
+  }
+  return out;
+}
+
 function extractRaw(data: unknown, path: string): unknown {
   if (!path) return undefined;
   let current: unknown = data;
