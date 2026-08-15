@@ -64,8 +64,21 @@ async function readFileFromPath(path: string): Promise<Uint8Array> {
     return await bunGlobal.file(path).bytes();
   }
   //
+  //
+  //
+  //
+  //
+  //
+  //
+  //
+  //
+  //
+  //
+  //
+  //
+  const nodeFsSpecifier = "node:fs/promises";
   try {
-    const fs = await import("node:fs/promises");
+    const fs = await import(nodeFsSpecifier);
     const buf = await fs.readFile(path);
     return new Uint8Array(buf);
   } catch (err) {
