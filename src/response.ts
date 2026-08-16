@@ -8,12 +8,13 @@
 // entry point IS the function the send path calls, not a second implementation
 // beside it.
 
-import { PROVIDERS } from "./providers/providers.ts";
-import type { ProviderName } from "./providers/providers.ts";
+import { PROVIDERS, RESPONSE_TEXT_CONFIGS } from "./providers/providers.ts";
+import type { ProviderName, ProviderSpec } from "./providers/providers.ts";
 import { cachingConfig } from "./providers/caching.ts";
 import { ValidationError } from "./errors.ts";
 import {
   extractPath,
+  matchingBlocks,
   optIntPath,
   optFloatPath,
   setWirePath,
@@ -21,6 +22,66 @@ import {
 import { parseCacheUsage } from "./caching.ts";
 import { captureProviderTurn } from "./provider_turn.ts";
 import type { Response, Usage } from "./types.ts";
+
+/**
+ * extractResponseText reads the assistant's text out of a parsed provider body.
+ *
+ * Two readers, selected by the WIRE SHAPE, never by provider name:
+ *
+ * - block-array families declare a RESPONSE_TEXT_CONFIGS entry and are read by
+ *   DISCRIMINATOR, because array position is not stable — Opus 5 and Sonnet 5
+ *   think by default, so content[0] is a thinking block (BUG-053);
+ * - scalar families declare none, and absence SELECTS the fixed-path reader.
+ *
+ * An empty result is a real answer, not a failure: every tool-use turn carries
+ * no text block at all. finishReason is what says why, which is why
+ * Response.text stays a plain string rather than becoming optional across seven
+ * SDKs to mark something routine.
+ */
+function extractResponseText(
+  raw: unknown,
+  cfg: ProviderSpec,
+  chatWireShape: string,
+): string {
+  const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
+  if (!textCfg) return extractPath(raw, cfg.responseTextPath);
+  const blocks = matchingBlocks(
+    raw,
+    textCfg.blocksPath,
+    textCfg.markerPath,
+    textCfg.markerValue,
+  );
+  if (blocks.length === 0) return "";
+  return extractPath(blocks[0], textCfg.valuePath);
+}
+
+/**
+ * encodeResponseText is extractResponseText's inverse, driven by the SAME
+ * config so the two cannot drift apart.
+ *
+ * The marker is WRITTEN, not just tested. Emitting only the value path would
+ * produce {"content":[{"text":"pong"}]} — a body with no type discriminator,
+ * which the reader above then finds no matching block in. That is the ADR-076
+ * fixed point breaking, and it is why textMarkerValue is documented as a
+ * write instruction rather than a read predicate.
+ */
+function encodeResponseText(
+  raw: Record<string, unknown>,
+  cfg: ProviderSpec,
+  chatWireShape: string,
+  text: string,
+): void {
+  const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
+  if (!textCfg) {
+    setWirePath(raw, cfg.responseTextPath, text);
+    return;
+  }
+  const block = `${textCfg.blocksPath}[0]`;
+  if (textCfg.markerValue !== "") {
+    setWirePath(raw, `${block}.${textCfg.markerPath}`, textCfg.markerValue);
+  }
+  setWirePath(raw, `${block}.${textCfg.valuePath}`, text);
+}
 
 /**
  * decodeResponse extracts text and usage from a provider response body into the
@@ -33,11 +94,29 @@ import type { Response, Usage } from "./types.ts";
  * network, no clock. The wire shape is required, not derived — one provider can
  * serve two chat protocols, and inferring it silently mis-parses (SYM-003).
  */
+/**
+ * Fill in an unspecified wire shape with the provider's DEFAULT chat protocol.
+ * 
+ * Callers that decode a body they know is Chat Completions — batch result lines,
+ * chiefly — pass "" to mean "not the Responses envelope". Harmless while the shape
+ * only chose between the Responses arm and the provider's declared paths; NOT
+ * harmless once it also selects the TEXT READER, because "" resolved to no config,
+ * which is the positional reader BUG-053 removed. Batched Anthropic replies with a
+ * leading thinking block decoded to "" long after the send path was fixed.
+ * 
+ * Resolving here keeps N=1. ADR-055 requires every provider's default protocol to
+ * be a Chat Completions family, so this can never resolve INTO the Responses arm.
+ */
+function resolveChatWireShape(provider: ProviderName, chatWireShape: string): string {
+  return chatWireShape !== "" ? chatWireShape : PROVIDERS[provider].chatWireShape;
+}
+
 export function decodeResponse(
   provider: ProviderName,
   chatWireShape: string,
   body: string,
 ): Response {
+  chatWireShape = resolveChatWireShape(provider, chatWireShape);
   const raw: unknown = JSON.parse(body);
   const cfg = PROVIDERS[provider];
   // ADR-085: capture the assistant turn as the provider serialized it, from the
@@ -53,7 +132,7 @@ export function decodeResponse(
 
   const cache = parseCacheUsage(raw, provider);
   const result: Response = {
-    text: extractPath(raw, cfg.responseTextPath),
+    text: extractResponseText(raw, cfg, chatWireShape),
     usage: {
       input: optIntPath(raw, cfg.usageInputPath),
       output: optIntPath(raw, cfg.usageOutputPath),
@@ -94,6 +173,7 @@ export function encodeResponse(
   chatWireShape: string,
   response: Response,
 ): string {
+  chatWireShape = resolveChatWireShape(provider, chatWireShape);
   guardOneWayFields(provider, response);
   if (chatWireShape === "ChatResponsesOpenAI") {
     return JSON.stringify(encodeResponsesEnvelope(response));
@@ -101,7 +181,7 @@ export function encodeResponse(
 
   const cfg = PROVIDERS[provider];
   const raw: Record<string, unknown> = {};
-  setWirePath(raw, cfg.responseTextPath, response.text);
+  encodeResponseText(raw, cfg, chatWireShape, response.text);
   setWirePath(raw, cfg.usageInputPath, response.usage.input);
   setWirePath(raw, cfg.usageOutputPath, response.usage.output);
   const cc = cachingConfig(provider);
