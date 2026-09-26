@@ -408,44 +408,117 @@ async function uploadBatchFile(
   return id;
 }
 
+// parseBatchResults parses JSONL batch result data into one Response per
+// submitted request, at that request's index (BUG-072).
+//
+// Providers return result lines in any order, so a line is placed by the
+// request id at bc.resultKeyPath: "req-N" goes to index N. A line whose body is
+// missing at bc.resultBodyPath is a failed request; it keeps its slot as a
+// Response with empty text, finishReason from bc.resultStatusPath ("error" when
+// the provider has no status) and finishMessage from bc.resultErrorPath. An
+// index with no line gets finishReason "missing". Lines whose id is not "req-N"
+// (a batch created outside llmkit, or a repeated id) follow the indexed slots in
+// file order. A line that is not JSON cannot be placed and is skipped; its index
+// reads "missing".
+//
+// When raw is true, a parsed Response carries the per-item body on raw; a
+// failed Response carries the whole line.
 function parseBatchResults(
   provider: string,
   data: string,
   bc: BatchDef,
   raw: boolean,
 ): PromptResponse[] {
-  const out: PromptResponse[] = [];
+  const slots: (PromptResponse | undefined)[] = [];
+  const unkeyed: PromptResponse[] = [];
   for (const rawLine of data.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
-    // VERBATIM, not parse-navigate-re-stringify: the inner body is what ADR-085
-    // captures the assistant turn from, and JSON.stringify of a parsed value has
-    // already lost the source spacing and rewritten any integer past 2^53 through
-    // a double. Harmless while only scalars were read out of it; not harmless once
-    // a payload is captured from the same bytes.
-    const innerText = bc.resultBodyPath
-      ? extractRawJsonPath(line, bc.resultBodyPath)
-      : line;
-    if (innerText === undefined) continue;
-    let inner: unknown;
+    let wrapper: unknown;
     try {
-      inner = JSON.parse(innerText);
+      wrapper = JSON.parse(line);
     } catch {
       continue;
     }
-    if (!inner || typeof inner !== "object") continue;
-    // ADR-076 SYM-004: the same reader the live send paths use. Batch is
-    // Chat-Completions-only (ADR-055), so the empty wire shape selects the
-    // provider's declared response paths, never the Responses output[] arm.
-    const entry = decodeResponse(
-      provider as keyof typeof PROVIDERS,
-      "",
-      innerText,
-    );
-    if (raw) entry.raw = inner;
-    out.push(entry);
+    const resp = parseBatchResultLine(provider, line, wrapper, bc, raw);
+
+    const index = bc.resultKeyPath
+      ? batchRequestIndex(extractPath(wrapper, bc.resultKeyPath))
+      : undefined;
+    if (index === undefined || slots[index] !== undefined) {
+      unkeyed.push(resp);
+      continue;
+    }
+    slots[index] = resp;
   }
-  return out;
+
+  const out: PromptResponse[] = [];
+  for (let i = 0; i < slots.length; i++) {
+    out.push(slots[i] ?? { text: "", usage: {}, finishReason: "missing" });
+  }
+  return out.concat(unkeyed);
+}
+
+// parseBatchResultLine decodes one result line. A line whose body is missing at
+// bc.resultBodyPath, or does not decode, becomes a failed Response.
+function parseBatchResultLine(
+  provider: string,
+  line: string,
+  wrapper: unknown,
+  bc: BatchDef,
+  raw: boolean,
+): PromptResponse {
+  // VERBATIM, not parse-navigate-re-stringify: the inner body is what ADR-085
+  // captures the assistant turn from, and JSON.stringify of a parsed value has
+  // already lost the source spacing and rewritten any integer past 2^53 through
+  // a double. Harmless while only scalars were read out of it; not harmless once
+  // a payload is captured from the same bytes.
+  const innerText = bc.resultBodyPath
+    ? extractRawJsonPath(line, bc.resultBodyPath)
+    : line;
+  if (innerText !== undefined) {
+    try {
+      const inner: unknown = JSON.parse(innerText);
+      if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+        // ADR-076 SYM-004: the same reader the live send paths use. Batch is
+        // Chat-Completions-only (ADR-055), so the empty wire shape selects the
+        // provider's declared response paths, never the Responses output[] arm.
+        const entry = decodeResponse(
+          provider as keyof typeof PROVIDERS,
+          "",
+          innerText,
+        );
+        if (raw) entry.raw = inner;
+        return entry;
+      }
+    } catch {
+      // Not a decodable body: fall through to a failed Response.
+    }
+  }
+
+  const status = bc.resultStatusPath
+    ? extractPath(wrapper, bc.resultStatusPath)
+    : "";
+  const failed: PromptResponse = {
+    text: "",
+    usage: {},
+    finishReason: status || "error",
+  };
+  if (bc.resultErrorPath) {
+    const message = extractPath(wrapper, bc.resultErrorPath);
+    if (message) failed.finishMessage = message;
+  }
+  if (raw) failed.raw = wrapper;
+  return failed;
+}
+
+// batchRequestIndex reads N out of the "req-N" id the SDK sends with request N.
+// Any other id yields undefined.
+function batchRequestIndex(id: string): number | undefined {
+  const match = /^req-([0-9]+)$/.exec(id);
+  if (!match) return undefined;
+  const n = Number.parseInt(match[1]!, 10);
+  return Number.isSafeInteger(n) ? n : undefined;
 }
 
 async function fetchText(
