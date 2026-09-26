@@ -307,7 +307,7 @@ export interface Response {
   finishReason?: string;
 
   /**
-   * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI carry no equivalent field, so it is ABSENT for them rather than empty (ADR-081).
+   * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI carry no equivalent field, so it is ABSENT for them rather than empty (ADR-081). A failed batch request carries the provider's error message here (BUG-072).
    */
   finishMessage?: string;
 

@@ -26,6 +26,9 @@ export interface BatchDef {
   endpointPath: string;
   itemBodyField: string;
   resultBodyPath: string;
+  resultKeyPath: string;
+  resultStatusPath: string;
+  resultErrorPath: string;
   lifecycle: BatchLifecycle | null;
 }
 
@@ -39,6 +42,9 @@ const BATCHES: Partial<Record<ProviderName, BatchDef>> = {
     endpointPath: "",
     itemBodyField: "params",
     resultBodyPath: "result.message",
+    resultKeyPath: "custom_id",
+    resultStatusPath: "result.type",
+    resultErrorPath: "result.error.error.message",
     lifecycle: {
       createEndpoint: "/v1/messages/batches",
       responseIdPath: "id",
@@ -60,6 +66,9 @@ const BATCHES: Partial<Record<ProviderName, BatchDef>> = {
     endpointPath: "",
     itemBodyField: "",
     resultBodyPath: "",
+    resultKeyPath: "",
+    resultStatusPath: "",
+    resultErrorPath: "",
     lifecycle: null,
   },
   openai: {
@@ -71,6 +80,9 @@ const BATCHES: Partial<Record<ProviderName, BatchDef>> = {
     endpointPath: "/v1/chat/completions",
     itemBodyField: "",
     resultBodyPath: "response.body",
+    resultKeyPath: "custom_id",
+    resultStatusPath: "",
+    resultErrorPath: "error.message",
     lifecycle: {
       createEndpoint: "/v1/batches",
       responseIdPath: "id",
