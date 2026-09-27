@@ -146,6 +146,9 @@ export type { SpeechGenDef, SpeechModelDef } from "./providers/speech_gen.ts";
 // re-exports above: the config lives in the generated providers module, which is
 // not its own entry point, so it MUST be re-exported here.
 export { cachingConfig } from "./providers/caching.ts";
+// Batch slot values (ADR-091): the finishReason of a batch slot with no result
+// line, and of a failed slot the provider gave no reason for.
+export { BATCH_SLOT_ERROR, BATCH_SLOT_MISSING } from "./providers/batch.ts";
 export type {
   CachingDef,
   CachingMode,
