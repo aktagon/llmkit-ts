@@ -157,6 +157,27 @@ export function decodeResponse(
 }
 
 /**
+ * decodeResponseRaw is decodeResponse plus the ADR-014 raw opt-in. Every
+ * Response send path (prompt, agent, batch) decodes or attaches through here,
+ * so none can forget the caller's .raw() (BUG-073). Internal: the public codec
+ * keeps its signature (ADR-076).
+ */
+export function decodeResponseRaw(
+  provider: ProviderName,
+  chatWireShape: string,
+  body: string,
+  raw: boolean,
+): Response {
+  return attachRaw(decodeResponse(provider, chatWireShape, body), body, raw);
+}
+
+/** attachRaw sets resp.raw to the parsed body when the caller opted in. */
+export function attachRaw(resp: Response, body: string, raw: boolean): Response {
+  if (raw) resp.raw = JSON.parse(body) as unknown;
+  return resp;
+}
+
+/**
  * encodeResponse is decodeResponse's inverse: it renders a canonical Response
  * back onto the wire for `provider` + `chatWireShape`. Every write location
  * comes from the same generated path accessors decodeResponse reads — there is

@@ -45,12 +45,12 @@ export class BatchHandle {
   /**
    * wait polls the batch lifecycle until completion and returns one Response
    * per prompt, at the prompt's index. A failed request keeps its slot: empty
-   * text, finishReason set to the provider's result status ("errored",
-   * "expired", "canceled"; "error" when the provider has none) and
-   * finishMessage set to the provider's error message. A request with no result
-   * line reads finishReason "missing". Results whose request id is not one this
-   * SDK assigned (a batch created elsewhere, resumed by ID) follow the indexed
-   * ones in file order.
+   * text, finishReason set to the provider's error reason ("errored",
+   * "expired", "batch_expired", an error code; BATCH_SLOT_ERROR when the
+   * provider gives none) and finishMessage set to the provider's error
+   * message. A request with no result line reads BATCH_SLOT_MISSING. Results
+   * whose request id is not one this SDK assigned (a batch created elsewhere,
+   * resumed by ID) follow the indexed ones in file order.
    */
   async wait(options: BatchOptions = {}): Promise<Response[]> {
     return await runWaitBatch(
