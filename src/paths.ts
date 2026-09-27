@@ -179,7 +179,7 @@ export function matchingBlocks(
   return out;
 }
 
-function extractRaw(data: unknown, path: string): unknown {
+export function extractRaw(data: unknown, path: string): unknown {
   if (!path) return undefined;
   let current: unknown = data;
   for (const part of path.split(".")) {

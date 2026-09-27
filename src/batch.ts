@@ -1,14 +1,17 @@
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
+  BATCH_REQUEST_ID_PREFIX,
+  BATCH_SLOT_ERROR,
+  BATCH_SLOT_MISSING,
   type BatchDef,
   type BatchLifecycle,
   batchConfig,
 } from "./providers/batch.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { extractPath } from "./paths.ts";
+import { extractPath, extractRaw } from "./paths.ts";
 import { extractRawJsonPath } from "./provider_turn.ts";
 import { applyCaching } from "./caching.ts";
-import { decodeResponse } from "./response.ts";
+import { attachRaw, decodeResponseRaw } from "./response.ts";
 import {
   appendBeta,
   buildAuthHeaders,
@@ -278,6 +281,17 @@ function newBatchAdapter(
   return new BatchJobAdapter(lc, handle, base, bc, headers, pollUrl, raw);
 }
 
+// fetchBatchResults fetches and parses completed batch results.
+//
+// A provider declares up to three result sources (HANDOFF-078): a direct result
+// endpoint (Anthropic), and file IDs in the status body for the output file and
+// the error file (OpenAI). Every source that is present is read, in that order;
+// the call fails only when none is. The status body also carries the request
+// count (bc.requestCountPaths), which fixes the number of result slots.
+//
+// finalStatus is the already-decoded poll body when the caller has it (the poll
+// engine does). When absent and a file ID or the count is needed, the status is
+// fetched. Mirror of go/batch.go fetchBatchResults.
 async function fetchBatchResults(
   handle: BatchHandle,
   base: string,
@@ -288,25 +302,50 @@ async function fetchBatchResults(
   signal?: AbortSignal,
 ): Promise<PromptResponse[]> {
   const lc = bc.lifecycle as BatchLifecycle;
-  let body: string;
-  if (lc.resultFileIdPath) {
-    const fileId = extractPath(finalStatus, lc.resultFileIdPath);
-    if (!fileId) {
-      throw new APIError(0, "batch results: empty output file ID", false);
-    }
-    const fileUrl = base + lc.fileContentEndpoint.replace("{id}", fileId);
-    body = await fetchText(fileUrl, headers, signal);
-  } else if (lc.resultEndpoint) {
+  const needsStatus =
+    !!lc.resultFileIdPath || !!lc.errorFileIdPath || bc.requestCountPaths.length > 0;
+  let status = finalStatus;
+  if ((status === undefined || status === null) && needsStatus) {
+    const pollUrl = base + lc.createEndpoint + "/" + handle.id;
+    status = JSON.parse(await fetchText(pollUrl, headers, signal)) as unknown;
+  }
+
+  const sources: string[] = [];
+  if (lc.resultEndpoint) {
     const url = base + lc.resultEndpoint.replace("{id}", handle.id);
-    body = await fetchText(url, headers, signal);
-  } else {
+    sources.push(await fetchText(url, headers, signal));
+  }
+  for (const idPath of [lc.resultFileIdPath, lc.errorFileIdPath]) {
+    if (!idPath) continue;
+    const fileId = extractPath(status, idPath);
+    if (!fileId) continue;
+    const fileUrl = base + lc.fileContentEndpoint.replace("{id}", fileId);
+    sources.push(await fetchText(fileUrl, headers, signal));
+  }
+  if (sources.length === 0) {
     throw new APIError(
       0,
-      `batch result endpoint not configured for ${handle.provider.name}`,
+      `batch results: no result source for ${handle.provider.name} batch ${handle.id}`,
       false,
     );
   }
-  return parseBatchResults(handle.provider.name, body, bc, raw);
+  const count = batchRequestCount(status, bc.requestCountPaths);
+  return parseBatchResults(handle.provider.name, sources, bc, raw, count);
+}
+
+// batchRequestCount sums the numbers at paths in the status body. It returns
+// undefined when no path resolves to a number.
+function batchRequestCount(
+  status: unknown,
+  paths: readonly string[],
+): number | undefined {
+  let total: number | undefined;
+  for (const path of paths) {
+    // JSON numbers only, as in every other SDK: a numeric string is not a count.
+    const n = extractRaw(status, path);
+    if (typeof n === "number") total = (total ?? 0) + n;
+  }
+  return total;
 }
 
 // Returns the batch payload plus the contract-bearing anthropic-beta values the
@@ -340,7 +379,10 @@ async function buildBatchBody(
       await applyCaching(reqBody, provider, cfg, options);
     }
     if (bc.itemBodyField) {
-      items.push({ custom_id: `req-${i}`, [bc.itemBodyField]: reqBody });
+      items.push({
+        custom_id: `${BATCH_REQUEST_ID_PREFIX}${i}`,
+        [bc.itemBodyField]: reqBody,
+      });
     } else {
       items.push(reqBody);
     }
@@ -367,7 +409,7 @@ async function buildBatchJsonl(
     }
     lines.push(
       JSON.stringify({
-        custom_id: `req-${i}`,
+        custom_id: `${BATCH_REQUEST_ID_PREFIX}${i}`,
         method: "POST",
         url: bc.endpointPath,
         body: reqBody,
@@ -408,116 +450,150 @@ async function uploadBatchFile(
   return id;
 }
 
-// parseBatchResults parses JSONL batch result data into one Response per
-// submitted request, at that request's index (BUG-072).
+// BatchSlot is one parsed result line waiting for its index.
+interface BatchSlot {
+  resp: PromptResponse;
+  succeeded: boolean;
+}
+
+// parseBatchResults parses JSONL result sources into one Response per submitted
+// request, at that request's index (BUG-072, HANDOFF-078).
 //
-// Providers return result lines in any order, so a line is placed by the
-// request id at bc.resultKeyPath: "req-N" goes to index N. A line whose body is
-// missing at bc.resultBodyPath is a failed request; it keeps its slot as a
-// Response with empty text, finishReason from bc.resultStatusPath ("error" when
-// the provider has no status) and finishMessage from bc.resultErrorPath. An
-// index with no line gets finishReason "missing". Lines whose id is not "req-N"
-// (a batch created outside llmkit, or a repeated id) follow the indexed slots in
-// file order. A line that is not JSON cannot be placed and is skipped; its index
-// reads "missing".
+// Providers return result lines in any order, so a line is placed by the request
+// id at bc.resultKeyPath: BATCH_REQUEST_ID_PREFIX + N goes to index N. When one
+// index appears twice, a line that succeeded replaces a failed one; a failed line
+// never replaces a succeeded one; otherwise the later line follows the indexed
+// slots.
 //
-// When raw is true, a parsed Response carries the per-item body on raw; a
-// failed Response carries the whole line.
-function parseBatchResults(
+// With a request count there are exactly count slots, and an id at or above the
+// count follows them. Without one, slots run to the highest index seen. An index
+// with no line reads BATCH_SLOT_MISSING. Lines whose id has another form (a batch
+// created outside llmkit) follow the indexed slots in file order, across sources
+// in source order. A line that is not JSON cannot be placed and is skipped.
+//
+// When raw is true, a succeeded Response carries its decoded body on raw (the
+// unwrapped inner body when resultBodyPath is set, otherwise the line); a failed
+// Response carries the whole line; a missing slot carries none.
+export function parseBatchResults(
   provider: string,
-  data: string,
+  sources: readonly string[],
   bc: BatchDef,
   raw: boolean,
+  count?: number,
 ): PromptResponse[] {
-  const slots: (PromptResponse | undefined)[] = [];
+  const slots: (BatchSlot | undefined)[] =
+    count === undefined ? [] : new Array<BatchSlot | undefined>(count).fill(undefined);
   const unkeyed: PromptResponse[] = [];
-  for (const rawLine of data.split("\n")) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    let wrapper: unknown;
-    try {
-      wrapper = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    const resp = parseBatchResultLine(provider, line, wrapper, bc, raw);
+  for (const data of sources) {
+    for (const rawLine of data.split("\n")) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      let wrapper: unknown;
+      try {
+        wrapper = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const slot = parseBatchResultLine(provider, line, wrapper, bc, raw);
 
-    const index = bc.resultKeyPath
-      ? batchRequestIndex(extractPath(wrapper, bc.resultKeyPath))
-      : undefined;
-    if (index === undefined || slots[index] !== undefined) {
-      unkeyed.push(resp);
-      continue;
+      let index = bc.resultKeyPath
+        ? batchRequestIndex(extractPath(wrapper, bc.resultKeyPath))
+        : undefined;
+      if (index !== undefined && count !== undefined && index >= count) {
+        index = undefined;
+      }
+      if (index === undefined) {
+        unkeyed.push(slot.resp);
+        continue;
+      }
+      while (slots.length <= index) slots.push(undefined);
+      const existing = slots[index];
+      if (existing === undefined || (slot.succeeded && !existing.succeeded)) {
+        slots[index] = slot;
+      } else if (existing.succeeded && !slot.succeeded) {
+        // The request succeeded; a failed duplicate adds nothing.
+      } else {
+        unkeyed.push(slot.resp);
+      }
     }
-    slots[index] = resp;
   }
 
-  const out: PromptResponse[] = [];
-  for (let i = 0; i < slots.length; i++) {
-    out.push(slots[i] ?? { text: "", usage: {}, finishReason: "missing" });
-  }
+  const out: PromptResponse[] = slots.map(
+    (slot) => slot?.resp ?? { text: "", usage: {}, finishReason: BATCH_SLOT_MISSING },
+  );
   return out.concat(unkeyed);
 }
 
-// parseBatchResultLine decodes one result line. A line whose body is missing at
-// bc.resultBodyPath, or does not decode, becomes a failed Response.
+// parseBatchResultLine decodes one result line. The line succeeded when the value
+// at bc.resultStatusPath is one of bc.resultSuccessValues (any value when the
+// provider declares no status path) and its body decodes. Every other line
+// becomes a failed Response: empty text, the first reason path that resolves as
+// finishReason (BATCH_SLOT_ERROR when none does) and the first message path that
+// resolves as finishMessage.
 function parseBatchResultLine(
   provider: string,
   line: string,
   wrapper: unknown,
   bc: BatchDef,
   raw: boolean,
-): PromptResponse {
-  // VERBATIM, not parse-navigate-re-stringify: the inner body is what ADR-085
-  // captures the assistant turn from, and JSON.stringify of a parsed value has
-  // already lost the source spacing and rewritten any integer past 2^53 through
-  // a double. Harmless while only scalars were read out of it; not harmless once
-  // a payload is captured from the same bytes.
-  const innerText = bc.resultBodyPath
-    ? extractRawJsonPath(line, bc.resultBodyPath)
-    : line;
-  if (innerText !== undefined) {
-    try {
-      const inner: unknown = JSON.parse(innerText);
-      if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+): BatchSlot {
+  const signalled =
+    !bc.resultStatusPath ||
+    bc.resultSuccessValues.includes(extractPath(wrapper, bc.resultStatusPath));
+  if (signalled) {
+    // VERBATIM, not parse-navigate-re-stringify: the inner body is what ADR-085
+    // captures the assistant turn from, and JSON.stringify of a parsed value has
+    // already lost the source spacing and rewritten any integer past 2^53
+    // through a double. Harmless while only scalars were read out of it; not
+    // harmless once a payload is captured from the same bytes.
+    const innerText = bc.resultBodyPath
+      ? extractRawJsonPath(line, bc.resultBodyPath)
+      : line;
+    if (innerText !== undefined && innerText.startsWith("{")) {
+      try {
         // ADR-076 SYM-004: the same reader the live send paths use. Batch is
         // Chat-Completions-only (ADR-055), so the empty wire shape selects the
         // provider's declared response paths, never the Responses output[] arm.
-        const entry = decodeResponse(
+        const resp = decodeResponseRaw(
           provider as keyof typeof PROVIDERS,
           "",
           innerText,
+          raw,
         );
-        if (raw) entry.raw = inner;
-        return entry;
+        return { resp, succeeded: true };
+      } catch {
+        // Not a decodable body: fall through to a failed Response.
       }
-    } catch {
-      // Not a decodable body: fall through to a failed Response.
     }
   }
 
-  const status = bc.resultStatusPath
-    ? extractPath(wrapper, bc.resultStatusPath)
-    : "";
   const failed: PromptResponse = {
     text: "",
     usage: {},
-    finishReason: status || "error",
+    finishReason: firstPath(wrapper, bc.resultReasonPaths) || BATCH_SLOT_ERROR,
   };
-  if (bc.resultErrorPath) {
-    const message = extractPath(wrapper, bc.resultErrorPath);
-    if (message) failed.finishMessage = message;
-  }
-  if (raw) failed.raw = wrapper;
-  return failed;
+  const message = firstPath(wrapper, bc.resultMessagePaths);
+  if (message) failed.finishMessage = message;
+  return { resp: attachRaw(failed, line, raw), succeeded: false };
 }
 
-// batchRequestIndex reads N out of the "req-N" id the SDK sends with request N.
-// Any other id yields undefined.
+// firstPath returns the value at the first path that resolves to a non-empty
+// string, or "" when none does.
+function firstPath(data: unknown, paths: readonly string[]): string {
+  for (const path of paths) {
+    const v = extractPath(data, path);
+    if (v) return v;
+  }
+  return "";
+}
+
+// batchRequestIndex reads N out of the BATCH_REQUEST_ID_PREFIX + N id the SDK
+// sends with request N. Any other id yields undefined.
 function batchRequestIndex(id: string): number | undefined {
-  const match = /^req-([0-9]+)$/.exec(id);
-  if (!match) return undefined;
-  const n = Number.parseInt(match[1]!, 10);
+  if (!id.startsWith(BATCH_REQUEST_ID_PREFIX)) return undefined;
+  const digits = id.slice(BATCH_REQUEST_ID_PREFIX.length);
+  if (!/^[0-9]+$/.test(digits)) return undefined;
+  const n = Number.parseInt(digits, 10);
   return Number.isSafeInteger(n) ? n : undefined;
 }
 

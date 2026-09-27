@@ -9,7 +9,7 @@
 
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { accumulateUsage, decodeResponse } from "./response.ts";
+import { accumulateUsage, attachRaw, decodeResponse } from "./response.ts";
 import { matchingBlocks } from "./paths.ts";
 import {
   buildRequest,
@@ -139,6 +139,7 @@ export class Agent {
       const llmStart = performance.now();
 
       let raw: unknown;
+      let respText = "";
       let decoded: PromptResponse;
       try {
         const extraHeaders: Record<string, string> = {};
@@ -170,7 +171,8 @@ export class Agent {
             resp.status === 429 || resp.status >= 500,
           );
         }
-        raw = JSON.parse(resp.text);
+        respText = resp.text;
+        raw = JSON.parse(respText);
         // ADR-076 SYM-004: the tool loop reads through the public codec, so a
         // turn sees the same projection Text.prompt does. Before this it read
         // usage inline and never populated cache or reasoning tokens.
@@ -216,8 +218,7 @@ export class Agent {
         if (decoded.providerTurn) result.providerTurn = decoded.providerTurn;
         if (decoded.finishReason) result.finishReason = decoded.finishReason;
         if (decoded.finishMessage) result.finishMessage = decoded.finishMessage;
-        if (this.options.raw) result.raw = raw;
-        return result;
+        return attachRaw(result, respText, !!this.options.raw);
       }
 
       // Record the assistant turn. toolCalls is the projection the loop runs

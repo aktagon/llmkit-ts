@@ -19,7 +19,7 @@ import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import { APIError, ValidationError } from "../errors.ts";
 import { applyCaching } from "../caching.ts";
-import { decodeResponse } from "../response.ts";
+import { decodeResponseRaw } from "../response.ts";
 import {
   buildRequest as buildLegacyRequest,
   executeRequest,
@@ -182,12 +182,12 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
     // ADR-076 SYM-004: the public decodeResponse IS this send path's reader.
     // ADR-055's ChatResponsesOpenAI arm is selected inside it by the effective
     // wire shape, so the branch does not live here.
-    const result: Response = decodeResponse(
+    const result: Response = decodeResponseRaw(
       provider.name,
       effCfg.chatWireShape,
       resp.text,
+      !!b._raw,
     );
-    if (b._raw) result.raw = JSON.parse(resp.text) as unknown;
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.usage,
