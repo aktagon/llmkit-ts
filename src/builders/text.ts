@@ -57,14 +57,15 @@ export function buildPromptArgs(
   if (b._model) provider.model = b._model;
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;
 
-  // Concatenate accumulated text parts, then append finalText. Image parts
+  // Join accumulated text parts, then finalText, with newlines (the
+  // text-parts-openai request-wire golden holds every SDK to it). Image parts
   // lower into InputImage entries as base64 `data:` URIs, in caller order
   // (ADR-060, mirroring Go's splitTextAndImages).
   const textSegments: string[] = [];
   const images: InputImage[] = [];
   for (const p of b._parts) {
     if ("text" in p) {
-      textSegments.push(p.text);
+      if (p.text) textSegments.push(p.text);
     } else if ("image" in p) {
       images.push({
         url: `data:${p.image.mimeType};base64,${bytesToBase64(p.image.bytes)}`,
@@ -74,7 +75,7 @@ export function buildPromptArgs(
     }
   }
   if (finalText) textSegments.push(finalText);
-  const user = textSegments.join("");
+  const user = textSegments.join("\n");
 
   // Legacy TS Request treats `messages` and `user` as mutually exclusive
   // (request.ts uses if/else if). The typed-builder shields callers
