@@ -14,6 +14,7 @@ import {
   modelOptionOverrides,
   optionOverrides,
   supportedOptions,
+  wireShapeOptionOverrides,
 } from "./providers/options.ts";
 import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
@@ -114,6 +115,7 @@ export function buildRequest(
   const maxTokensKey = resolveOptionKey(
     provider.name,
     model,
+    cfg.chatWireShape,
     OptionKeys.MAX_TOKENS,
     supportedMap,
   );
@@ -179,6 +181,7 @@ export function buildRequest(
       options,
       provider.name,
       model,
+      cfg.chatWireShape,
       supportedMap,
       overridesMap,
     );
@@ -196,6 +199,7 @@ export function buildRequest(
       options,
       provider.name,
       model,
+      cfg.chatWireShape,
       supportedMap,
       overridesMap,
     );
@@ -228,15 +232,6 @@ export function buildRequest(
         fu.betaHeader,
       );
     }
-  }
-
-  // ADR-055 Responses wire-shape body fixup: the Responses API names the
-  // output-token cap max_output_tokens and rejects max_tokens with a 400
-  // (live-verified 2026-07-02). Every other body field is shared with Chat
-  // Completions, so this single rename is the only option-key divergence.
-  if (cfg.chatWireShape === "ChatResponsesOpenAI" && "max_tokens" in body) {
-    body.max_output_tokens = body.max_tokens;
-    delete body.max_tokens;
   }
 
   return body;
@@ -344,16 +339,22 @@ function removeAdditionalProperties(schema: unknown): void {
   if (m.items !== undefined) removeAdditionalProperties(m.items);
 }
 
-// resolveOptionKey returns the wire (JSON) key for param on (provider, model).
-// Per-model overrides (ADR-024) outrank the provider default table: an exact
-// modelId match wins outright, otherwise the longest-prefix glob wins, and
-// failing any override the provider's default supported-options key is used.
+// resolveOptionKey returns the wire (JSON) key for param on (provider, model)
+// under the effective chat wire shape. A wire-shape key (BUG-075) outranks
+// everything: the Responses shape names MaxTokens max_output_tokens for every
+// model. Next, per-model overrides (ADR-024) outrank the provider default
+// table: an exact modelId match wins outright, otherwise the longest-prefix
+// glob wins, and failing any override the provider's default supported-options
+// key is used.
 export function resolveOptionKey(
   provider: ProviderName,
   model: string,
+  chatWireShape: string,
   param: OptionKey,
   supportedMap: Map<OptionKey, string>,
 ): string | undefined {
+  const shapeKey = wireShapeOptionOverrides(chatWireShape)[param];
+  if (shapeKey !== undefined) return shapeKey;
   let bestKey: string | undefined;
   let bestLen = -1;
   for (const ov of modelOptionOverrides(provider)) {
@@ -386,11 +387,12 @@ function applyOptions(
   options: PromptOptions,
   provider: ProviderName,
   model: string,
+  chatWireShape: string,
   supportedMap: Map<OptionKey, string>,
   overridesMap: Map<OptionKey, OptionOverrideDef>,
 ): void {
   const apply = (key: OptionKey, value: unknown): void => {
-    const jsonKey = resolveOptionKey(provider, model, key, supportedMap);
+    const jsonKey = resolveOptionKey(provider, model, chatWireShape, key, supportedMap);
     if (jsonKey === undefined) return;
     setNestedField(target, jsonKey, value);
     const override = overridesMap.get(key);
