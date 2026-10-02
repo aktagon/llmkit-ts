@@ -1094,6 +1094,12 @@ const MODEL_OPTION_OVERRIDES: Record<ProviderName, readonly ModelOptionOverrideD
   ],
 };
 
+const WIRE_SHAPE_OPTION_OVERRIDES: Record<string, Partial<Record<OptionKey, string>>> = {
+  ChatResponsesOpenAI: {
+    [OptionKeys.MAX_TOKENS]: "max_output_tokens",
+  },
+};
+
 export function supportedOptions(provider: ProviderName): readonly SupportedOptionDef[] {
   return SUPPORTED_OPTIONS[provider];
 }
@@ -1104,4 +1110,11 @@ export function optionOverrides(provider: ProviderName): readonly OptionOverride
 
 export function modelOptionOverrides(provider: ProviderName): readonly ModelOptionOverrideDef[] {
   return MODEL_OPTION_OVERRIDES[provider];
+}
+
+// wireShapeOptionOverrides returns the wire keys a chat wire shape uses for
+// generation params, for every model. They outrank modelOptionOverrides and
+// the provider's supported-options table (BUG-075).
+export function wireShapeOptionOverrides(chatWireShape: string): Partial<Record<OptionKey, string>> {
+  return WIRE_SHAPE_OPTION_OVERRIDES[chatWireShape] ?? {};
 }
