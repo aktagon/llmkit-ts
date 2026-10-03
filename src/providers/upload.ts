@@ -19,7 +19,7 @@ const FILE_UPLOADS: Partial<Record<ProviderName, FileUploadDef>> = {
     endpoint: "/v1/files",
     fieldName: "file",
     extraFieldsJson: "",
-    betaHeader: "files-api-2025-04-14",
+    betaHeader: "",
     responseIdPath: "id",
     responseUriPath: "",
     responseNamePath: "filename",
