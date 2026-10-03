@@ -220,10 +220,10 @@ export function buildRequest(
     applyStructuredOutput(body, headersOut, request.schema, provider.name);
   }
 
-  // BUG-017: when the request references uploaded files, the Messages request
-  // must carry the provider's file-upload beta header so the {type:"document",
-  // source:{type:"file"}} block is accepted. Composed onto any existing
-  // anthropic-beta (e.g. structured output) — comma-separated, deduped.
+  // BUG-017: when the request references uploaded files, it carries the beta
+  // the provider's upload declares (uploadBetaHeader), composed onto any
+  // existing anthropic-beta (e.g. structured output) — comma-separated,
+  // deduped. Anthropic declares none since its Files API left beta (BUG-078).
   if (headersOut && (request.files?.length ?? 0) > 0) {
     const fu = fileUploadConfig(provider.name);
     if (fu && fu.betaHeader) {
