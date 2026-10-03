@@ -230,9 +230,14 @@ export function buildRequest(
   //
   //
   //
-  if (cfg.chatWireShape === "ChatResponsesOpenAI" && "max_tokens" in body) {
-    body.max_output_tokens = body.max_tokens;
-    delete body.max_tokens;
+  //
+  if (cfg.chatWireShape === "ChatResponsesOpenAI") {
+    for (const key of ["max_tokens", "max_completion_tokens"]) {
+      if (key in body) {
+        body.max_output_tokens = body[key];
+        delete body[key];
+      }
+    }
   }
 
   return body;
