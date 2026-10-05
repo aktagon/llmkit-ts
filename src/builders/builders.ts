@@ -30,11 +30,16 @@ export interface ProviderConfig {
   apiKey: string;
   baseUrl?: string;
   headers?: Record<string, string>;
+  /** Wait for the next response bytes, in ms (Client.timeout, BUG-062). 0 disables. */
+  timeoutMs?: number;
 }
 
 function clone<T extends object>(b: T): T {
   return Object.assign(Object.create(Object.getPrototypeOf(b)), b) as T;
 }
+
+/** The defaultSeconds fact of Timeout, in milliseconds. */
+export const DEFAULT_TIMEOUT_MS = 600000;
 
 import { saveHistory, loadHistory } from "../wire.ts";
 import { agentMessages, agentPrompt, agentReset } from "./agent.ts";
@@ -70,7 +75,7 @@ export class Client {
   providers: Providers;
 
   constructor(name: ProviderName, apiKey: string) {
-    this.provider = { name, apiKey };
+    this.provider = { name, apiKey, timeoutMs: DEFAULT_TIMEOUT_MS };
     this.text = new Text(this);
     this.image = new Image(this);
     this.music = new Music(this);
@@ -88,6 +93,9 @@ export class Client {
 
   /** Override the provider's default base URL. Required for providers whose default base URL is a template the caller must substitute (e.g. Vertex AI Imagen) and to point an OpenAI-compatible provider or gateway at a self-hosted endpoint. Returns the same Client for chaining. */
   baseURL(url: string): this { this.provider.baseUrl = url; return this; }
+
+  /** Set how long this client waits for the next bytes from the provider, in milliseconds, before the request fails with a timeout error. The wait covers the response headers and every gap between body chunks, so a long healthy stream never times out. 0 disables it. Returns the same Client for chaining. */
+  timeout(ms: number): this { this.provider.timeoutMs = ms; return this; }
 
   /** True iff an explicit request for `cap` will not hard-fail
    *  pre-flight on this client's provider (ADR-030). Gated arms
