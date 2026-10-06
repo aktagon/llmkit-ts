@@ -16,6 +16,7 @@ import {
 } from "./providers/providers.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePre, firePost } from "./middleware.ts";
+import { sendHTTP } from "./http.ts";
 import {
   parseAnthropicModelsResponse,
   parseGoogleModelsResponse,
@@ -174,6 +175,7 @@ export async function catalogueRunList(
         scoped.target,
         pcfg,
         cfg.parserKind,
+        scoped.client.provider.timeoutMs,
       );
       records.push(...page.records);
       if (!page.nextCursor) break;
@@ -233,7 +235,11 @@ export async function catalogueRunGet(
       "content-type": "application/json",
       ...buildAuthHeaders(scoped.target, pcfg),
     };
-    const httpResp = await fetch(url, { method: "GET", headers });
+    const httpResp = await sendHTTP(
+      url,
+      { method: "GET", headers },
+      scoped.client.provider.timeoutMs,
+    );
     const text = await httpResp.text();
     if (!httpResp.ok) {
       throw mapCatalogueHttpErr(httpResp.status, text);
@@ -259,9 +265,10 @@ async function fetchCataloguePage(
   provider: Provider,
   pcfg: ProviderSpec,
   parserKind: string,
+  timeoutMs: number | undefined,
 ): Promise<ParsedModelsPage> {
   const headers = buildCatalogueHeaders(provider, pcfg);
-  const httpResp = await fetch(reqUrl, { method: "GET", headers });
+  const httpResp = await sendHTTP(reqUrl, { method: "GET", headers }, timeoutMs);
   const text = await httpResp.text();
   if (!httpResp.ok) {
     throw mapCatalogueHttpErr(httpResp.status, text);

@@ -19,6 +19,7 @@ import {
   videoGenConfig,
 } from "../providers/video_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
+import { sendHTTP } from "../http.ts";
 import { buildAuthHeaders } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
@@ -151,8 +152,8 @@ export class VideoHandle {
       const respText = sigV4
         ? await sigV4Get(pollUrl, this.provider, cfg)
         : vertexPoll
-          ? await postJsonText(pollUrl, vertexPollBody, headers)
-          : await fetchText(pollUrl, headers);
+          ? await postJsonText(pollUrl, vertexPollBody, headers, this.provider.timeoutMs)
+          : await fetchText(pollUrl, headers, this.provider.timeoutMs);
       const raw = JSON.parse(respText) as unknown;
       const result = parseVideoPoll(vgCfg, raw);
       if (result) {
@@ -160,7 +161,7 @@ export class VideoHandle {
         // terminal poll carried a file reference, not a video URL — resolve it
         // with one more GET before returning.
         let finalResult = vgCfg.fileEndpoint
-          ? await resolveVideoFile(base, vgCfg, raw, headers)
+          ? await resolveVideoFile(base, vgCfg, raw, headers, this.provider.timeoutMs)
           : result;
         // Delivery dispatch (VID-005). Download-delivery providers (Veo)
         // returned a temporary fetch URI in VideoData.url; GET it and fill
@@ -195,6 +196,7 @@ export async function videoSubmit(
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
     headers: b.client.provider.headers,
+    timeoutMs: b.client.provider.timeoutMs,
   };
   if (b.client.provider.baseUrl) {
     provider.baseUrl = b.client.provider.baseUrl;
@@ -403,7 +405,7 @@ async function dispatchVideoSubmit(
   const respText =
     cfg.authScheme === "SigV4"
       ? await sigV4PostJson(submitUrl, body, provider, cfg)
-      : await postJson(submitUrl, body, postHeaders);
+      : await postJson(submitUrl, body, postHeaders, provider.timeoutMs);
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -848,6 +850,7 @@ async function resolveVideoFile(
   vgCfg: VideoGenDef,
   pollRaw: unknown,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
 ): Promise<VideoResponse> {
   const root = pollRaw as { file_id?: unknown };
   const fileId = videoFileId(root.file_id);
@@ -859,7 +862,7 @@ async function resolveVideoFile(
     );
   }
   const fileUrl = base + vgCfg.fileEndpoint.replace("{file_id}", fileId);
-  const fileText = await fetchText(fileUrl, headers);
+  const fileText = await fetchText(fileUrl, headers, timeoutMs);
   const fileRaw = JSON.parse(fileText) as unknown;
   return videoResultFromMinimaxFile(vgCfg, fileRaw);
 }
@@ -1018,7 +1021,7 @@ async function downloadVideoBytes(
   for (const video of resp.videos) {
     if (!video.url) continue;
     const fetchUrl = appendVideoAuth(video.url, provider, cfg);
-    video.bytes = await fetchBytes(fetchUrl, headers);
+    video.bytes = await fetchBytes(fetchUrl, headers, provider.timeoutMs);
     video.url = "";
   }
   return resp;
@@ -1105,12 +1108,17 @@ async function postJson(
   url: string,
   body: Record<string, unknown>,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
 ): Promise<string> {
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { ...headers, "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const resp = await sendHTTP(
+    url,
+    {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    timeoutMs,
+  );
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -1129,12 +1137,17 @@ async function postJsonText(
   url: string,
   jsonBody: string,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
 ): Promise<string> {
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { ...headers, "content-type": "application/json" },
-    body: jsonBody,
-  });
+  const resp = await sendHTTP(
+    url,
+    {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: jsonBody,
+    },
+    timeoutMs,
+  );
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -1149,8 +1162,9 @@ async function postJsonText(
 async function fetchText(
   url: string,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
 ): Promise<string> {
-  const resp = await fetch(url, { headers });
+  const resp = await sendHTTP(url, { headers }, timeoutMs);
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -1165,8 +1179,9 @@ async function fetchText(
 async function fetchBytes(
   url: string,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
 ): Promise<Uint8Array> {
-  const resp = await fetch(url, { headers });
+  const resp = await sendHTTP(url, { headers }, timeoutMs);
   if (!resp.ok) {
     const text = await resp.text();
     throw new APIError(
@@ -1206,7 +1221,11 @@ async function sigV4PostJson(
     "POST",
     "application/json",
   );
-  const resp = await fetch(url, { method: "POST", headers, body: jsonBody });
+  const resp = await sendHTTP(
+    url,
+    { method: "POST", headers, body: jsonBody },
+    provider.timeoutMs,
+  );
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -1238,7 +1257,7 @@ async function sigV4Get(
     cfg.serviceName,
     "GET",
   );
-  const resp = await fetch(url, { method: "GET", headers });
+  const resp = await sendHTTP(url, { method: "GET", headers }, provider.timeoutMs);
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(

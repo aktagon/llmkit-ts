@@ -53,6 +53,7 @@ export function buildPromptArgs(
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
     headers: b.client.provider.headers,
+    timeoutMs: b.client.provider.timeoutMs,
   };
   if (b._model) provider.model = b._model;
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;

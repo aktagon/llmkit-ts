@@ -21,6 +21,7 @@ import type { Part } from "./image.ts";
 
 export type { AudioData, MusicResponse } from "./structs.ts";
 import type { AudioData, MusicResponse } from "./structs.ts";
+import { sendHTTP } from "./http.ts";
 
 /**
  * MusicRequest accepts input in one of two mutually-exclusive forms:
@@ -130,12 +131,12 @@ export async function generateMusic(
       baseUrl,
     );
 
-    const httpResp = await fetch(url, {
+    const httpResp = await sendHTTP(url, {
       method: "POST",
       headers: { ...authHeaders, "content-type": "application/json" },
       body: JSON.stringify(body),
       signal: options.signal,
-    });
+    }, provider.timeoutMs);
 
     const respText = await httpResp.text();
     if (!httpResp.ok) {

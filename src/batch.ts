@@ -21,6 +21,7 @@ import {
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
+import { sendHTTP } from "./http.ts";
 import {
   classifyByConfig,
   nonEmptyValues,
@@ -107,7 +108,7 @@ export async function submitBatch(
     let body: Uint8Array;
     if (bc.inputMode === "FileReferenceInput") {
       const jsonl = await buildBatchJsonl(requests, provider, cfg, bc, options);
-      const fileId = await uploadBatchFile(base, jsonl, bc, headers);
+      const fileId = await uploadBatchFile(base, jsonl, bc, headers, provider.timeoutMs);
       const payload: Record<string, unknown> = {
         [bc.inputField]: fileId,
         endpoint: bc.endpointPath,
@@ -133,11 +134,15 @@ export async function submitBatch(
     }
 
     const createUrl = base + bc.lifecycle.createEndpoint;
-    const httpResp = await fetch(createUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...headers },
-      body,
-    });
+    const httpResp = await sendHTTP(
+      createUrl,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body,
+      },
+      provider.timeoutMs,
+    );
     const respText = await httpResp.text();
     if (!httpResp.ok) {
       throw new APIError(
@@ -212,7 +217,7 @@ class BatchJobAdapter implements JobAdapter<PromptResponse[]> {
   }
 
   async poll(signal?: AbortSignal): Promise<PollBody> {
-    const text = await fetchText(this.pollUrl, this.headers, signal);
+    const text = await fetchText(this.pollUrl, this.headers, this.handle.provider.timeoutMs, signal);
     return new PollBody(JSON.parse(text) as Record<string, unknown>);
   }
 
@@ -307,20 +312,20 @@ async function fetchBatchResults(
   let status = finalStatus;
   if ((status === undefined || status === null) && needsStatus) {
     const pollUrl = base + lc.createEndpoint + "/" + handle.id;
-    status = JSON.parse(await fetchText(pollUrl, headers, signal)) as unknown;
+    status = JSON.parse(await fetchText(pollUrl, headers, handle.provider.timeoutMs, signal)) as unknown;
   }
 
   const sources: string[] = [];
   if (lc.resultEndpoint) {
     const url = base + lc.resultEndpoint.replace("{id}", handle.id);
-    sources.push(await fetchText(url, headers, signal));
+    sources.push(await fetchText(url, headers, handle.provider.timeoutMs, signal));
   }
   for (const idPath of [lc.resultFileIdPath, lc.errorFileIdPath]) {
     if (!idPath) continue;
     const fileId = extractPath(status, idPath);
     if (!fileId) continue;
     const fileUrl = base + lc.fileContentEndpoint.replace("{id}", fileId);
-    sources.push(await fetchText(fileUrl, headers, signal));
+    sources.push(await fetchText(fileUrl, headers, handle.provider.timeoutMs, signal));
   }
   if (sources.length === 0) {
     throw new APIError(
@@ -424,16 +429,17 @@ async function uploadBatchFile(
   jsonl: Uint8Array,
   bc: BatchDef,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
 ): Promise<string> {
   const form = new FormData();
   form.append("file", new Blob([jsonl]), "batch_input.jsonl");
   form.append("purpose", bc.filePurpose);
 
-  const httpResp = await fetch(base + "/v1/files", {
-    method: "POST",
-    headers,
-    body: form,
-  });
+  const httpResp = await sendHTTP(
+    base + "/v1/files",
+    { method: "POST", headers, body: form },
+    timeoutMs,
+  );
   const text = await httpResp.text();
   if (!httpResp.ok) {
     throw new APIError(
@@ -600,9 +606,10 @@ function batchRequestIndex(id: string): number | undefined {
 async function fetchText(
   url: string,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
   signal?: AbortSignal,
 ): Promise<string> {
-  const resp = await fetch(url, { headers, signal });
+  const resp = await sendHTTP(url, { headers, signal }, timeoutMs);
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
