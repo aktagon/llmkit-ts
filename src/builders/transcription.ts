@@ -19,6 +19,7 @@ import {
   transcriptionConfig,
 } from "../providers/transcription_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
+import { sendHTTP } from "../http.ts";
 import {
   classifyByConfig,
   nonEmptyValues,
@@ -116,6 +117,7 @@ class TranscriptionJobAdapter implements JobAdapter<TranscriptionResponse> {
     private readonly headers: Record<string, string>,
     private readonly pollUrl: string,
     private readonly tcCfg: TranscriptionDef,
+    private readonly timeoutMs: number | undefined,
   ) {}
 
   config(): LifecycleConfig {
@@ -123,7 +125,7 @@ class TranscriptionJobAdapter implements JobAdapter<TranscriptionResponse> {
   }
 
   async poll(signal?: AbortSignal): Promise<PollBody> {
-    const text = await fetchText(this.pollUrl, this.headers, signal);
+    const text = await fetchText(this.pollUrl, this.headers, this.timeoutMs, signal);
     return new PollBody(JSON.parse(text) as Record<string, unknown>);
   }
 
@@ -170,7 +172,7 @@ function newTranscriptionAdapter(
     pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
     pollTimeoutMs: options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
   };
-  return new TranscriptionJobAdapter(lc, headers, pollUrl, tcCfg);
+  return new TranscriptionJobAdapter(lc, headers, pollUrl, tcCfg, handle.provider.timeoutMs);
 }
 
 /**
@@ -189,6 +191,7 @@ export async function transcriptionSubmit(
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
     headers: b.client.provider.headers,
+    timeoutMs: b.client.provider.timeoutMs,
   };
   if (b.client.provider.baseUrl) {
     provider.baseUrl = b.client.provider.baseUrl;
@@ -245,6 +248,7 @@ export async function transcriptionSubmit(
       headers,
       url,
       bytes,
+      provider.timeoutMs,
     );
     firePost(b._middleware as MiddlewareFn[], {
       ...baseEvent,
@@ -273,6 +277,7 @@ async function dispatchTranscriptionSubmit(
   headers: Record<string, string>,
   audioUrl: string,
   bytes: Uint8Array | undefined,
+  timeoutMs: number | undefined,
 ): Promise<string> {
   // Upload hop (STT-005): a bytes part is uploaded first to obtain a URL the
   // submit body can reference. URL parts skip this entirely.
@@ -284,11 +289,11 @@ async function dispatchTranscriptionSubmit(
     };
     const buf = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buf).set(bytes);
-    const uploadResp = await fetch(base + tcCfg.uploadEndpoint, {
-      method: "POST",
-      headers: uploadHeaders,
-      body: buf,
-    });
+    const uploadResp = await sendHTTP(
+      base + tcCfg.uploadEndpoint,
+      { method: "POST", headers: uploadHeaders, body: buf },
+      timeoutMs,
+    );
     const uploadText = await uploadResp.text();
     if (!uploadResp.ok) {
       throw new APIError(
@@ -312,6 +317,7 @@ async function dispatchTranscriptionSubmit(
     base + tcCfg.submitEndpoint,
     { audio_url: audioURL },
     headers,
+    timeoutMs,
   );
   const raw = JSON.parse(submitText) as Record<string, unknown>;
   const id = lookupHandleField(raw, tcCfg.submitHandleField);
@@ -341,6 +347,7 @@ export async function transcriptionTranscribe(
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
     headers: b.client.provider.headers,
+    timeoutMs: b.client.provider.timeoutMs,
   };
   if (b.client.provider.baseUrl) {
     provider.baseUrl = b.client.provider.baseUrl;
@@ -396,11 +403,11 @@ export async function transcriptionTranscribe(
   const start = performance.now();
 
   try {
-    const resp = await fetch(base + tcCfg.submitEndpoint, {
-      method: "POST",
-      headers,
-      body: form,
-    });
+    const resp = await sendHTTP(
+      base + tcCfg.submitEndpoint,
+      { method: "POST", headers, body: form },
+      provider.timeoutMs,
+    );
     const respText = await resp.text();
     if (!resp.ok) {
       throw new APIError(
@@ -638,12 +645,17 @@ async function postJson(
   url: string,
   body: Record<string, unknown>,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
 ): Promise<string> {
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { ...headers, "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const resp = await sendHTTP(
+    url,
+    {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    timeoutMs,
+  );
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -658,9 +670,10 @@ async function postJson(
 async function fetchText(
   url: string,
   headers: Record<string, string>,
+  timeoutMs: number | undefined,
   signal?: AbortSignal,
 ): Promise<string> {
-  const resp = await fetch(url, { headers, signal });
+  const resp = await sendHTTP(url, { headers, signal }, timeoutMs);
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(

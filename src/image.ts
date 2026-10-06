@@ -13,6 +13,7 @@ import {
   imageGenConfig,
 } from "./providers/image_gen.ts";
 import { APIError, ValidationError } from "./errors.ts";
+import { sendHTTP } from "./http.ts";
 import { extractIntPath, optIntPath } from "./paths.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
@@ -331,50 +332,50 @@ export async function generateImage(
         : buildXAIGenBody(parts, request.model, options);
       const url =
         baseUrl + (hasImages ? imgCfg.editEndpoint : imgCfg.genEndpoint);
-      httpResp = await fetch(url, {
+      httpResp = await sendHTTP(url, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),
         signal: options.signal,
-      });
+      }, provider.timeoutMs);
     } else if (imgCfg.inputMode === "MultipartForm") {
       if (hasImages) {
         const form = buildOpenAIEditFormData(parts, request.model, options);
-        httpResp = await fetch(baseUrl + imgCfg.editEndpoint, {
+        httpResp = await sendHTTP(baseUrl + imgCfg.editEndpoint, {
           method: "POST",
           headers: authHeaders, // FormData sets its own Content-Type
           body: form,
           signal: options.signal,
-        });
+        }, provider.timeoutMs);
       } else {
         const body = buildOpenAIGenBody(parts, request.model, options);
-        httpResp = await fetch(baseUrl + imgCfg.genEndpoint, {
+        httpResp = await sendHTTP(baseUrl + imgCfg.genEndpoint, {
           method: "POST",
           headers: { ...authHeaders, "content-type": "application/json" },
           body: JSON.stringify(body),
           signal: options.signal,
-        });
+        }, provider.timeoutMs);
       }
     } else if (imgCfg.inputMode === "JSONGenerations") {
       const body = buildRecraftGenBody(parts, request.model, options);
-      httpResp = await fetch(baseUrl + imgCfg.genEndpoint, {
+      httpResp = await sendHTTP(baseUrl + imgCfg.genEndpoint, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),
         signal: options.signal,
-      });
+      }, provider.timeoutMs);
     } else if (imgCfg.inputMode === "JSONPredict") {
       const body = buildVertexBody(parts, options);
       const endpoint = (cfg.endpoint || "").replaceAll(
         "{model}",
         request.model,
       );
-      httpResp = await fetch(baseUrl + endpoint, {
+      httpResp = await sendHTTP(baseUrl + endpoint, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),
         signal: options.signal,
-      });
+      }, provider.timeoutMs);
     } else {
       // InlineParts (Google).
       let endpoint = (cfg.endpoint || "").replaceAll("{model}", request.model);
@@ -383,12 +384,12 @@ export async function generateImage(
         endpoint = `${endpoint}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
       }
       const body = buildImageBody(parts, options);
-      httpResp = await fetch(baseUrl + endpoint, {
+      httpResp = await sendHTTP(baseUrl + endpoint, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),
         signal: options.signal,
-      });
+      }, provider.timeoutMs);
     }
 
     const respText = await httpResp.text();

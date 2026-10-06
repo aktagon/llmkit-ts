@@ -44,6 +44,7 @@ export async function uploadRun(b: Upload): Promise<LLMFile> {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
     headers: b.client.provider.headers,
+    timeoutMs: b.client.provider.timeoutMs,
   };
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;
 
