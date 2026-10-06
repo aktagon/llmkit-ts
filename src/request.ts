@@ -27,6 +27,7 @@ import type {
   Tool,
 } from "./types.ts";
 import type { File, Message, ToolCall, ToolResult } from "./structs.ts";
+import { sendHTTP } from "./http.ts";
 
 // ADR-031 honest no-default contract: the single predicate every model
 // resolution point dispatches on. Local daemons declare no default — what a
@@ -1171,12 +1172,12 @@ export async function executeRequest(
     Object.assign(headers, extraHeaders);
   }
 
-  const httpResp = await fetch(url, {
+  const httpResp = await sendHTTP(url, {
     method: "POST",
     headers,
     body: jsonBody,
     signal: options.signal,
-  });
+  }, provider.timeoutMs);
   const text = await httpResp.text();
   return { status: httpResp.status, ok: httpResp.ok, text };
 }

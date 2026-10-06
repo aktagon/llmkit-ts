@@ -30,6 +30,8 @@ export interface Provider {
    * the provider key without clobbering it.
    */
   headers?: Record<string, string>;
+  /** Wait for the next response bytes, in ms (Client.timeout, BUG-062). 0 disables. */
+  timeoutMs?: number;
 }
 
 /**

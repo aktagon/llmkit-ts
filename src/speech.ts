@@ -19,6 +19,7 @@ import type { Provider } from "./types.ts";
 
 export type { AudioData, SpeechResponse } from "./structs.ts";
 import type { AudioData, SpeechResponse } from "./structs.ts";
+import { sendHTTP } from "./http.ts";
 
 /**
  * SpeechRequest carries a single text utterance to speak (single-turn, no
@@ -99,12 +100,12 @@ export async function generateSpeech(
     const authHeaders = buildAuthHeaders(provider, cfg);
     const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl);
 
-    const httpResp = await fetch(url, {
+    const httpResp = await sendHTTP(url, {
       method: "POST",
       headers: { ...authHeaders, "content-type": "application/json" },
       body: JSON.stringify(body),
       signal: options.signal,
-    });
+    }, provider.timeoutMs);
 
     // Read the raw bytes: the OpenAI shape returns binary audio (not JSON), so
     // we cannot text-decode + JSON.parse unconditionally.
