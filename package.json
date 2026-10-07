@@ -18,8 +18,8 @@
     }
   },
   "files": [
-    "src",
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
@@ -56,12 +56,13 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target browser --format esm --splitting --sourcemap=external && bun run build:types",
+    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target browser --format esm --splitting && bun run build:types",
     "build:types": "tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "prepack": "bun run build",
-    "prepare": "bun run build"
+    "prepare": "bun run build",
+    "prepublishOnly": "test -n \"$LLMKIT_PUBLISH_WRAPPER\" || { echo 'publish with the release script, which checks the package first' >&2; exit 1; }"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
