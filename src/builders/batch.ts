@@ -89,7 +89,7 @@ function batchInputs(
   if (b._protocol) {
     throw new ValidationError(
       "protocol",
-      "protocol (e.g. Responses) is only supported on the prompt terminal, not batch (ADR-055)",
+      "protocol (e.g. Responses) is only supported on the prompt terminal, not batch",
     );
   }
   const requests: Request[] = [];

@@ -407,7 +407,7 @@ export function textStream(b: Text, msg: string): TextStream {
   if (b._protocol) {
     throw new ValidationError(
       "protocol",
-      "protocol (e.g. Responses) is only supported on the prompt terminal, not stream (ADR-055)",
+      "protocol (e.g. Responses) is only supported on the prompt terminal, not stream",
     );
   }
   return new TextStream(b, msg);
