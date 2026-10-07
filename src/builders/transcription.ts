@@ -20,6 +20,7 @@ import {
 } from "../providers/transcription_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
 import { sendHTTP } from "../http.ts";
+import { encodeMultipart } from "../multipart.ts";
 import {
   classifyByConfig,
   nonEmptyValues,
@@ -383,14 +384,18 @@ export async function transcriptionTranscribe(
   const headers = buildAuthHeaders(provider, cfg);
 
   // Build the multipart body in FIXED field order (model, response_format,
-  // file) so all four SDKs emit the same canonical descriptor. fetch sets the
-  // multipart Content-Type + boundary from the FormData (do NOT set it here).
-  const form = new FormData();
-  form.append("model", b._model);
-  form.append("response_format", "verbose_json");
-  const mimeType = ref.mimeType || "application/octet-stream";
-  const filename = "audio." + audioExtForMime(ref.mimeType);
-  form.append("file", new Blob([ref.bytes], { type: mimeType }), filename);
+  // file) so all four SDKs emit the same canonical descriptor.
+  const form = encodeMultipart([
+    { name: "model", value: b._model },
+    { name: "response_format", value: "verbose_json" },
+    {
+      name: "file",
+      filename: "audio." + audioExtForMime(ref.mimeType),
+      contentType: ref.mimeType || "application/octet-stream",
+      bytes: ref.bytes,
+    },
+  ]);
+  headers["Content-Type"] = form.contentType;
 
   const baseEvent: Event = {
     op: "transcription",
@@ -405,7 +410,7 @@ export async function transcriptionTranscribe(
   try {
     const resp = await sendHTTP(
       base + tcCfg.submitEndpoint,
-      { method: "POST", headers, body: form },
+      { method: "POST", headers, body: form.body },
       provider.timeoutMs,
     );
     const respText = await resp.text();
