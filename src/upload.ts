@@ -7,9 +7,12 @@ import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import type { File as LLMFile, Provider } from "./types.ts";
 import { sendHTTP } from "./http.ts";
+import { encodeMultipart, type MultipartField } from "./multipart.ts";
 
 export interface UploadOptions {
   middleware?: MiddlewareFn[];
+  // mimeType is the file part's Content-Type; unset sends application/octet-stream.
+  mimeType?: string;
 }
 
 export async function uploadFile(
@@ -55,8 +58,14 @@ export async function uploadFile(
       headers["anthropic-beta"] = fu.betaHeader;
     }
 
-    const form = new FormData();
-    form.append(fu.fieldName, new Blob([data]), name);
+    const fields: MultipartField[] = [
+      {
+        name: fu.fieldName,
+        filename: name,
+        contentType: options.mimeType || "application/octet-stream",
+        bytes: data,
+      },
+    ];
 
     if (fu.extraFieldsJson) {
       try {
@@ -65,17 +74,19 @@ export async function uploadFile(
           unknown
         >;
         for (const [k, v] of Object.entries(extras)) {
-          form.append(k, String(v));
+          fields.push({ name: k, value: String(v) });
         }
       } catch {
         //
       }
     }
 
+    const form = encodeMultipart(fields);
+    headers["Content-Type"] = form.contentType;
     const httpResp = await sendHTTP(uploadUrl, {
       method: "POST",
       headers,
-      body: form,
+      body: form.body,
     }, provider.timeoutMs);
     const respText = await httpResp.text();
     if (!httpResp.ok) {

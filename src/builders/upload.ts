@@ -50,6 +50,7 @@ export async function uploadRun(b: Upload): Promise<LLMFile> {
 
   const options: UploadOptions = {};
   if (b._middleware.length > 0) options.middleware = b._middleware;
+  if (b._mimeType) options.mimeType = b._mimeType;
 
   return await runUpload(provider, data, name, options);
 }
