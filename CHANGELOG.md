@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] — 2026-10-07
+
+### Changed
+- The package ships only the compiled library and its type declarations: no source files and no source maps.
+- Type declarations carry their documentation comments again.
+- The error for a chat protocol on a terminal other than prompt no longer ends with an internal reference.
+
+### Removed
+- 2.1.0 and 2.2.0 are no longer available on npm. Use 2.2.1.
+
 ## [2.2.0] — 2026-10-04
 
 ### Added
