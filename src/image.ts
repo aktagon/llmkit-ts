@@ -403,7 +403,7 @@ export async function generateImage(
 
     const raw = JSON.parse(respText) as unknown;
     // Response parser selected by config shape, never by provider name
-    // (BUG-024). imgCfg.usageInputPath/usageOutputPath are dotted-from-root,
+    // (BUG-024). imgCfg.usage{Input,Output,Reasoning}Path are dotted-from-root,
     // image-gen-scoped, and empty when the endpoint reports no usage.
     let result: ImageResponse;
     switch (imgCfg.responseShape) {
@@ -414,6 +414,7 @@ export async function generateImage(
           raw,
           imgCfg.usageInputPath,
           imgCfg.usageOutputPath,
+          imgCfg.usageReasoningPath,
         );
         break;
       case "VertexPredictions":
@@ -425,6 +426,7 @@ export async function generateImage(
           raw,
           imgCfg.usageInputPath,
           imgCfg.usageOutputPath,
+          imgCfg.usageReasoningPath,
         );
     }
     if (options.raw) result.raw = raw;
@@ -763,6 +765,7 @@ function parseImageResponse(
   raw: unknown,
   inputPath: string,
   outputPath: string,
+  reasoningPath: string,
 ): ImageResponse {
   const { images, text, finishReason, finishMessage } =
     extractGoogleImageParts(raw);
@@ -772,6 +775,7 @@ function parseImageResponse(
     usage: {
       input: optIntPath(raw, inputPath),
       output: optIntPath(raw, outputPath),
+      reasoning: optIntPath(raw, reasoningPath),
     },
   };
   if (finishReason) out.finishReason = finishReason;
@@ -795,6 +799,7 @@ function parseImageResponseDataArray(
   raw: unknown,
   inputPath: string,
   outputPath: string,
+  reasoningPath: string,
 ): ImageResponse {
   const root = raw as {
     data?: Array<{
@@ -832,6 +837,7 @@ function parseImageResponseDataArray(
     usage: {
       input: optIntPath(raw, inputPath),
       output: optIntPath(raw, outputPath),
+      reasoning: optIntPath(raw, reasoningPath),
     },
   };
 }
