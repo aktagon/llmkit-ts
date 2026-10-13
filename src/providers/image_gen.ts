@@ -26,6 +26,7 @@ export interface ImageGenDef {
   /** Dotted-from-root usage-token paths; empty when unreported. */
   usageInputPath: string;
   usageOutputPath: string;
+  usageReasoningPath: string;
   maxInputCount: number;
   genEndpoint: string;
   editEndpoint: string;
@@ -39,6 +40,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     responseShape: "GoogleParts",
     usageInputPath: "usageMetadata.promptTokenCount",
     usageOutputPath: "usageMetadata.candidatesTokenCount",
+    usageReasoningPath: "usageMetadata.thoughtsTokenCount",
     maxInputCount: 14,
     genEndpoint: "",
     editEndpoint: "",
@@ -65,6 +67,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     responseShape: "DataArrayB64Json",
     usageInputPath: "",
     usageOutputPath: "",
+    usageReasoningPath: "",
     maxInputCount: 16,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "/v1/images/edits",
@@ -84,6 +87,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     responseShape: "DataArrayB64Json",
     usageInputPath: "usage.input_tokens",
     usageOutputPath: "usage.output_tokens",
+    usageReasoningPath: "",
     maxInputCount: 16,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "/v1/images/edits",
@@ -124,6 +128,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     responseShape: "DataArrayB64Json",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
+    usageReasoningPath: "",
     maxInputCount: 0,
     genEndpoint: "/v1/images",
     editEndpoint: "",
@@ -185,6 +190,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     responseShape: "DataArrayB64Json",
     usageInputPath: "",
     usageOutputPath: "",
+    usageReasoningPath: "",
     maxInputCount: 0,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "",
@@ -211,6 +217,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     responseShape: "VertexPredictions",
     usageInputPath: "",
     usageOutputPath: "",
+    usageReasoningPath: "",
     maxInputCount: 1,
     genEndpoint: "",
     editEndpoint: "",
