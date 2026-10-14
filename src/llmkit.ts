@@ -126,7 +126,9 @@ export { imageGenConfig } from "./providers/image_gen.ts";
 export type {
   ImageGenDef,
   ImageModelDef,
-  ImageInputMode,
+  CarriedInput,
+  ImageRequestShape,
+  RequestVariant,
   ImageOutputMode,
 } from "./providers/image_gen.ts";
 export { videoGenConfig } from "./providers/video_gen.ts";
