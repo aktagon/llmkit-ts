@@ -16,6 +16,9 @@ export interface ImageModelDef {
    * (e.g. Grok's single-seed slot); 0 = no llmkit limit, the provider
    * decides volume (BUG-011). */
   maxInputImages: number;
+  /** Whether llmkit sends Image Parts for this model; false means the
+   * runtime rejects them (BUG-096). */
+  supportsImageInput: boolean;
 }
 
 export interface ImageGenDef {
@@ -27,7 +30,6 @@ export interface ImageGenDef {
   usageInputPath: string;
   usageOutputPath: string;
   usageReasoningPath: string;
-  maxInputCount: number;
   genEndpoint: string;
   editEndpoint: string;
   models: ImageModelDef[];
@@ -41,7 +43,6 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageInputPath: "usageMetadata.promptTokenCount",
     usageOutputPath: "usageMetadata.candidatesTokenCount",
     usageReasoningPath: "usageMetadata.thoughtsTokenCount",
-    maxInputCount: 14,
     genEndpoint: "",
     editEndpoint: "",
     models: [
@@ -51,6 +52,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: ["16:9", "1:1", "21:9", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16"],
         imageSizes: ["1K", "2K", "4K"],
         maxInputImages: 0,
+        supportsImageInput: true,
       },
       {
         modelId: "gemini-3.1-flash-image-preview",
@@ -58,6 +60,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: ["16:9", "1:1", "1:4", "1:8", "21:9", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16"],
         imageSizes: ["1K", "2K", "4K", "512"],
         maxInputImages: 0,
+        supportsImageInput: true,
       },
     ],
   },
@@ -68,7 +71,6 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
-    maxInputCount: 16,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "/v1/images/edits",
     models: [
@@ -78,6 +80,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: ["16:9", "19.5:9", "1:1", "1:2", "20:9", "2:1", "2:3", "3:2", "3:4", "4:3", "9:16", "9:19.5", "9:20", "auto"],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: true,
       },
     ],
   },
@@ -88,7 +91,6 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageInputPath: "usage.input_tokens",
     usageOutputPath: "usage.output_tokens",
     usageReasoningPath: "",
-    maxInputCount: 16,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "/v1/images/edits",
     models: [
@@ -98,6 +100,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: true,
       },
       {
         modelId: "gpt-image-1-mini",
@@ -105,6 +108,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: true,
       },
       {
         modelId: "gpt-image-1.5",
@@ -112,6 +116,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: true,
       },
       {
         modelId: "gpt-image-2",
@@ -119,6 +124,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: true,
       },
     ],
   },
@@ -129,7 +135,6 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageReasoningPath: "",
-    maxInputCount: 0,
     genEndpoint: "/v1/images",
     editEndpoint: "",
     models: [
@@ -139,6 +144,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "google/gemini-3-pro-image",
@@ -146,6 +152,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "google/gemini-3.1-flash-image",
@@ -153,6 +160,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "google/gemini-3.1-flash-lite-image",
@@ -160,6 +168,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "openai/gpt-5-image",
@@ -167,6 +176,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "openai/gpt-5-image-mini",
@@ -174,6 +184,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "openai/gpt-5.4-image-2",
@@ -181,6 +192,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
     ],
   },
@@ -191,7 +203,6 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
-    maxInputCount: 0,
     genEndpoint: "/v1/images/generations",
     editEndpoint: "",
     models: [
@@ -201,6 +212,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "recraftv3_vector",
@@ -208,6 +220,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
+        supportsImageInput: false,
       },
     ],
   },
@@ -218,7 +231,6 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
-    maxInputCount: 1,
     genEndpoint: "",
     editEndpoint: "",
     models: [
@@ -227,21 +239,24 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         label: "Imagen 3 Fast",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
-        maxInputImages: 0,
+        maxInputImages: 1,
+        supportsImageInput: true,
       },
       {
         modelId: "imagen-3.0-generate-002",
         label: "Imagen 3",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
-        maxInputImages: 0,
+        maxInputImages: 1,
+        supportsImageInput: true,
       },
       {
         modelId: "imagen-4.0-generate-preview-06-06",
         label: "Imagen 4 Preview",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
-        maxInputImages: 0,
+        maxInputImages: 1,
+        supportsImageInput: true,
       },
     ],
   },
