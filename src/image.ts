@@ -70,7 +70,7 @@ import type { ImageData } from "./structs.ts";
  *    compositional generation where caller-controlled ordering matters.
  *
  * Pre-flight validation requires exactly one of prompt or parts to be
- * set (XOR). Image-typed parts respect imageGenConfig.maxInputCount.
+ * set (XOR). Image-typed parts respect the supportsImageInput gate.
  */
 export interface ImageRequest {
   model: string;
@@ -179,10 +179,15 @@ export async function generateImage(
     );
   }
   const imageCount = parts.filter((p) => "image" in p).length;
-  if (imageCount > imgCfg.maxInputCount) {
+  // BUG-096: both limits are llmkit wire facts per model. maxInputImages 0
+  // means no llmkit limit; the provider decides volume.
+  if (imageCount > 0 && !model.supportsImageInput) {
+    throw new ValidationError("parts", `${request.model} takes no image parts`);
+  }
+  if (model.maxInputImages > 0 && imageCount > model.maxInputImages) {
     throw new ValidationError(
       "parts",
-      `${imageCount} image parts exceeds maximum ${imgCfg.maxInputCount} for ${provider.name}`,
+      `${imageCount} image parts exceeds maximum ${model.maxInputImages} for ${request.model}`,
     );
   }
 
@@ -278,7 +283,7 @@ export async function generateImage(
     // size (-> `size`) and count (-> `n`); aspect_ratio is not a Recraft
     // wire field (it sizes by an explicit WxH `size`), and the gpt-image /
     // safety knobs are OpenAI / Google / Vertex only. Image parts are
-    // rejected upstream by the maxInputCount==0 gate.
+    // rejected upstream by the supportsImageInput gate.
     if (options.aspectRatio !== undefined)
       throw new ValidationError(
         "aspect_ratio",
