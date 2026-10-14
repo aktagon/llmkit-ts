@@ -1,10 +1,9 @@
 // Image generation runtime — mirror of go/image.go.
 //
 // Pre-flight validation (model whitelist, aspect ratio, image size,
-// reference-image count) runs before any HTTP call. Dispatch branches on
-// imgCfg.inputMode (InlineParts → Google generateContent; MultipartForm →
-// OpenAI Image API with /generations vs /edits picked dynamically per
-// call based on whether image parts are present in the request).
+// reference-image count) runs before any HTTP call. The request's parts
+// select a request variant (ADR-096); dispatch switches on that variant's
+// request shape, never on provider name.
 
 import { PROVIDERS } from "./providers/providers.ts";
 import {
@@ -13,6 +12,7 @@ import {
   imageGenConfig,
 } from "./providers/image_gen.ts";
 import { APIError, ValidationError } from "./errors.ts";
+import { selectRequestVariant } from "./request_variant.ts";
 import { sendHTTP } from "./http.ts";
 import { extractIntPath, optIntPath } from "./paths.ts";
 import { buildAuthHeaders } from "./request.ts";
@@ -179,22 +179,30 @@ export async function generateImage(
     );
   }
   const imageCount = parts.filter((p) => "image" in p).length;
-  // BUG-096: both limits are llmkit wire facts per model. maxInputImages 0
-  // means no llmkit limit; the provider decides volume.
-  if (imageCount > 0 && !model.supportsImageInput) {
-    throw new ValidationError("parts", `${request.model} takes no image parts`);
-  }
-  if (model.maxInputImages > 0 && imageCount > model.maxInputImages) {
-    throw new ValidationError(
-      "parts",
-      `${imageCount} image parts exceeds maximum ${model.maxInputImages} for ${request.model}`,
-    );
-  }
+  validateImageArity(model, imageCount);
 
-  // Per-provider knob validation. Quality/OutputFormat/Background are
-  // OpenAI-only on the wire; Count (n) is OpenAI + xAI; Mask is OpenAI
-  // edits-only. Mirrors go/image.go.
-  if (imgCfg.inputMode === "InlineParts") {
+  // ADR-096: the request's parts pick the wire request; a config with no
+  // variant for those inputs cannot send it.
+  const variant = selectRequestVariant(
+    provider.name,
+    imgCfg.variants,
+    imageCount,
+  );
+
+  // Per-request-shape knob validation. Quality/OutputFormat/Background are
+  // OpenAI-only on the wire; Count (n) is OpenAI + xAI + Recraft + Vertex;
+  // Mask rides only the OpenAI multipart edits body. Mirrors go/image.go.
+  if (options.mask !== undefined && variant.shape !== "MultipartForm") {
+    if (variant.shape === "JSONGenerationsOpenAI") {
+      throw new ValidationError(
+        "mask",
+        "requires at least one image part (edits branch only)",
+      );
+    }
+    throw new ValidationError("mask", `not supported by ${provider.name}`);
+  }
+  const shape = variant.shape;
+  if (shape === "InlineParts") {
     if (options.quality !== undefined)
       throw new ValidationError("quality", `not supported by ${provider.name}`);
     if (options.outputFormat !== undefined)
@@ -209,15 +217,13 @@ export async function generateImage(
       );
     if (options.count !== undefined)
       throw new ValidationError("count", `not supported by ${provider.name}`);
-    if (options.mask !== undefined)
-      throw new ValidationError("mask", `not supported by ${provider.name}`);
     if (options.safetyFilter !== undefined)
       throw new ValidationError(
         "safety_filter",
         `not supported by ${provider.name}; use SafetySettings for text-gen`,
       );
     // safetySettings valid for InlineParts (Google); wired in buildImageBody
-  } else if (imgCfg.inputMode === "JSONInlineRefs") {
+  } else if (shape === "JSONInlineRefs") {
     if (options.quality !== undefined)
       throw new ValidationError("quality", `not supported by ${provider.name}`);
     if (options.outputFormat !== undefined)
@@ -230,8 +236,6 @@ export async function generateImage(
         "background",
         `not supported by ${provider.name}`,
       );
-    if (options.mask !== undefined)
-      throw new ValidationError("mask", `not supported by ${provider.name}`);
     if (options.safetyFilter !== undefined)
       throw new ValidationError(
         "safety_filter",
@@ -242,13 +246,7 @@ export async function generateImage(
         "safety_settings",
         `not supported by ${provider.name}`,
       );
-  } else if (imgCfg.inputMode === "MultipartForm") {
-    if (options.mask !== undefined && imageCount === 0) {
-      throw new ValidationError(
-        "mask",
-        "requires at least one image part (edits branch only)",
-      );
-    }
+  } else if (shape === "JSONGenerationsOpenAI" || shape === "MultipartForm") {
     if (options.safetyFilter !== undefined)
       throw new ValidationError(
         "safety_filter",
@@ -259,7 +257,7 @@ export async function generateImage(
         "safety_settings",
         `not supported by ${provider.name}`,
       );
-  } else if (imgCfg.inputMode === "JSONPredict") {
+  } else if (shape === "JSONPredict") {
     if (options.quality !== undefined)
       throw new ValidationError("quality", `not supported by ${provider.name}`);
     if (options.outputFormat !== undefined)
@@ -278,8 +276,8 @@ export async function generateImage(
         "safety_settings",
         `not supported by ${provider.name}; use safetyFilter for Vertex Imagen`,
       );
-  } else if (imgCfg.inputMode === "JSONGenerations") {
-    // Recraft (text-to-image only). The flat generations body carries only
+  } else if (shape === "JSONGenerations") {
+    // Recraft, OpenRouter (text-to-image only). The flat generations body carries only
     // size (-> `size`) and count (-> `n`); aspect_ratio is not a Recraft
     // wire field (it sizes by an explicit WxH `size`), and the gpt-image /
     // safety knobs are OpenAI / Google / Vertex only. Image parts are
@@ -301,8 +299,6 @@ export async function generateImage(
         "background",
         `not supported by ${provider.name}`,
       );
-    if (options.mask !== undefined)
-      throw new ValidationError("mask", `not supported by ${provider.name}`);
     if (options.safetyFilter !== undefined)
       throw new ValidationError(
         "safety_filter",
@@ -329,67 +325,53 @@ export async function generateImage(
     const baseUrl = provider.baseUrl || cfg.baseUrl;
     const authHeaders = buildAuthHeaders(provider, cfg);
 
-    let httpResp: Response;
-    const hasImages = parts.some((p) => "image" in p);
-    if (imgCfg.inputMode === "JSONInlineRefs") {
-      const body = hasImages
-        ? buildXAIEditBody(parts, request.model, options)
-        : buildXAIGenBody(parts, request.model, options);
-      const url =
-        baseUrl + (hasImages ? imgCfg.editEndpoint : imgCfg.genEndpoint);
-      httpResp = await sendHTTP(url, {
-        method: "POST",
-        headers: { ...authHeaders, "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: options.signal,
-      }, provider.timeoutMs);
-    } else if (imgCfg.inputMode === "MultipartForm") {
-      if (hasImages) {
-        const form = buildOpenAIEditFormData(parts, request.model, options);
-        httpResp = await sendHTTP(baseUrl + imgCfg.editEndpoint, {
-          method: "POST",
-          headers: authHeaders, // FormData sets its own Content-Type
-          body: form,
-          signal: options.signal,
-        }, provider.timeoutMs);
-      } else {
-        const body = buildOpenAIGenBody(parts, request.model, options);
-        httpResp = await sendHTTP(baseUrl + imgCfg.genEndpoint, {
-          method: "POST",
-          headers: { ...authHeaders, "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: options.signal,
-        }, provider.timeoutMs);
-      }
-    } else if (imgCfg.inputMode === "JSONGenerations") {
-      const body = buildRecraftGenBody(parts, request.model, options);
-      httpResp = await sendHTTP(baseUrl + imgCfg.genEndpoint, {
-        method: "POST",
-        headers: { ...authHeaders, "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: options.signal,
-      }, provider.timeoutMs);
-    } else if (imgCfg.inputMode === "JSONPredict") {
-      const body = buildVertexBody(parts, options);
-      const endpoint = (cfg.endpoint || "").replaceAll(
-        "{model}",
-        request.model,
-      );
-      httpResp = await sendHTTP(baseUrl + endpoint, {
-        method: "POST",
-        headers: { ...authHeaders, "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: options.signal,
-      }, provider.timeoutMs);
+    // URL: base + the variant's endpoint, or the provider's main endpoint
+    // template (with {model} substituted) when the endpoint is empty.
+    let url: string;
+    if (variant.endpoint) {
+      url = baseUrl + variant.endpoint;
     } else {
-      // InlineParts (Google).
       let endpoint = (cfg.endpoint || "").replaceAll("{model}", request.model);
       if (cfg.authScheme === "QueryParamKey" && cfg.authQueryParam) {
         const sep = endpoint.includes("?") ? "&" : "?";
         endpoint = `${endpoint}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
       }
-      const body = buildImageBody(parts, options);
-      httpResp = await sendHTTP(baseUrl + endpoint, {
+      url = baseUrl + endpoint;
+    }
+
+    let httpResp: Response;
+    if (variant.shape === "MultipartForm") {
+      const form = buildOpenAIEditFormData(parts, request.model, options);
+      httpResp = await sendHTTP(url, {
+        method: "POST",
+        headers: authHeaders, // FormData sets its own Content-Type
+        body: form,
+        signal: options.signal,
+      }, provider.timeoutMs);
+    } else {
+      let body: Record<string, unknown>;
+      switch (variant.shape) {
+        case "JSONGenerationsOpenAI":
+          body = buildOpenAIGenBody(parts, request.model, options);
+          break;
+        case "JSONInlineRefs":
+          body = buildXAIBody(parts, request.model, options);
+          break;
+        case "JSONPredict":
+          body = buildVertexBody(parts, options);
+          break;
+        case "JSONGenerations":
+          body = buildRecraftGenBody(parts, request.model, options);
+          break;
+        case "InlineParts":
+          body = buildImageBody(parts, options);
+          break;
+        default:
+          throw new Error(
+            `image request shape "${variant.shape}" has no body builder`,
+          );
+      }
+      httpResp = await sendHTTP(url, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -525,11 +507,14 @@ function buildOpenAIEditFormData(
 }
 
 /**
- * buildXAIGenBody assembles the JSON body for xAI Grok /v1/images/generations.
- * imageSize maps to `resolution` (xAI's name); aspectRatio maps as-is.
- * response_format=b64_json is forced because xAI defaults to URL.
+ * buildXAIBody assembles the JSON body for xAI Grok's /v1/images/generations
+ * (text only) and /v1/images/edits (with reference images). Text parts join
+ * into `prompt`. imageSize maps to `resolution` (xAI's name); aspectRatio
+ * maps as-is. response_format=b64_json is forced because xAI defaults to
+ * URL. One image part → `image: {url: "data:..."}`; several → `images:
+ * [{url: "data:..."}, ...]` in caller order; none → no image field.
  */
-function buildXAIGenBody(
+function buildXAIBody(
   parts: Part[],
   model: string,
   options: ImageOptions,
@@ -545,20 +530,6 @@ function buildXAIGenBody(
   if (options.extraFields) {
     for (const [k, v] of Object.entries(options.extraFields)) body[k] = v;
   }
-  return body;
-}
-
-/**
- * buildXAIEditBody assembles the JSON body for xAI Grok /v1/images/edits.
- * Single image part → `image: {url: "data:..."}`. Multiple image parts →
- * `images: [{url: "data:..."}, ...]` in caller order.
- */
-function buildXAIEditBody(
-  parts: Part[],
-  model: string,
-  options: ImageOptions,
-): Record<string, unknown> {
-  const body = buildXAIGenBody(parts, model, options);
   const refs: Array<{ url: string }> = [];
   for (const p of parts) {
     if ("image" in p) {
@@ -578,8 +549,9 @@ function buildXAIEditBody(
 /**
  * buildVertexBody assembles the Vertex AI Imagen :predict request body.
  * Vertex uses an instances/parameters envelope: instance carries the
- * per-call inputs (prompt, image ref for editing, mask for inpainting);
- * parameters carries config (sampleCount, aspectRatio). Extra fields like
+ * prompt; parameters carries config (sampleCount, aspectRatio). The Imagen
+ * generate models take text only (BUG-101), so image parts never reach
+ * here: the supportsImageInput gate rejects them first. Extra fields like
  * negativePrompt and safetySetting spread into parameters via
  * options.extraFields so callers can reach Imagen-specific knobs without
  * typed chain methods.
@@ -591,17 +563,6 @@ function buildVertexBody(
   const instance: Record<string, unknown> = {
     prompt: joinTextParts(parts),
   };
-  for (const p of parts) {
-    if ("image" in p) {
-      instance.image = { bytesBase64Encoded: bytesToBase64(p.image.bytes) };
-      break; // Vertex Imagen takes a single edit-target image
-    }
-  }
-  if (options.mask) {
-    instance.mask = {
-      image: { bytesBase64Encoded: bytesToBase64(options.mask.bytes) },
-    };
-  }
 
   const parameters: Record<string, unknown> = {
     sampleCount: options.count ?? 1,
@@ -697,6 +658,26 @@ function joinTextParts(parts: Part[]): string {
     .filter((p): p is { text: string } => "text" in p && !!p.text)
     .map((p) => p.text)
     .join("\n");
+}
+
+/**
+ * validateImageArity rejects image parts the model does not take.
+ * BUG-096: both limits are llmkit wire facts per model. maxInputImages 0
+ * means no llmkit limit; the provider decides volume.
+ */
+export function validateImageArity(
+  model: ImageModelDef,
+  imageCount: number,
+): void {
+  if (imageCount > 0 && !model.supportsImageInput) {
+    throw new ValidationError("parts", `${model.modelId} takes no image parts`);
+  }
+  if (model.maxInputImages > 0 && imageCount > model.maxInputImages) {
+    throw new ValidationError(
+      "parts",
+      `${imageCount} image parts exceeds maximum ${model.maxInputImages} for ${model.modelId}`,
+    );
+  }
 }
 
 function findImageModel(

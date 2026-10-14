@@ -19,6 +19,8 @@ import {
   videoGenConfig,
 } from "../providers/video_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
+import type { RequestVariant } from "../providers/image_gen.ts";
+import { selectRequestVariant } from "../request_variant.ts";
 import { sendHTTP } from "../http.ts";
 import { buildAuthHeaders } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
@@ -256,6 +258,14 @@ export async function videoSubmit(
       throw new ValidationError(`parts[${i}]`, "must have text set");
     }
   });
+  // ADR-096: a seed frame selects the WithReferenceImages submit request;
+  // a config with no such variant cannot send it.
+  const imageCount = parts.filter((p) => "image" in p).length;
+  const variant = selectRequestVariant(
+    provider.name,
+    vgCfg.variants,
+    imageCount,
+  );
 
   // VID-005: output-uri providers (Bedrock Nova Reel) write the video to the
   // caller's own S3 bucket, so the submit MUST carry a destination URI. Reject
@@ -283,6 +293,7 @@ export async function videoSubmit(
     const headers = buildAuthHeaders(provider, cfg);
     const requestId = await dispatchVideoSubmit(
       vgCfg,
+      variant,
       baseUrl,
       headers,
       provider,
@@ -326,6 +337,7 @@ export async function videoSubmit(
 // dotted path (vgCfg.submitHandleField).
 async function dispatchVideoSubmit(
   vgCfg: VideoGenDef,
+  variant: RequestVariant,
   baseUrl: string,
   headers: Record<string, string>,
   provider: Provider,
@@ -334,8 +346,8 @@ async function dispatchVideoSubmit(
   outputUri: string,
   parts: Part[],
 ): Promise<string> {
-  // Submit endpoint resolved from the config-declared base + relative path
-  // (Option D); handle id read from the config-declared dotted path (OQ7).
+  // Submit endpoint is the selected request variant's (ADR-096), resolved
+  // against the config-declared base (Option D); handle id read from the config-declared dotted path (OQ7).
   let body: Record<string, unknown>;
   let postHeaders = headers;
   if (vgCfg.wireShape === "VideoQwen") {
@@ -396,7 +408,7 @@ async function dispatchVideoSubmit(
   // (Veo's :predictLongRunning path); a no-op for providers that carry the
   // model in the body. Query-param auth (Google ?key=) is appended last.
   const submitUrl = appendVideoAuth(
-    baseUrl + vgCfg.genEndpoint.replace("{model}", model),
+    baseUrl + variant.endpoint.replace("{model}", model),
     provider,
     cfg,
   );
