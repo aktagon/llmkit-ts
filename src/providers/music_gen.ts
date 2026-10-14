@@ -17,6 +17,8 @@ export interface MusicModelDef {
    * 0 when unverified; availableOutputFormats lists the emittable MIMEs. */
   sampleRateHz: number;
   availableOutputFormats: string[];
+  /** Whether llmkit sends Image Parts for this model. */
+  supportsImageInput: boolean;
 }
 
 export interface MusicGenDef {
@@ -42,6 +44,7 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
         availableOutputFormats: ["audio/mpeg"],
+        supportsImageInput: false,
       },
       {
         modelId: "lyria-3-pro-preview",
@@ -51,6 +54,7 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
         availableOutputFormats: ["audio/mpeg"],
+        supportsImageInput: false,
       },
     ],
   },
@@ -67,6 +71,7 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
         outputMime: "audio/mpeg",
         sampleRateHz: 44100,
         availableOutputFormats: ["audio/mpeg", "audio/wav"],
+        supportsImageInput: false,
       },
     ],
   },
@@ -83,6 +88,7 @@ const MUSIC_GEN: Partial<Record<ProviderName, MusicGenDef>> = {
         outputMime: "audio/wav",
         sampleRateHz: 48000,
         availableOutputFormats: ["audio/wav"],
+        supportsImageInput: false,
       },
     ],
   },
