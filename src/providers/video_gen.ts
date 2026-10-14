@@ -2,6 +2,7 @@
 
 
 import type { ProviderName } from "./providers.ts";
+import type { RequestVariant } from "./image_gen.ts";
 
 // Video wire-shape discriminators. Each selects the submit-body build,
 // poll mechanism, and result-extraction transform.
@@ -28,8 +29,9 @@ export interface VideoGenDef {
   outputDelivery: VideoOutputDelivery;
   // videoBaseUrl is the video API base when it differs from the chat base; "" = use chat base.
   videoBaseUrl: string;
-  // genEndpoint is the submit endpoint path, relative to the resolved video base.
-  genEndpoint: string;
+  // variants lists one submit request per carried input, TextOnly first;
+  // each endpoint is relative to the resolved video base (ADR-096).
+  variants: RequestVariant[];
   // pollEndpoint is the poll template with an {id}, relative to the resolved video base.
   pollEndpoint: string;
   // fileEndpoint is the file-retrieve template with {file_id} for two-hop providers; "" = single-hop.
@@ -45,7 +47,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoBedrock",
     outputDelivery: "DeliveryOutputURI",
     videoBaseUrl: "",
-    genEndpoint: "/async-invoke",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/async-invoke" },
+    ],
     pollEndpoint: "/async-invoke/{id}",
     fileEndpoint: "",
     submitHandleField: "invocationArn",
@@ -66,7 +70,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoVeo",
     outputDelivery: "DeliveryDownload",
     videoBaseUrl: "",
-    genEndpoint: "/v1beta/models/{model}:predictLongRunning",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/v1beta/models/{model}:predictLongRunning" },
+    ],
     pollEndpoint: "/v1beta/{id}",
     fileEndpoint: "",
     submitHandleField: "name",
@@ -87,7 +93,10 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoGrok",
     outputDelivery: "DeliveryURL",
     videoBaseUrl: "",
-    genEndpoint: "/v1/videos/generations",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/v1/videos/generations" },
+      { carries: "WithReferenceImages", shape: "", endpoint: "/v1/videos/generations" },
+    ],
     pollEndpoint: "/v1/videos/{id}",
     fileEndpoint: "",
     submitHandleField: "request_id",
@@ -108,7 +117,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoMinimax",
     outputDelivery: "DeliveryURL",
     videoBaseUrl: "https://api.minimax.io",
-    genEndpoint: "/v1/video_generation",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/v1/video_generation" },
+    ],
     pollEndpoint: "/v1/query/video_generation?task_id={id}",
     fileEndpoint: "/v1/files/retrieve?file_id={file_id}",
     submitHandleField: "task_id",
@@ -129,7 +140,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoPixVerse",
     outputDelivery: "DeliveryURL",
     videoBaseUrl: "",
-    genEndpoint: "/openapi/v2/video/text/generate",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/openapi/v2/video/text/generate" },
+    ],
     pollEndpoint: "/openapi/v2/video/result/{id}",
     fileEndpoint: "",
     submitHandleField: "Resp.video_id",
@@ -168,7 +181,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoQwen",
     outputDelivery: "DeliveryURL",
     videoBaseUrl: "https://dashscope-intl.aliyuncs.com",
-    genEndpoint: "/api/v1/services/aigc/video-generation/video-synthesis",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/api/v1/services/aigc/video-generation/video-synthesis" },
+    ],
     pollEndpoint: "/api/v1/tasks/{id}",
     fileEndpoint: "",
     submitHandleField: "output.task_id",
@@ -189,7 +204,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoTogether",
     outputDelivery: "DeliveryURL",
     videoBaseUrl: "",
-    genEndpoint: "/v2/videos",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/v2/videos" },
+    ],
     pollEndpoint: "/v2/videos/{id}",
     fileEndpoint: "",
     submitHandleField: "id",
@@ -210,7 +227,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoVertexVeo",
     outputDelivery: "DeliveryDownload",
     videoBaseUrl: "",
-    genEndpoint: "/{model}:predictLongRunning",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/{model}:predictLongRunning" },
+    ],
     pollEndpoint: "/{model}:fetchPredictOperation",
     fileEndpoint: "",
     submitHandleField: "name",
@@ -231,7 +250,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoVidu",
     outputDelivery: "DeliveryURL",
     videoBaseUrl: "",
-    genEndpoint: "/ent/v2/text2video",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/ent/v2/text2video" },
+    ],
     pollEndpoint: "/ent/v2/tasks/{id}/creations",
     fileEndpoint: "",
     submitHandleField: "task_id",
@@ -270,7 +291,9 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     wireShape: "VideoZhipu",
     outputDelivery: "DeliveryURL",
     videoBaseUrl: "",
-    genEndpoint: "/v4/videos/generations",
+    variants: [
+      { carries: "TextOnly", shape: "", endpoint: "/v4/videos/generations" },
+    ],
     pollEndpoint: "/v4/async-result/{id}",
     fileEndpoint: "",
     submitHandleField: "id",

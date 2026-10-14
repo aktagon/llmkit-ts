@@ -3,7 +3,20 @@
 
 import type { ProviderName } from "./providers.ts";
 
-export type ImageInputMode = "InlineParts" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict" | "JSONGenerations";
+/** The inputs a request variant carries (ADR-096). */
+export type CarriedInput = "TextOnly" | "WithReferenceImages";
+/** Image request shapes: each names one request body (ADR-096). */
+export type ImageRequestShape = "InlineParts" | "JSONGenerationsOpenAI" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict" | "JSONGenerations";
+
+/** One wire request of an image or video config, keyed by the inputs it
+ * carries (ADR-096). shape is "" on a video variant; endpoint "" means
+ * the provider's main endpoint template. */
+export interface RequestVariant {
+  carries: CarriedInput;
+  shape: ImageRequestShape | "";
+  endpoint: string;
+}
+
 export type ImageOutputMode = "Base64Inline" | "URLOrBase64";
 export type ImageResponseShape = "GoogleParts" | "DataArrayB64Json" | "VertexPredictions";
 
@@ -22,7 +35,6 @@ export interface ImageModelDef {
 }
 
 export interface ImageGenDef {
-  inputMode: ImageInputMode;
   outputMode: ImageOutputMode;
   /** Response wire family selecting the response parser (BUG-024). */
   responseShape: ImageResponseShape;
@@ -30,21 +42,22 @@ export interface ImageGenDef {
   usageInputPath: string;
   usageOutputPath: string;
   usageReasoningPath: string;
-  genEndpoint: string;
-  editEndpoint: string;
+  /** One request per carried input, TextOnly first (ADR-096). */
+  variants: RequestVariant[];
   models: ImageModelDef[];
 }
 
 const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
   google: {
-    inputMode: "InlineParts",
     outputMode: "Base64Inline",
     responseShape: "GoogleParts",
     usageInputPath: "usageMetadata.promptTokenCount",
     usageOutputPath: "usageMetadata.candidatesTokenCount",
     usageReasoningPath: "usageMetadata.thoughtsTokenCount",
-    genEndpoint: "",
-    editEndpoint: "",
+    variants: [
+      { carries: "TextOnly", shape: "InlineParts", endpoint: "" },
+      { carries: "WithReferenceImages", shape: "InlineParts", endpoint: "" },
+    ],
     models: [
       {
         modelId: "gemini-3-pro-image-preview",
@@ -65,14 +78,15 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     ],
   },
   grok: {
-    inputMode: "JSONInlineRefs",
     outputMode: "Base64Inline",
     responseShape: "DataArrayB64Json",
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
-    genEndpoint: "/v1/images/generations",
-    editEndpoint: "/v1/images/edits",
+    variants: [
+      { carries: "TextOnly", shape: "JSONInlineRefs", endpoint: "/v1/images/generations" },
+      { carries: "WithReferenceImages", shape: "JSONInlineRefs", endpoint: "/v1/images/edits" },
+    ],
     models: [
       {
         modelId: "grok-imagine-image-quality",
@@ -85,14 +99,15 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     ],
   },
   openai: {
-    inputMode: "MultipartForm",
     outputMode: "Base64Inline",
     responseShape: "DataArrayB64Json",
     usageInputPath: "usage.input_tokens",
     usageOutputPath: "usage.output_tokens",
     usageReasoningPath: "",
-    genEndpoint: "/v1/images/generations",
-    editEndpoint: "/v1/images/edits",
+    variants: [
+      { carries: "TextOnly", shape: "JSONGenerationsOpenAI", endpoint: "/v1/images/generations" },
+      { carries: "WithReferenceImages", shape: "MultipartForm", endpoint: "/v1/images/edits" },
+    ],
     models: [
       {
         modelId: "gpt-image-1",
@@ -129,14 +144,14 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     ],
   },
   openrouter: {
-    inputMode: "JSONGenerations",
     outputMode: "Base64Inline",
     responseShape: "DataArrayB64Json",
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageReasoningPath: "",
-    genEndpoint: "/v1/images",
-    editEndpoint: "",
+    variants: [
+      { carries: "TextOnly", shape: "JSONGenerations", endpoint: "/v1/images" },
+    ],
     models: [
       {
         modelId: "google/gemini-2.5-flash-image",
@@ -197,14 +212,14 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     ],
   },
   recraft: {
-    inputMode: "JSONGenerations",
     outputMode: "Base64Inline",
     responseShape: "DataArrayB64Json",
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
-    genEndpoint: "/v1/images/generations",
-    editEndpoint: "",
+    variants: [
+      { carries: "TextOnly", shape: "JSONGenerations", endpoint: "/v1/images/generations" },
+    ],
     models: [
       {
         modelId: "recraftv3",
@@ -225,38 +240,38 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     ],
   },
   vertex: {
-    inputMode: "JSONPredict",
     outputMode: "Base64Inline",
     responseShape: "VertexPredictions",
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
-    genEndpoint: "",
-    editEndpoint: "",
+    variants: [
+      { carries: "TextOnly", shape: "JSONPredict", endpoint: "" },
+    ],
     models: [
       {
         modelId: "imagen-3.0-fast-generate-001",
         label: "Imagen 3 Fast",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
-        maxInputImages: 1,
-        supportsImageInput: true,
+        maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "imagen-3.0-generate-002",
         label: "Imagen 3",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
-        maxInputImages: 1,
-        supportsImageInput: true,
+        maxInputImages: 0,
+        supportsImageInput: false,
       },
       {
         modelId: "imagen-4.0-generate-preview-06-06",
         label: "Imagen 4 Preview",
         aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
-        maxInputImages: 1,
-        supportsImageInput: true,
+        maxInputImages: 0,
+        supportsImageInput: false,
       },
     ],
   },
