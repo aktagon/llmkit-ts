@@ -62,7 +62,7 @@ Runnable examples for each capability live in [`examples/`](./examples); `tests/
 | grok      | grok-3-fast                                 | XAI_API_KEY       |
 | mistral   | mistral-large-latest                        | MISTRAL_API_KEY   |
 | deepseek  | deepseek-chat                               | DEEPSEEK_API_KEY  |
-| groq      | llama-3.3-70b-versatile                     | GROQ_API_KEY      |
+| groq      | openai/gpt-oss-120b                         | GROQ_API_KEY      |
 | together  | meta-llama/Llama-3.3-70B-Instruct-Turbo     | TOGETHER_API_KEY  |
 | cohere    | command-r-plus                              | COHERE_API_KEY    |
 | ai21      | jamba-1.5-large                             | AI21_API_KEY      |
