@@ -268,6 +268,13 @@ export class Image {
   outputFormat(s: string): Image { const out = clone(this); out._outputFormat = s; return out; }
   quality(s: string): Image { const out = clone(this); out._quality = s; return out; }
   raw(): Image { const out = clone(this); out._raw = true; return out; }
+  /**
+   * Sets a single image safety threshold. Every image provider rejects it
+   * with a validation error.
+   *
+   * Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen
+   * shut down, BUG-101); removed at the next major.
+   */
   safetyFilter(s: string): Image { const out = clone(this); out._safetyFilter = s; return out; }
   safetySettings(s: SafetySetting[]): Image { const out = clone(this); out._safetySettings = s; return out; }
   text(s: string): Image { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
