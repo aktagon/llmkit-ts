@@ -395,6 +395,7 @@ function parseGeminiMusicResponse(
     candidates?: Array<{
       content?: { parts?: unknown[] };
       finishReason?: string;
+      finishMessage?: string;
     }>;
   };
   const candidates = root.candidates;
@@ -428,7 +429,12 @@ function parseGeminiMusicResponse(
   }
   const finishReason =
     typeof first.finishReason === "string" ? first.finishReason : undefined;
-  return buildMusicResponse(audio, textParts.join(""), finishReason, undefined);
+  // A filtered call has no content; finishMessage is the only explanation.
+  const finishMessage =
+    typeof first.finishMessage === "string" && first.finishMessage
+      ? first.finishMessage
+      : undefined;
+  return buildMusicResponse(audio, textParts.join(""), finishReason, finishMessage);
 }
 
 // parseMinimaxMusicResponse decodes MiniMax /v1/music_generation responses.
