@@ -18,13 +18,19 @@
 // pull.
 
 import { PROVIDERS } from "../providers/providers.ts";
-import { type StreamDef, streamConfig } from "../providers/stream.ts";
+import {
+  type StreamDef,
+  streamConfig,
+  wireShapeStreamConfig,
+  wireShapeStreamFinishReasonPath,
+} from "../providers/stream.ts";
 import { APIError, ValidationError } from "../errors.ts";
 import { extractPath, extractIntPath, optIntPath } from "../paths.ts";
 import {
   buildRequest as buildLegacyRequest,
   buildAuthHeaders,
   buildUrl,
+  resolveChatProtocol,
   validateOptions,
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
@@ -70,17 +76,28 @@ function parseStreamFinishPath(p: string): [string, string] {
 async function runStream(
   provider: Provider,
   request: PromptRequest,
+  protocol: string,
   onChunk: (text: string) => void | Promise<void>,
   options: PromptOptions = {},
 ): Promise<PromptResponse> {
-  const cfg = PROVIDERS[provider.name];
-  if (!cfg) {
+  const baseCfg = PROVIDERS[provider.name];
+  if (!baseCfg) {
     throw new ValidationError("provider", `unknown: ${provider.name}`);
   }
   if (!provider.apiKey) {
     throw new ValidationError("apiKey", "required");
   }
-  const streamCfg = streamConfig(provider.name);
+  // ADR-055: a non-default protocol (Responses) overrides the endpoint and
+  // wire shape, and the wire shape selects the stream facts (HANDOFF-087).
+  const cfg = resolveChatProtocol(baseCfg, protocol);
+  // A wire shape that declares its own stream facts (OpenAI Responses:
+  // event-typed SSE) outranks the provider's, which describe its default
+  // protocol.
+  const shapeStreamCfg = wireShapeStreamConfig(cfg.chatWireShape);
+  const streamCfg = shapeStreamCfg ?? streamConfig(provider.name);
+  const finishReasonPath = shapeStreamCfg
+    ? wireShapeStreamFinishReasonPath(cfg.chatWireShape)
+    : cfg.streamFinishReasonPath;
   if (!streamCfg) {
     throw new ValidationError(
       "provider",
@@ -138,7 +155,7 @@ async function runStream(
     const outcome = await consumeSSE(
       httpResp.body,
       streamCfg,
-      cfg.streamFinishReasonPath,
+      finishReasonPath,
       async (text) => {
         chunks.push(text);
         await onChunk(text);
@@ -301,6 +318,7 @@ async function consumeSSE(
 export class TextStream implements AsyncIterable<string> {
   #provider: Provider;
   #request: PromptRequest;
+  #protocol: string;
   #options: PromptOptions;
   #resp: PromptResponse | null = null;
   #err: Error | null = null;
@@ -309,6 +327,7 @@ export class TextStream implements AsyncIterable<string> {
     const { provider, request, options } = buildPromptArgs(b, msg);
     this.#provider = provider;
     this.#request = request;
+    this.#protocol = b._protocol;
     this.#options = options;
   }
 
@@ -352,6 +371,7 @@ export class TextStream implements AsyncIterable<string> {
     runStream(
       this.#provider,
       this.#request,
+      this.#protocol,
       async (chunk) => {
         queue.push(chunk);
         wakeConsumer();
@@ -410,14 +430,5 @@ export class TextStream implements AsyncIterable<string> {
 }
 
 export function textStream(b: Text, msg: string): TextStream {
-  // ADR-055: Protocol (e.g. Responses) is prompt-only in slice 1; streaming
-  // Responses is not yet wired. Reject loudly rather than silently streaming
-  // Chat Completions (uniform across the four SDKs).
-  if (b._protocol) {
-    throw new ValidationError(
-      "protocol",
-      "protocol (e.g. Responses) is only supported on the prompt terminal, not stream",
-    );
-  }
   return new TextStream(b, msg);
 }
