@@ -92,12 +92,12 @@ export interface ImageResponse {
   text: string;
 
   /**
-   * usage holds token consumption metrics for the image-generation call. Google reports image-output tokens in usageMetadata.candidatesTokenCount; OpenAI Images API and Vertex Imagen do not return token counts, so on those providers no dimension is reported at all — absent, not zero.
+   * usage holds token consumption metrics for the image-generation call. Google reports image-output tokens in usageMetadata.candidatesTokenCount; the OpenAI Images API does not return token counts, so on that provider no dimension is reported at all — absent, not zero.
    */
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal. Examples per provider: Google STOP/IMAGE_OTHER/SAFETY/MAX_TOKENS; OpenAI Images API has no equivalent field (always absent); xAI Grok has no equivalent field (always absent); Vertex Imagen surfaces the RAI filter reason when content is blocked.
+   * finishReason is the provider stop signal. Examples per provider: Google STOP/IMAGE_OTHER/SAFETY/MAX_TOKENS; OpenAI Images API has no equivalent field (always absent); xAI Grok has no equivalent field (always absent).
    */
   finishReason?: string;
 
