@@ -111,7 +111,9 @@ export const HARM_BLOCK_THRESHOLD_LOW_AND_ABOVE = "BLOCK_LOW_AND_ABOVE";
 export const HARM_BLOCK_THRESHOLD_MEDIUM_AND_ABOVE = "BLOCK_MEDIUM_AND_ABOVE";
 export const HARM_BLOCK_THRESHOLD_HIGH_ONLY = "BLOCK_ONLY_HIGH";
 
-// Vertex Imagen safety filter constants
+// Image safety filter constants for safetyFilter.
+// Deprecated: no provider accepts these since 2026-10-15 (Vertex Imagen shut
+// down, BUG-101); removed at the next major.
 export const IMAGE_SAFETY_FILTER_BLOCK_FEW = "block_few";
 export const IMAGE_SAFETY_FILTER_BLOCK_SOME = "block_some";
 export const IMAGE_SAFETY_FILTER_BLOCK_MOST = "block_most";
