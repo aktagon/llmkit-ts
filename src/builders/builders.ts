@@ -370,7 +370,9 @@ export class Transcription {
 export class Video {
   /** @internal */ client: Client;
   /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _referenceImages: MediaRef[] = [];
   /** @internal */ _parts: Part[] = [];
+  /** @internal */ _lastFrame?: MediaRef;
   /** @internal */ _model: string = "";
   /** @internal */ _outputURI: string = "";
   /** @internal */ _raw: boolean = false;
@@ -378,7 +380,17 @@ export class Video {
   constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Video { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  /**
+   * Appends an asset reference image, such as a person, character or
+   * product the video keeps. Add at most 3, without Image or LastFrame.
+   */
+  addReferenceImage(mime: string, data: Uint8Array): Video { const out = clone(this); out._referenceImages = [...out._referenceImages, { mimeType: mime, bytes: data }]; return out; }  // ordered
   image(mime: string, data: Uint8Array): Video { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
+  /**
+   * Sets the final frame a video ends on. Send it with a first frame (Image)
+   * on a model that takes a last frame; otherwise it is rejected before send.
+   */
+  lastFrame(mime: string, data: Uint8Array): Video { const out = clone(this); out._lastFrame = { mimeType: mime, bytes: data }; return out; }
   model(name: string): Video { const out = clone(this); out._model = name; return out; }
   outputURI(uri: string): Video { const out = clone(this); out._outputURI = uri; return out; }
   raw(): Video { const out = clone(this); out._raw = true; return out; }
