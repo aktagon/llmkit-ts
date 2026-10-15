@@ -4,7 +4,7 @@
 import type { ProviderName } from "./providers.ts";
 
 /** The inputs a request variant carries (ADR-096). */
-export type CarriedInput = "TextOnly" | "WithReferenceImages" | "WithSeedFrame";
+export type CarriedInput = "TextOnly" | "WithReferenceImages" | "WithSeedFrame" | "WithLastFrame";
 /**
  * Image request shapes: each names one request body (ADR-096).
  * JSONPredict: Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen shut down, BUG-101); removed at the next major.
@@ -13,9 +13,10 @@ export type ImageRequestShape = "InlineParts" | "JSONGenerationsOpenAI" | "Multi
 
 /** One wire request of an image or video config, keyed by the inputs it
  * carries (ADR-096). shape is "" on a video variant; endpoint "" means
- * the provider's main endpoint template. */
+ * the provider's main endpoint template. carries lists the carried inputs;
+ * a first-and-last-frame variant carries two. */
 export interface RequestVariant {
-  carries: CarriedInput;
+  carries: CarriedInput[];
   shape: ImageRequestShape | "";
   endpoint: string;
 }
@@ -60,8 +61,8 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "usageMetadata.candidatesTokenCount",
     usageReasoningPath: "usageMetadata.thoughtsTokenCount",
     variants: [
-      { carries: "TextOnly", shape: "InlineParts", endpoint: "" },
-      { carries: "WithReferenceImages", shape: "InlineParts", endpoint: "" },
+      { carries: ["TextOnly"], shape: "InlineParts", endpoint: "" },
+      { carries: ["WithReferenceImages"], shape: "InlineParts", endpoint: "" },
     ],
     models: [
       {
@@ -89,8 +90,8 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "",
     usageReasoningPath: "",
     variants: [
-      { carries: "TextOnly", shape: "JSONInlineRefs", endpoint: "/v1/images/generations" },
-      { carries: "WithReferenceImages", shape: "JSONInlineRefs", endpoint: "/v1/images/edits" },
+      { carries: ["TextOnly"], shape: "JSONInlineRefs", endpoint: "/v1/images/generations" },
+      { carries: ["WithReferenceImages"], shape: "JSONInlineRefs", endpoint: "/v1/images/edits" },
     ],
     models: [
       {
@@ -110,8 +111,8 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "usage.output_tokens",
     usageReasoningPath: "",
     variants: [
-      { carries: "TextOnly", shape: "JSONGenerationsOpenAI", endpoint: "/v1/images/generations" },
-      { carries: "WithReferenceImages", shape: "MultipartForm", endpoint: "/v1/images/edits" },
+      { carries: ["TextOnly"], shape: "JSONGenerationsOpenAI", endpoint: "/v1/images/generations" },
+      { carries: ["WithReferenceImages"], shape: "MultipartForm", endpoint: "/v1/images/edits" },
     ],
     models: [
       {
@@ -155,7 +156,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "usage.completion_tokens",
     usageReasoningPath: "",
     variants: [
-      { carries: "TextOnly", shape: "JSONGenerations", endpoint: "/v1/images" },
+      { carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images" },
     ],
     models: [
       {
@@ -223,7 +224,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "",
     usageReasoningPath: "",
     variants: [
-      { carries: "TextOnly", shape: "JSONGenerations", endpoint: "/v1/images/generations" },
+      { carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images/generations" },
     ],
     models: [
       {

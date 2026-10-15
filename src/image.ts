@@ -12,7 +12,7 @@ import {
   imageGenConfig,
 } from "./providers/image_gen.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { selectRequestVariant } from "./request_variant.ts";
+import { partsCarry, selectRequestVariant } from "./request_variant.ts";
 import { sendHTTP } from "./http.ts";
 import { extractIntPath, optIntPath } from "./paths.ts";
 import { buildAuthHeaders } from "./request.ts";
@@ -188,8 +188,7 @@ export async function generateImage(
   const variant = selectRequestVariant(
     provider.name,
     imgCfg.variants,
-    imageCount,
-    "WithReferenceImages",
+    partsCarry(imageCount, "WithReferenceImages"),
   );
 
   // Per-request-shape knob validation. Quality/OutputFormat/Background are
