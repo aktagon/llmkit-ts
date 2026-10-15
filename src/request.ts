@@ -626,7 +626,7 @@ function buildBedrockMessages(
   cfg: ProviderSpec,
   images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
-  return msgs.map((m): Record<string, unknown> => {
+  const entries = msgs.map((m): Record<string, unknown> => {
     // Bedrock never replays: ChatBedrock declares assistantTurnUnanchored
     // rather than a position (ADR-085 OQ-5), so there is no container to splice
     // into. Reconstruct from the projection instead of falling through to the
@@ -670,6 +670,29 @@ function buildBedrockMessages(
       }
     }
   });
+  // Converse wants every toolResult answering one assistant turn inside ONE
+  // user message; one message per result is a 400 (live, 2026-10-15). A
+  // result that follows a result joins the message the first one opened.
+  const out: Array<Record<string, unknown>> = [];
+  let open: unknown[] | undefined;
+  msgs.forEach((m, i) => {
+    const entry = entries[i] as Record<string, unknown>;
+    if (!isToolResult(m)) {
+      open = undefined;
+      out.push(entry);
+    } else if (open) {
+      open.push(...(entry.content as unknown[]));
+    } else {
+      open = entry.content as unknown[];
+      out.push(entry);
+    }
+  });
+  return out;
+}
+
+function isToolResult(m: Msg): boolean {
+  while (m.kind === "turn") m = m.fallback;
+  return m.kind === "result";
 }
 
 function buildGoogleContents(
