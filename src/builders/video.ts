@@ -258,13 +258,14 @@ export async function videoSubmit(
       throw new ValidationError(`parts[${i}]`, "must have text set");
     }
   });
-  // ADR-096: a seed frame selects the WithReferenceImages submit request;
+  // ADR-096: a seed frame selects the WithSeedFrame submit request;
   // a config with no such variant cannot send it.
   const imageCount = parts.filter((p) => "image" in p).length;
   const variant = selectRequestVariant(
     provider.name,
     vgCfg.variants,
     imageCount,
+    "WithSeedFrame",
   );
 
   // VID-005: output-uri providers (Bedrock Nova Reel) write the video to the
@@ -378,7 +379,18 @@ async function dispatchVideoSubmit(
     // model field. The prompt nests under instances[]; the optional parameters
     // object ({aspectRatio, resolution} for Gemini; {sampleCount, storageUri}
     // for Vertex) is omitted on the prompt-only hot path.
-    body = { instances: [{ prompt: joinPromptText(parts) }] };
+    const instance: Record<string, unknown> = { prompt: joinPromptText(parts) };
+    // First frame (BUG-089): the seed rides at instances[0].image as raw
+    // base64 + mimeType (no data: prefix), per the Vertex Veo reference (read
+    // 2026-10-15). The Gemini API shape is not yet live-verified.
+    const veoSeed = videoSeedImage(parts);
+    if (veoSeed) {
+      instance.image = {
+        bytesBase64Encoded: bytesToBase64(veoSeed.bytes),
+        mimeType: veoSeed.mimeType || "image/png",
+      };
+    }
+    body = { instances: [instance] };
   } else if (vgCfg.wireShape === "VideoBedrock") {
     // Nova Reel carries the model in the BODY (modelId, unlike the Converse
     // chat path) and writes the mp4 to the caller's S3 bucket. The optional
@@ -396,8 +408,8 @@ async function dispatchVideoSubmit(
     };
   } else {
     body = { model, prompt: joinPromptText(parts) };
-    // Image-to-video (BUG-010): when a seed frame is present (only reachable
-    // for grok-imagine-video, the lone supportsImageToVideo model this slice),
+    // Image-to-video (BUG-010): when a seed frame is present (reachable in
+    // this arm only for grok-imagine-video; Veo has its own arm above),
     // inline it as a data URL in xAI's image.url field — the same encoding the
     // Grok image-edit path uses. Absent on the text-to-video hot path, so the
     // existing video-grok golden is unchanged.
@@ -1072,26 +1084,31 @@ function joinPromptText(parts: Part[]): string {
     .join("\n");
 }
 
-// videoSeedImageURL builds the image-to-video seed-frame data URL for wire
-// shapes that condition on a single reference frame (Grok Imagine, BUG-010).
-// The image Part's bytes are inlined as a data URL carried in xAI's image.url
-// field, mirroring the Grok image-edit encoding in image.ts. Returns "" when no
-// image part is present (the text-to-video hot path). Throws on more than one
-// image part: Grok animates a single seed frame, so multi-image conditioning is
-// a separate slice — rejecting is honest where silently using the first would
-// reintroduce the silent-drop bug.
-function videoSeedImageURL(parts: Part[]): string {
+// videoSeedImage returns the single image-to-video seed frame, or undefined on
+// the text-to-video hot path. Throws on more than one image part: every wired
+// image-to-video shape (Grok, BUG-010; Veo first frame, BUG-089) conditions on
+// a single seed frame, so rejecting is honest where silently using the first
+// would reintroduce the silent-drop bug.
+function videoSeedImage(parts: Part[]): MediaRef | undefined {
   const images = parts.filter(
     (p): p is { image: MediaRef } => "image" in p,
   );
-  if (images.length === 0) return "";
   if (images.length > 1) {
     throw new ValidationError(
       "parts",
       "image-to-video conditions on a single seed frame; pass one image part",
     );
   }
-  const img = images[0]!.image;
+  return images[0]?.image;
+}
+
+// videoSeedImageURL builds the Grok image-to-video seed-frame data URL
+// (BUG-010): the image Part's bytes inlined as a data URL carried in xAI's
+// image.url field, mirroring the Grok image-edit encoding in image.ts. Returns
+// "" when no image part is present (the text-to-video hot path).
+function videoSeedImageURL(parts: Part[]): string {
+  const img = videoSeedImage(parts);
+  if (!img) return "";
   const mime = img.mimeType || "image/png";
   return `data:${mime};base64,${bytesToBase64(img.bytes)}`;
 }

@@ -7,7 +7,7 @@
 // Phase 4 will move the surface into the main llmkit module once the
 // legacy functional API is deleted.
 
-import type { Capability, SafetySetting, Tool } from "../types.ts";
+import type { Capability, SafetySetting, SpeechLine, SpeechSpeaker, Tool } from "../types.ts";
 import type { Part } from "../image.ts";
 import type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse } from "../structs.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
@@ -309,14 +309,37 @@ export class Music {
 
 export class Speech {
   /** @internal */ client: Client;
+  /** @internal */ _lines: SpeechLine[] = [];
   /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _speakers: SpeechSpeaker[] = [];
   /** @internal */ _model: string = "";
+  /** @internal */ _style: string = "";
   /** @internal */ _voice: string = "";
 
   constructor(client: Client) { this.client = client; }
 
+  /**
+   * Appends a line said by a declared speaker. Lines are spoken in call
+   * order. When lines are set, the text passed to Generate must be empty.
+   */
+  addLine(speaker: string, text: string): Speech { const out = clone(this); out._lines = [...out._lines, { speaker, style: "", text }]; return out; }  // ordered
   addMiddleware(...fns: MiddlewareFn[]): Speech { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  /**
+   * Declares a named speaker and its voice for a multi-speaker speech
+   * request. Declare exactly 2 speakers, and do not set a Voice with them.
+   */
+  addSpeaker(name: string, voice: string): Speech { const out = clone(this); out._speakers = [...out._speakers, { name, voice }]; return out; }  // ordered
+  /**
+   * Appends a line said by a declared speaker in a delivery style, such as
+   * "calm and relaxed". Otherwise it works like AddLine.
+   */
+  addStyledLine(speaker: string, style: string, text: string): Speech { const out = clone(this); out._lines = [...out._lines, { speaker, style, text }]; return out; }  // ordered
   model(name: string): Speech { const out = clone(this); out._model = name; return out; }
+  /**
+   * Sets the delivery style for a single-voice speech request, such as
+   * "cheerful". A model that does not take a style rejects it before send.
+   */
+  style(s: string): Speech { const out = clone(this); out._style = s; return out; }
   voice(id: string): Speech { const out = clone(this); out._voice = id; return out; }
   async generate(msg: string): Promise<SpeechResponse> {
     return speechGenerate(this, msg);

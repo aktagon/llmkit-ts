@@ -30,6 +30,9 @@ export async function speechGenerate(
     model: b._model,
     voice: b._voice,
     text: msg,
+    style: b._style,
+    speakers: b._speakers,
+    lines: b._lines,
   };
 
   return await runSpeechGeneration(provider, request, {

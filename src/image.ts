@@ -189,6 +189,7 @@ export async function generateImage(
     provider.name,
     imgCfg.variants,
     imageCount,
+    "WithReferenceImages",
   );
 
   // Per-request-shape knob validation. Quality/OutputFormat/Background are
