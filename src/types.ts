@@ -90,6 +90,19 @@ export interface InputImage {
 // non-optional numbers, and nothing but the typechecker was going to notice.
 export type { Usage } from "./providers/middleware.ts";
 
+/** One named speaker of a multi-speaker speech request and its voice (BUG-091). */
+export interface SpeechSpeaker {
+  name: string;
+  voice: string;
+}
+
+/** One line of a multi-speaker speech request; style "" means none (BUG-091). */
+export interface SpeechLine {
+  speaker: string;
+  style: string;
+  text: string;
+}
+
 /** Per-category content safety filter for Gemini providers. */
 export interface SafetySetting {
   category: string;

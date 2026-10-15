@@ -13,13 +13,32 @@ import { DEFAULT_TIMEOUT_MS } from "./builders/builders.ts";
 // Statuses that must not carry a body; new Response() throws on them.
 const NULL_BODY_STATUS = new Set([101, 204, 205, 304]);
 
+// VULN-001: Bun's fetch rejects a transport failure (refused, DNS, TLS) with
+// an error whose `path` property holds the full request URL, and a
+// QueryParamKey provider (Google) carries the API key in that URL. Drop the
+// property so the key cannot reach logs; message, code and errno stay.
+function redactFetchError(err: unknown): unknown {
+  if (err !== null && typeof err === "object" && "path" in err) {
+    delete (err as { path?: unknown }).path;
+  }
+  return err;
+}
+
+async function fetchRedacted(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    throw redactFetchError(err);
+  }
+}
+
 export async function sendHTTP(
   url: string,
   init: RequestInit,
   timeoutMs: number | undefined,
 ): Promise<Response> {
   const ms = timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  if (ms <= 0) return fetch(url, init);
+  if (ms <= 0) return fetchRedacted(url, init);
 
   const ctl = new AbortController();
   const signal = init.signal ? AbortSignal.any([init.signal, ctl.signal]) : ctl.signal;
@@ -40,7 +59,7 @@ export async function sendHTTP(
   arm();
   let resp: Response;
   try {
-    resp = await fetch(url, { ...init, signal });
+    resp = await fetchRedacted(url, { ...init, signal });
   } finally {
     disarm();
   }
