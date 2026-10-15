@@ -35,6 +35,7 @@ import type {
   Request as PromptRequest,
   Response as PromptResponse,
 } from "./types.ts";
+import { fetchRedacted } from "./fetch.ts";
 
 // Sampling/caching fields mirror PromptOptions so chain methods on the
 // typed-builder (max_tokens, temperature, ...) propagate from
@@ -129,7 +130,7 @@ export async function submitBatch(
     }
 
     const createUrl = base + bc.lifecycle.createEndpoint;
-    const httpResp = await fetch(createUrl, {
+    const httpResp = await fetchRedacted(createUrl, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body,
@@ -386,7 +387,7 @@ async function uploadBatchFile(
   form.append("file", new Blob([jsonl]), "batch_input.jsonl");
   form.append("purpose", bc.filePurpose);
 
-  const httpResp = await fetch(base + "/v1/files", {
+  const httpResp = await fetchRedacted(base + "/v1/files", {
     method: "POST",
     headers,
     body: form,
@@ -455,7 +456,7 @@ async function fetchText(
   headers: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<string> {
-  const resp = await fetch(url, { headers, signal });
+  const resp = await fetchRedacted(url, { headers, signal });
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(

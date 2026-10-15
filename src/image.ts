@@ -82,6 +82,7 @@ export interface ImageRequest {
 // `import { ImageResponse } from "./image.ts"` callsites keep working
 // without touching every importer.
 import type { ImageResponse } from "./structs.ts";
+import { fetchRedacted } from "./fetch.ts";
 export type { ImageResponse };
 
 export interface ImageOptions {
@@ -331,7 +332,7 @@ export async function generateImage(
         : buildXAIGenBody(parts, request.model, options);
       const url =
         baseUrl + (hasImages ? imgCfg.editEndpoint : imgCfg.genEndpoint);
-      httpResp = await fetch(url, {
+      httpResp = await fetchRedacted(url, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -340,7 +341,7 @@ export async function generateImage(
     } else if (imgCfg.inputMode === "MultipartForm") {
       if (hasImages) {
         const form = buildOpenAIEditFormData(parts, request.model, options);
-        httpResp = await fetch(baseUrl + imgCfg.editEndpoint, {
+        httpResp = await fetchRedacted(baseUrl + imgCfg.editEndpoint, {
           method: "POST",
           headers: authHeaders, // FormData sets its own Content-Type
           body: form,
@@ -348,7 +349,7 @@ export async function generateImage(
         });
       } else {
         const body = buildOpenAIGenBody(parts, request.model, options);
-        httpResp = await fetch(baseUrl + imgCfg.genEndpoint, {
+        httpResp = await fetchRedacted(baseUrl + imgCfg.genEndpoint, {
           method: "POST",
           headers: { ...authHeaders, "content-type": "application/json" },
           body: JSON.stringify(body),
@@ -357,7 +358,7 @@ export async function generateImage(
       }
     } else if (imgCfg.inputMode === "JSONGenerations") {
       const body = buildRecraftGenBody(parts, request.model, options);
-      httpResp = await fetch(baseUrl + imgCfg.genEndpoint, {
+      httpResp = await fetchRedacted(baseUrl + imgCfg.genEndpoint, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -369,7 +370,7 @@ export async function generateImage(
         "{model}",
         request.model,
       );
-      httpResp = await fetch(baseUrl + endpoint, {
+      httpResp = await fetchRedacted(baseUrl + endpoint, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -383,7 +384,7 @@ export async function generateImage(
         endpoint = `${endpoint}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
       }
       const body = buildImageBody(parts, options);
-      httpResp = await fetch(baseUrl + endpoint, {
+      httpResp = await fetchRedacted(baseUrl + endpoint, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
         body: JSON.stringify(body),

@@ -41,6 +41,7 @@ import type {
   TranscriptSegment,
 } from "../structs.ts";
 import type { Transcription } from "./builders.ts";
+import { fetchRedacted } from "../fetch.ts";
 
 // Default poll cadence for TranscriptionHandle.wait. AssemblyAI jobs run from
 // seconds to minutes; the poll loop checks every pollIntervalMs until
@@ -284,7 +285,7 @@ async function dispatchTranscriptionSubmit(
     };
     const buf = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buf).set(bytes);
-    const uploadResp = await fetch(base + tcCfg.uploadEndpoint, {
+    const uploadResp = await fetchRedacted(base + tcCfg.uploadEndpoint, {
       method: "POST",
       headers: uploadHeaders,
       body: buf,
@@ -396,7 +397,7 @@ export async function transcriptionTranscribe(
   const start = performance.now();
 
   try {
-    const resp = await fetch(base + tcCfg.submitEndpoint, {
+    const resp = await fetchRedacted(base + tcCfg.submitEndpoint, {
       method: "POST",
       headers,
       body: form,
@@ -653,7 +654,7 @@ async function postJson(
   body: Record<string, unknown>,
   headers: Record<string, string>,
 ): Promise<string> {
-  const resp = await fetch(url, {
+  const resp = await fetchRedacted(url, {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -674,7 +675,7 @@ async function fetchText(
   headers: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<string> {
-  const resp = await fetch(url, { headers, signal });
+  const resp = await fetchRedacted(url, { headers, signal });
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(

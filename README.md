@@ -26,9 +26,9 @@ npm install @aktagon/llmkit-ts
 From GitHub (skip the npm publish loop):
 
 ```bash
-bun add github:aktagon/llmkit-ts#ts-v2.2.1
+bun add github:aktagon/llmkit-ts#ts-v2.2.2
 # or
-npm install github:aktagon/llmkit-ts#ts-v2.2.1
+npm install github:aktagon/llmkit-ts#ts-v2.2.2
 ```
 
 The package ships compiled ESM in `dist/` (works in plain Node ESM, Workers, Deno) with its TypeScript declarations beside it. No build step required at the consumer.

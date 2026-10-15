@@ -21,6 +21,7 @@ import type { Part } from "./image.ts";
 
 export type { AudioData, MusicResponse } from "./structs.ts";
 import type { AudioData, MusicResponse } from "./structs.ts";
+import { fetchRedacted } from "./fetch.ts";
 
 /**
  * MusicRequest accepts input in one of two mutually-exclusive forms:
@@ -127,7 +128,7 @@ export async function generateMusic(
       baseUrl,
     );
 
-    const httpResp = await fetch(url, {
+    const httpResp = await fetchRedacted(url, {
       method: "POST",
       headers: { ...authHeaders, "content-type": "application/json" },
       body: JSON.stringify(body),
