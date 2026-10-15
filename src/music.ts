@@ -209,8 +209,7 @@ function dispatchMusicHTTP(
 
 // buildVertexMusicBody assembles the Vertex AI Lyria :predict request body.
 // Lyria 2 has no lyrics wire-slot, so any lyrics parts fold into the prompt
-// text (ADR-037 MUS-008); the instrumental model ignores vocal content. The
-// instances/parameters envelope mirrors Vertex Imagen.
+// text (ADR-037 MUS-008); the instrumental model ignores vocal content.
 function buildVertexMusicBody(parts: Part[]): Record<string, unknown> {
   let prompt = joinPromptText(parts);
   const lyrics = joinLyricsText(parts);

@@ -91,7 +91,7 @@ export class Client {
   /** Attach a custom HTTP header to every request for this client; calls accumulate. Applied before the provider auth header, so a gateway header (e.g. cf-aig-authorization) rides alongside the provider key. Returns the same Client for chaining. */
   addHeader(name: string, value: string): this { (this.provider.headers ??= {})[name] = value; return this; }
 
-  /** Override the provider's default base URL. Required for providers whose default base URL is a template the caller must substitute (e.g. Vertex AI Imagen) and to point an OpenAI-compatible provider or gateway at a self-hosted endpoint. Returns the same Client for chaining. */
+  /** Override the provider's default base URL. Required for providers whose default base URL is a template the caller must substitute (e.g. Vertex AI) and to point an OpenAI-compatible provider or gateway at a self-hosted endpoint. Returns the same Client for chaining. */
   baseURL(url: string): this { this.provider.baseUrl = url; return this; }
 
   /** Set how long this client waits for the next bytes from the provider, in milliseconds, before the request fails with a timeout error. The wait covers the response headers and every gap between body chunks, so a long healthy stream never times out. 0 disables it. Returns the same Client for chaining. */
