@@ -430,3 +430,35 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
 export function streamConfig(provider: ProviderName): StreamDef | undefined {
   return STREAMS[provider];
 }
+
+const WIRE_SHAPE_STREAMS: Record<string, StreamDef> = {
+  ChatResponsesOpenAI: {
+    endpoint: "",
+    param: "stream",
+    paramValue: "true",
+    deltaTextPath: "delta",
+    doneSignal: "",
+    usesEventTypes: true,
+    contentEvent: "response.output_text.delta",
+    doneEvent: "",
+    usageEvent: "response.completed",
+    usageInputPath: "response.usage.input_tokens",
+    usageOutputPath: "response.usage.output_tokens",
+    usageOptIn: false,
+  },
+};
+
+const WIRE_SHAPE_STREAM_FINISH_REASON_PATHS: Record<string, string> = {
+  ChatResponsesOpenAI: "response.completed:response.status",
+};
+
+/** The streaming config a chat wire shape declares for every provider that
+ * selects it, or undefined when the provider's streamConfig holds. */
+export function wireShapeStreamConfig(chatWireShape: string): StreamDef | undefined {
+  return WIRE_SHAPE_STREAMS[chatWireShape];
+}
+
+/** The ADR-013 stream finish locator read with wireShapeStreamConfig. */
+export function wireShapeStreamFinishReasonPath(chatWireShape: string): string {
+  return WIRE_SHAPE_STREAM_FINISH_REASON_PATHS[chatWireShape] ?? "";
+}
