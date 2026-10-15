@@ -261,7 +261,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     id: "vertex",
     slug: "vertex",
     envVar: "VERTEX_BEARER_TOKEN",
-    defaultModel: "imagen-3.0-generate-002",
+    defaultModel: "lyria-002",
     baseUrl: "https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models",
     browserCallable: false,
   },
