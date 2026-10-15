@@ -19,8 +19,8 @@ import {
   videoGenConfig,
 } from "../providers/video_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
-import type { RequestVariant } from "../providers/image_gen.ts";
-import { selectRequestVariant } from "../request_variant.ts";
+import type { CarriedInput, RequestVariant } from "../providers/image_gen.ts";
+import { partsCarry, selectRequestVariant } from "../request_variant.ts";
 import { sendHTTP } from "../http.ts";
 import { buildAuthHeaders } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
@@ -258,14 +258,14 @@ export async function videoSubmit(
       throw new ValidationError(`parts[${i}]`, "must have text set");
     }
   });
-  // ADR-096: a seed frame selects the WithSeedFrame submit request;
-  // a config with no such variant cannot send it.
   const imageCount = parts.filter((p) => "image" in p).length;
+  validateVideoFrames(model, imageCount, b._lastFrame, b._referenceImages);
+  // ADR-096: the carried inputs select the submit request; a config with no
+  // such variant cannot send it.
   const variant = selectRequestVariant(
     provider.name,
     vgCfg.variants,
-    imageCount,
-    "WithSeedFrame",
+    videoCarries(imageCount, b._lastFrame, b._referenceImages),
   );
 
   // VID-005: output-uri providers (Bedrock Nova Reel) write the video to the
@@ -302,6 +302,8 @@ export async function videoSubmit(
       b._model,
       b._outputURI,
       parts,
+      b._lastFrame,
+      b._referenceImages,
     );
     firePost(b._middleware as MiddlewareFn[], {
       ...baseEvent,
@@ -346,6 +348,8 @@ async function dispatchVideoSubmit(
   model: string,
   outputUri: string,
   parts: Part[],
+  lastFrame: MediaRef | undefined,
+  referenceImages: MediaRef[],
 ): Promise<string> {
   // Submit endpoint is the selected request variant's (ADR-096), resolved
   // against the config-declared base (Option D); handle id read from the config-declared dotted path (OQ7).
@@ -384,13 +388,20 @@ async function dispatchVideoSubmit(
     // base64 + mimeType (no data: prefix), per the Vertex Veo reference (read
     // 2026-10-15). The Gemini API shape is not yet live-verified.
     const veoSeed = videoSeedImage(parts);
-    if (veoSeed) {
-      instance.image = {
-        bytesBase64Encoded: bytesToBase64(veoSeed.bytes),
-        mimeType: veoSeed.mimeType || "image/png",
-      };
-    }
+    if (veoSeed) instance.image = veoImage(veoSeed);
+    // Last frame and asset reference images (BUG-089): same
+    // {bytesBase64Encoded, mimeType} wrapper. Reference images force an
+    // 8-second video, sent as the NUMBER 8 on both APIs (live 2026-10-15: the
+    // Gemini API rejects the string "8" its docs show).
+    if (lastFrame) instance.lastFrame = veoImage(lastFrame);
     body = { instances: [instance] };
+    if (referenceImages.length > 0) {
+      instance.referenceImages = referenceImages.map((img) => ({
+        image: veoImage(img),
+        referenceType: "asset",
+      }));
+      body.parameters = { durationSeconds: 8 };
+    }
   } else if (vgCfg.wireShape === "VideoBedrock") {
     // Nova Reel carries the model in the BODY (modelId, unlike the Converse
     // chat path) and writes the mp4 to the caller's S3 bucket. The optional
@@ -1100,6 +1111,68 @@ function videoSeedImage(parts: Part[]): MediaRef | undefined {
     );
   }
   return images[0]?.image;
+}
+
+// veoImage is a Veo image object: raw base64 bytes and the MIME type.
+function veoImage(img: MediaRef): Record<string, string> {
+  return {
+    bytesBase64Encoded: bytesToBase64(img.bytes),
+    mimeType: img.mimeType || "image/png",
+  };
+}
+
+// The most asset reference images a Veo request takes (Gemini API and Vertex
+// Veo pages, read 2026-10-15).
+const MAX_VIDEO_REFERENCE_IMAGES = 3;
+
+// validateVideoFrames rejects a last frame or reference images the model or
+// the request cannot carry, before any HTTP call (BUG-089). Same rules, order
+// and messages as go/video.go validateVideoFrames.
+function validateVideoFrames(
+  model: VideoModelDef,
+  imageCount: number,
+  lastFrame: MediaRef | undefined,
+  referenceImages: MediaRef[],
+): void {
+  const refs = referenceImages.length;
+  if (lastFrame && !model.supportsLastFrame) {
+    throw new ValidationError("last_frame", `${model.modelId} does not accept a last frame`);
+  }
+  if (refs > 0 && !model.supportsReferenceImages) {
+    throw new ValidationError(
+      "reference_images",
+      `${model.modelId} does not accept reference images`,
+    );
+  }
+  if (refs > MAX_VIDEO_REFERENCE_IMAGES) {
+    throw new ValidationError(
+      "reference_images",
+      `at most ${MAX_VIDEO_REFERENCE_IMAGES} reference images, got ${refs}`,
+    );
+  }
+  if (refs > 0 && (imageCount > 0 || lastFrame)) {
+    // Live 2026-10-15: Veo answers 400 "Unsupported video generation
+    // request"; Vertex documents the inputs as exclusive.
+    throw new ValidationError(
+      "reference_images",
+      "cannot be combined with a first or last frame",
+    );
+  }
+  if (lastFrame && imageCount === 0) {
+    throw new ValidationError("last_frame", "requires a first frame");
+  }
+}
+
+// videoCarries is the request's carried inputs (ADR-096): reference images, a
+// seed frame with an optional last frame, or text only.
+function videoCarries(
+  imageCount: number,
+  lastFrame: MediaRef | undefined,
+  referenceImages: MediaRef[],
+): CarriedInput[] {
+  if (referenceImages.length > 0) return ["WithReferenceImages"];
+  if (imageCount > 0 && lastFrame) return ["WithSeedFrame", "WithLastFrame"];
+  return partsCarry(imageCount, "WithSeedFrame");
 }
 
 // videoSeedImageURL builds the Grok image-to-video seed-frame data URL
