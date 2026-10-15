@@ -205,7 +205,6 @@ Aspect ratios and sizes validate against a per-model whitelist before the HTTP r
 | Google   | Nano Banana Pro                | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9                             | 1K, 2K, 4K                          |
 | OpenAI   | gpt-image-2 / 1.5 / 1 / 1-mini | n/a (size only)                                                                 | any (e.g. `1024x1024`, `1536x1024`) |
 | xAI      | grok-imagine-image-quality     | 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 1:2, 2:1, 19.5:9, 9:19.5, 20:9, 9:20, auto | 1k, 2k                              |
-| Vertex   | imagen-3.0 / 4.0               | 1:1, 9:16, 16:9, 3:4, 4:3                                                       | fixed per model                     |
 
 OpenAI gpt-image-\* models accept arbitrary sizes within documented bounds (max edge ≤3840, both edges multiples of 16, ratio ≤3:1, total pixels 655K–8.3M). They always return base64-encoded images, so `resp.images[0].bytes` works the same on both providers.
 
@@ -236,29 +235,6 @@ const resp = await c.image
 Dispatch is automatic: chains without image parts hit OpenAI's `/v1/images/generations` (JSON); chains carrying one or more `.image(...)` parts hit `/v1/images/edits` (multipart/form-data with one `image[]` field per reference, in caller order). gpt-image-\* requires organization verification — see [platform.openai.com/docs/guides/your-data#organization-verification](https://platform.openai.com/docs/guides/your-data#organization-verification).
 
 Up to 14 reference images per Google request, 16 per OpenAI request.
-
-#### Vertex AI Imagen (Google Cloud)
-
-Vertex Imagen uses the `:predict` endpoint family and OAuth bearer auth instead of API keys. The SDK takes a bearer token (string); caller manages OAuth refresh externally (e.g. `gcloud auth print-access-token`, service-account JSON, or workload identity).
-
-```ts
-import { vertex } from "@aktagon/llmkit-ts/builders";
-
-// Caller substitutes {project_id} and {location} before passing the URL.
-const baseUrl =
-  "https://us-central1-aiplatform.googleapis.com" +
-  "/v1/projects/my-gcp-project/locations/us-central1/publishers/google/models";
-
-const c = vertex(process.env.VERTEX_BEARER_TOKEN!).baseURL(baseUrl);
-
-const resp = await c.image
-  .model("imagen-3.0-generate-002")
-  .aspectRatio("16:9")
-  .count(2)
-  .generate("A red circle");
-```
-
-Imagen is text-to-image only: image parts and a mask are rejected before the request is sent. Imagen-specific knobs like `negativePrompt` and `safetySetting` are reachable through `.extraFields(...)` — they spread into the request's `parameters` block. Vertex's `:predict` response does not carry token counts; `resp.usage` stays zero.
 
 ### Music — text-to-music
 
@@ -315,46 +291,12 @@ console.log(
 ### Safety Settings
 
 Control content filtering for Gemini providers. `safetySettings` applies to text
-generation, streaming, agents, and Gemini image generation. `safetyFilter` applies
-to Vertex Imagen only.
+generation, streaming, agents, and Gemini image generation. On a non-Gemini
+provider it throws a `ValidationError`.
 
-```ts
-import {
-  google,
-  vertex,
-  HARM_CATEGORY_DANGEROUS_CONTENT,
-  HARM_CATEGORY_HARASSMENT,
-  HARM_BLOCK_THRESHOLD_NONE,
-  HARM_BLOCK_THRESHOLD_HIGH_ONLY,
-  IMAGE_SAFETY_FILTER_BLOCK_FEW,
-} from "@aktagon/llmkit-ts/builders";
-
-// Gemini text or agent
-const c = google(process.env.GOOGLE_API_KEY!);
-const resp = await c.text
-  .safetySettings([
-    {
-      category: HARM_CATEGORY_DANGEROUS_CONTENT,
-      threshold: HARM_BLOCK_THRESHOLD_NONE,
-    },
-    {
-      category: HARM_CATEGORY_HARASSMENT,
-      threshold: HARM_BLOCK_THRESHOLD_HIGH_ONLY,
-    },
-  ])
-  .prompt("Write a story");
-
-// Vertex Imagen
-const vc = vertex(process.env.VERTEX_BEARER_TOKEN!);
-const img = await vc.image
-  .model("imagen-3.0-generate-002")
-  .safetyFilter(IMAGE_SAFETY_FILTER_BLOCK_FEW)
-  .generate("A landscape");
-```
-
-`safetySettings` on Vertex Imagen and `safetyFilter` on non-Imagen providers throw
-a `ValidationError`. The `HARM_CATEGORY_*`, `HARM_BLOCK_THRESHOLD_*`, and
-`IMAGE_SAFETY_FILTER_*` constants cover all documented values; raw strings also work.
+`safetyFilter` is deprecated. It served Vertex Imagen, which Google shut down;
+every provider now throws a `ValidationError` for it. It will be removed in the
+next major version.
 
 ### Upload — Path or Bytes
 
