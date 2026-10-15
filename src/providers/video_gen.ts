@@ -236,6 +236,15 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     requiresOutputUri: false,
     models: [
       {
+        modelId: "veo-3.1-generate-001",
+        label: "Veo 3.1",
+        supportsImageToVideo: false,
+        maxDurationSeconds: 8,
+        outputMime: "video/mp4",
+        resolutions: ["1080p", "4k", "720p"],
+        maxInputImages: 0,
+      },
+      {
         modelId: "veo-3.1-generate-preview",
         label: "Veo 3.1",
         supportsImageToVideo: false,
