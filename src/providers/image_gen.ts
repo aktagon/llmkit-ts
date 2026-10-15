@@ -5,7 +5,10 @@ import type { ProviderName } from "./providers.ts";
 
 /** The inputs a request variant carries (ADR-096). */
 export type CarriedInput = "TextOnly" | "WithReferenceImages";
-/** Image request shapes: each names one request body (ADR-096). */
+/**
+ * Image request shapes: each names one request body (ADR-096).
+ * JSONPredict: Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen shut down, BUG-101); removed at the next major.
+ */
 export type ImageRequestShape = "InlineParts" | "JSONGenerationsOpenAI" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict" | "JSONGenerations";
 
 /** One wire request of an image or video config, keyed by the inputs it
@@ -18,6 +21,8 @@ export interface RequestVariant {
 }
 
 export type ImageOutputMode = "Base64Inline" | "URLOrBase64";
+/** VertexPredictions: Deprecated: no provider returns this shape since
+ * 2026-10-15 (Vertex Imagen shut down, BUG-101); removed at the next major. */
 export type ImageResponseShape = "GoogleParts" | "DataArrayB64Json" | "VertexPredictions";
 
 export interface ImageModelDef {
@@ -233,42 +238,6 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         modelId: "recraftv3_vector",
         label: "Recraft V3 (vector / SVG)",
         aspectRatios: [],
-        imageSizes: [],
-        maxInputImages: 0,
-        supportsImageInput: false,
-      },
-    ],
-  },
-  vertex: {
-    outputMode: "Base64Inline",
-    responseShape: "VertexPredictions",
-    usageInputPath: "",
-    usageOutputPath: "",
-    usageReasoningPath: "",
-    variants: [
-      { carries: "TextOnly", shape: "JSONPredict", endpoint: "" },
-    ],
-    models: [
-      {
-        modelId: "imagen-3.0-fast-generate-001",
-        label: "Imagen 3 Fast",
-        aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
-        imageSizes: [],
-        maxInputImages: 0,
-        supportsImageInput: false,
-      },
-      {
-        modelId: "imagen-3.0-generate-002",
-        label: "Imagen 3",
-        aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
-        imageSizes: [],
-        maxInputImages: 0,
-        supportsImageInput: false,
-      },
-      {
-        modelId: "imagen-4.0-generate-preview-06-06",
-        label: "Imagen 4 Preview",
-        aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
         imageSizes: [],
         maxInputImages: 0,
         supportsImageInput: false,
