@@ -23,6 +23,7 @@ import {
   type ParsedModelRecord,
   type ParsedModelsPage,
 } from "./providers/models_parsers.ts";
+import { fetchRedacted } from "./fetch.ts";
 
 // Error sentinels. Plain Error subclasses so consumers can use
 // `instanceof` or `err.name` for routing.
@@ -233,7 +234,7 @@ export async function catalogueRunGet(
       "content-type": "application/json",
       ...buildAuthHeaders(scoped.target, pcfg),
     };
-    const httpResp = await fetch(url, { method: "GET", headers });
+    const httpResp = await fetchRedacted(url, { method: "GET", headers });
     const text = await httpResp.text();
     if (!httpResp.ok) {
       throw mapCatalogueHttpErr(httpResp.status, text);
@@ -261,7 +262,7 @@ async function fetchCataloguePage(
   parserKind: string,
 ): Promise<ParsedModelsPage> {
   const headers = buildCatalogueHeaders(provider, pcfg);
-  const httpResp = await fetch(reqUrl, { method: "GET", headers });
+  const httpResp = await fetchRedacted(reqUrl, { method: "GET", headers });
   const text = await httpResp.text();
   if (!httpResp.ok) {
     throw mapCatalogueHttpErr(httpResp.status, text);

@@ -28,6 +28,7 @@ import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
 import type { VideoData, VideoResponse } from "../structs.ts";
 import type { Video } from "./builders.ts";
+import { fetchRedacted } from "../fetch.ts";
 
 // Default poll cadence for VideoHandle.wait. xAI documents up-to-several-minute
 // generations; the poll loop checks every pollIntervalMs until pollTimeoutMs
@@ -1113,7 +1114,7 @@ async function postJson(
   body: Record<string, unknown>,
   headers: Record<string, string>,
 ): Promise<string> {
-  const resp = await fetch(url, {
+  const resp = await fetchRedacted(url, {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -1137,7 +1138,7 @@ async function postJsonText(
   jsonBody: string,
   headers: Record<string, string>,
 ): Promise<string> {
-  const resp = await fetch(url, {
+  const resp = await fetchRedacted(url, {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: jsonBody,
@@ -1157,7 +1158,7 @@ async function fetchText(
   url: string,
   headers: Record<string, string>,
 ): Promise<string> {
-  const resp = await fetch(url, { headers });
+  const resp = await fetchRedacted(url, { headers });
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -1173,7 +1174,7 @@ async function fetchBytes(
   url: string,
   headers: Record<string, string>,
 ): Promise<Uint8Array> {
-  const resp = await fetch(url, { headers });
+  const resp = await fetchRedacted(url, { headers });
   if (!resp.ok) {
     const text = await resp.text();
     throw new APIError(
@@ -1213,7 +1214,7 @@ async function sigV4PostJson(
     "POST",
     "application/json",
   );
-  const resp = await fetch(url, { method: "POST", headers, body: jsonBody });
+  const resp = await fetchRedacted(url, { method: "POST", headers, body: jsonBody });
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(
@@ -1245,7 +1246,7 @@ async function sigV4Get(
     cfg.serviceName,
     "GET",
   );
-  const resp = await fetch(url, { method: "GET", headers });
+  const resp = await fetchRedacted(url, { method: "GET", headers });
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(

@@ -19,6 +19,7 @@ import type { Provider } from "./types.ts";
 
 export type { AudioData, SpeechResponse } from "./structs.ts";
 import type { AudioData, SpeechResponse } from "./structs.ts";
+import { fetchRedacted } from "./fetch.ts";
 
 /**
  * SpeechRequest carries a single text utterance to speak (single-turn, no
@@ -99,7 +100,7 @@ export async function generateSpeech(
     const authHeaders = buildAuthHeaders(provider, cfg);
     const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl);
 
-    const httpResp = await fetch(url, {
+    const httpResp = await fetchRedacted(url, {
       method: "POST",
       headers: { ...authHeaders, "content-type": "application/json" },
       body: JSON.stringify(body),

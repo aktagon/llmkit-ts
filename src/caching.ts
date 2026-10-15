@@ -16,6 +16,7 @@ import { mergeCallerHeaders, resolveModel } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
 import type { Provider, PromptOptions } from "./types.ts";
+import { fetchRedacted } from "./fetch.ts";
 
 export async function applyCaching(
   body: Record<string, unknown>,
@@ -137,7 +138,7 @@ async function applyResource(
     // ADR-052: additive; never clobbers content-type or the provider auth above.
     mergeCallerHeaders(headers, provider);
 
-    const httpResp = await fetch(createUrl, {
+    const httpResp = await fetchRedacted(createUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(createBody),

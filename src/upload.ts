@@ -6,6 +6,7 @@ import { buildAuthHeaders, resolveModel } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
 import type { File as LLMFile, Provider } from "./types.ts";
+import { fetchRedacted } from "./fetch.ts";
 
 export interface UploadOptions {
   middleware?: MiddlewareFn[];
@@ -71,7 +72,7 @@ export async function uploadFile(
       }
     }
 
-    const httpResp = await fetch(uploadUrl, {
+    const httpResp = await fetchRedacted(uploadUrl, {
       method: "POST",
       headers,
       body: form,
