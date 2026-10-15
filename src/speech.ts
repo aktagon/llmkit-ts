@@ -1,9 +1,11 @@
 // Speech generation (text-to-speech) runtime — mirror of go/speech.go (ADR-049).
 //
-// Pre-flight validation (model + text + voice required; provider supports
-// speech; model in catalogue; voice in catalogue) runs before any HTTP call.
-// One wire shape (SpeechInworld): a flat-JSON POST whose response carries
-// base64 audio at audioContent. Sync, single AudioData.
+// Pre-flight validation (model + text or lines required; voice or speakers;
+// provider supports speech; model known; speakers and style the model takes)
+// runs before any HTTP call. Voices are free-form: there is no catalogue.
+// Three wire shapes: SpeechInworld (base64 audio at audioContent),
+// SpeechOpenAI (raw audio body) and SpeechGemini (Interactions API, base64
+// audio in steps[]). Sync, single AudioData.
 
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
@@ -15,7 +17,7 @@ import { APIError, ValidationError } from "./errors.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
-import type { Provider } from "./types.ts";
+import type { Provider, SpeechLine, SpeechSpeaker } from "./types.ts";
 
 export type { AudioData, SpeechResponse } from "./structs.ts";
 import type { AudioData, SpeechResponse } from "./structs.ts";
@@ -23,13 +25,17 @@ import { sendHTTP } from "./http.ts";
 
 /**
  * SpeechRequest carries a single text utterance to speak (single-turn, no
- * Message/Role wrapper — ADR-049 SPK-003), the model, and the voice id
- * (validated pre-flight against the provider's catalogue — SPK-004).
+ * Message/Role wrapper — ADR-049 SPK-003), the model, and a free-form voice
+ * id. Speakers and lines make a multi-speaker request, in which text is empty;
+ * style is an optional delivery style (BUG-091).
  */
 export interface SpeechRequest {
   model: string;
   voice: string;
   text: string;
+  style?: string;
+  speakers?: SpeechSpeaker[];
+  lines?: SpeechLine[];
 }
 
 export interface SpeechOptions {
@@ -57,12 +63,7 @@ export async function generateSpeech(
   if (!request.model) {
     throw new ValidationError("model", "required for speech generation");
   }
-  if (!request.text) {
-    throw new ValidationError("text", "required for speech generation");
-  }
-  if (!request.voice) {
-    throw new ValidationError("voice", "required for speech generation");
-  }
+  validateSpeechInputs(request);
 
   const sgCfg = speechGenConfig(provider.name);
   if (!sgCfg) {
@@ -78,12 +79,7 @@ export async function generateSpeech(
       `${request.model} is not a known speech-generation model for ${provider.name}`,
     );
   }
-  if (!sgCfg.voices.includes(request.voice)) {
-    throw new ValidationError(
-      "voice",
-      `${request.voice} is not a known voice for ${provider.name}`,
-    );
-  }
+  validateSpeechModel(request, model);
 
   const baseEvent: Event = {
     op: "speech_generation",
@@ -98,7 +94,7 @@ export async function generateSpeech(
   try {
     const baseUrl = provider.baseUrl || cfg.baseUrl;
     const authHeaders = buildAuthHeaders(provider, cfg);
-    const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl);
+    const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl, provider.apiKey);
 
     const httpResp = await sendHTTP(url, {
       method: "POST",
@@ -142,33 +138,147 @@ export async function generateSpeech(
 
 // dispatchSpeechHTTP picks a wire shape per provider config (never by provider
 // name). SpeechInworld is a flat-JSON POST whose response carries base64 audio;
-// SpeechOpenAI is a flat-JSON POST whose response body is the raw audio bytes.
+// SpeechOpenAI is a flat-JSON POST whose response body is the raw audio bytes;
+// SpeechGemini is an Interactions API POST whose audio sits in steps[].
+// Query-param-key providers (Google) carry the key in the URL, as on every
+// other Google call.
 function dispatchSpeechHTTP(
   cfg: ProviderSpec,
   sgCfg: SpeechGenDef,
   request: SpeechRequest,
   baseUrl: string,
+  apiKey: string,
 ): { url: string; body: Record<string, unknown> } {
   const endpoint = sgCfg.genEndpoint || cfg.endpoint || "";
-  const url = endpoint.startsWith("http") ? endpoint : baseUrl + endpoint;
-  const body =
-    sgCfg.wireShape === "SpeechOpenAI"
-      ? buildOpenAISpeechBody(request)
-      : buildInworldSpeechBody(request);
+  let url = endpoint.startsWith("http") ? endpoint : baseUrl + endpoint;
+  if (cfg.authScheme === "QueryParamKey" && cfg.authQueryParam) {
+    const sep = url.includes("?") ? "&" : "?";
+    url = `${url}${sep}${cfg.authQueryParam}=${encodeURIComponent(apiKey)}`;
+  }
+  let body: Record<string, unknown>;
+  switch (sgCfg.wireShape) {
+    case "SpeechOpenAI":
+      body = buildOpenAISpeechBody(request);
+      break;
+    case "SpeechGemini":
+      body = buildGeminiSpeechBody(request);
+      break;
+    default:
+      body = buildInworldSpeechBody(request);
+  }
   return { url, body };
+}
+
+// validateSpeechInputs checks the request on its own, before the provider
+// config is read (BUG-091). The messages are the same in every SDK.
+function validateSpeechInputs(request: SpeechRequest): void {
+  const speakers = request.speakers ?? [];
+  const lines = request.lines ?? [];
+  if (lines.length === 0 && !request.text) {
+    throw new ValidationError("text", "required for speech generation");
+  }
+  if (lines.length > 0 && request.text) {
+    throw new ValidationError("text", "must be empty when lines are set");
+  }
+  if (speakers.length === 0) {
+    if (!request.voice) {
+      throw new ValidationError("voice", "required for speech generation");
+    }
+  } else {
+    if (request.voice) {
+      throw new ValidationError("voice", "cannot be set together with speakers");
+    }
+    if (request.style) {
+      throw new ValidationError(
+        "style",
+        "cannot be set together with speakers; style each line instead",
+      );
+    }
+    if (lines.length === 0) {
+      throw new ValidationError("lines", "required when speakers are set");
+    }
+  }
+  for (const line of lines) {
+    if (!speakers.some((s) => s.name === line.speaker)) {
+      throw new ValidationError("lines", `${line.speaker} is not a declared speaker`);
+    }
+  }
+}
+
+// validateSpeechModel checks the request against the model's speaker and
+// style facts (BUG-091).
+function validateSpeechModel(request: SpeechRequest, model: SpeechModelDef): void {
+  const speakers = request.speakers ?? [];
+  if (speakers.length > 0) {
+    if (model.maxSpeakers === 0) {
+      throw new ValidationError(
+        "speakers",
+        `${model.modelId} does not support multiple speakers`,
+      );
+    }
+    if (speakers.length !== model.maxSpeakers) {
+      throw new ValidationError(
+        "speakers",
+        `exactly ${model.maxSpeakers} speakers are required, got ${speakers.length}`,
+      );
+    }
+  }
+  const styled = !!request.style || (request.lines ?? []).some((l) => !!l.style);
+  if (!model.supportsSpeechStyle && styled) {
+    throw new ValidationError("style", `${model.modelId} does not support a speech style`);
+  }
+}
+
+// buildGeminiSpeechBody assembles the Gemini TTS request body on the
+// Interactions API (BUG-091): one user_input turn and an audio response.
+// Single voice: one text item and speech_config [{voice}]; a style annotates
+// the text item. Multi-speaker: one text item per line, each annotated with
+// its speaker and optional style, and speech_config {speakers}. store is
+// always false: the Interactions API keeps requests by default.
+function buildGeminiSpeechBody(
+  request: SpeechRequest,
+): Record<string, unknown> {
+  const speakers = request.speakers ?? [];
+  let content: Record<string, unknown>[];
+  let speechConfig: unknown;
+  if (speakers.length > 0) {
+    content = (request.lines ?? []).map((line) => {
+      const meta: Record<string, unknown> = { type: "speech_metadata", speaker: line.speaker };
+      if (line.style) meta.style = line.style;
+      return { type: "text", text: line.text, annotations: [meta] };
+    });
+    speechConfig = { speakers: speakers.map((s) => ({ speaker: s.name, voice: s.voice })) };
+  } else {
+    const item: Record<string, unknown> = { type: "text", text: request.text };
+    if (request.style) {
+      item.annotations = [{ type: "speech_metadata", style: request.style }];
+    }
+    content = [item];
+    speechConfig = [{ voice: request.voice }];
+  }
+  return {
+    model: request.model,
+    input: [{ type: "user_input", content }],
+    response_format: { type: "audio" },
+    generation_config: { speech_config: speechConfig },
+    store: false,
+  };
 }
 
 // buildOpenAISpeechBody assembles the OpenAI /v1/audio/speech request body.
 // Slice 1 fixes response_format=mp3 (KISS); format selection is a later slice.
+// A style is sent as instructions (BUG-091), which gpt-4o-mini-tts accepts.
 function buildOpenAISpeechBody(
   request: SpeechRequest,
 ): Record<string, unknown> {
-  return {
+  const body: Record<string, unknown> = {
     model: request.model,
     input: request.text,
     voice: request.voice,
     response_format: "mp3",
   };
+  if (request.style) body.instructions = request.style;
+  return body;
 }
 
 // buildInworldSpeechBody assembles the Inworld /tts/v1/voice request body.
@@ -210,6 +320,8 @@ function parseSpeechResponse(
   let audio: AudioData;
   if (audioEncoding === "rawBody") {
     audio = { mimeType: fallbackMime, bytes: body };
+  } else if (audioEncoding === "base64InteractionSteps") {
+    audio = parseInteractionStepsAudio(providerName, fallbackMime, body);
   } else {
     // base64Envelope: {"audioContent": "<base64>", "usage": {...}}.
     let root: { audioContent?: unknown };
@@ -248,6 +360,64 @@ function parseSpeechResponse(
     audio,
     usage: {},
   };
+}
+
+interface InteractionItem {
+  type?: unknown;
+  data?: unknown;
+  mime_type?: unknown;
+  content?: unknown;
+}
+
+// parseInteractionStepsAudio decodes a Gemini TTS Interactions API reply
+// (BUG-091). Google's documented path is
+// [.steps[] | select(.type=="model_output") | .content[] | select(.type=="audio")] | last | .data:
+// the LAST audio item across the model_output steps wins. Its mime_type is
+// used when present, else the model's outputMime. No audio item, or invalid
+// base64, is a decoding error (HANDOFF-036 A5).
+function parseInteractionStepsAudio(
+  providerName: string,
+  fallbackMime: string,
+  body: Uint8Array,
+): AudioData {
+  let root: { steps?: unknown };
+  try {
+    root = JSON.parse(new TextDecoder().decode(body)) as { steps?: unknown };
+  } catch (err) {
+    throw new APIError(
+      200,
+      `${providerName} speech response: not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      false,
+    );
+  }
+  let last: InteractionItem | undefined;
+  const steps = Array.isArray(root.steps) ? (root.steps as InteractionItem[]) : [];
+  for (const step of steps) {
+    if (step?.type !== "model_output" || !Array.isArray(step.content)) continue;
+    for (const item of step.content as InteractionItem[]) {
+      if (item?.type === "audio") last = item;
+    }
+  }
+  if (typeof last?.data !== "string" || !last.data) {
+    throw new APIError(
+      200,
+      `${providerName} speech response: no audio item in steps[model_output].content`,
+      false,
+    );
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = base64ToBytes(last.data);
+  } catch (err) {
+    throw new APIError(
+      200,
+      `${providerName} speech response: invalid base64 in audio data: ${err instanceof Error ? err.message : String(err)}`,
+      false,
+    );
+  }
+  const mimeType =
+    typeof last.mime_type === "string" && last.mime_type ? last.mime_type : fallbackMime;
+  return { mimeType, bytes };
 }
 
 function base64ToBytes(b64: string): Uint8Array {
