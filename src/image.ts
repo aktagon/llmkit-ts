@@ -107,8 +107,10 @@ export interface ImageOptions {
    * background, count) are validated per provider; ExtraFields is not.
    */
   extraFields?: Record<string, unknown>;
-  /** Global safety threshold for Vertex Imagen (parameters.safetySetting).
-   * ValidationError on all other image-gen providers. */
+  /** Global image safety threshold. Every image provider throws
+   * ValidationError for it.
+   * Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen shut
+   * down, BUG-101); removed at the next major. */
   safetyFilter?: string;
   /** Per-category safety thresholds for Google image generation (safetySettings[]).
    * Same wire field as text-gen. ValidationError on non-Google image-gen providers. */
@@ -190,7 +192,7 @@ export async function generateImage(
   );
 
   // Per-request-shape knob validation. Quality/OutputFormat/Background are
-  // OpenAI-only on the wire; Count (n) is OpenAI + xAI + Recraft + Vertex;
+  // OpenAI-only on the wire; Count (n) is OpenAI + xAI + Recraft;
   // Mask rides only the OpenAI multipart edits body. Mirrors go/image.go.
   if (options.mask !== undefined && variant.shape !== "MultipartForm") {
     if (variant.shape === "JSONGenerationsOpenAI") {
@@ -257,30 +259,11 @@ export async function generateImage(
         "safety_settings",
         `not supported by ${provider.name}`,
       );
-  } else if (shape === "JSONPredict") {
-    if (options.quality !== undefined)
-      throw new ValidationError("quality", `not supported by ${provider.name}`);
-    if (options.outputFormat !== undefined)
-      throw new ValidationError(
-        "output_format",
-        `not supported by ${provider.name}`,
-      );
-    if (options.background !== undefined)
-      throw new ValidationError(
-        "background",
-        `not supported by ${provider.name}`,
-      );
-    // safetyFilter is valid for JSONPredict; wired in buildVertexBody
-    if (options.safetySettings && options.safetySettings.length > 0)
-      throw new ValidationError(
-        "safety_settings",
-        `not supported by ${provider.name}; use safetyFilter for Vertex Imagen`,
-      );
   } else if (shape === "JSONGenerations") {
     // Recraft, OpenRouter (text-to-image only). The flat generations body carries only
     // size (-> `size`) and count (-> `n`); aspect_ratio is not a Recraft
     // wire field (it sizes by an explicit WxH `size`), and the gpt-image /
-    // safety knobs are OpenAI / Google / Vertex only. Image parts are
+    // safety knobs are OpenAI / Google only. Image parts are
     // rejected upstream by the supportsImageInput gate.
     if (options.aspectRatio !== undefined)
       throw new ValidationError(
@@ -357,9 +340,6 @@ export async function generateImage(
         case "JSONInlineRefs":
           body = buildXAIBody(parts, request.model, options);
           break;
-        case "JSONPredict":
-          body = buildVertexBody(parts, options);
-          break;
         case "JSONGenerations":
           body = buildRecraftGenBody(parts, request.model, options);
           break;
@@ -403,9 +383,6 @@ export async function generateImage(
           imgCfg.usageOutputPath,
           imgCfg.usageReasoningPath,
         );
-        break;
-      case "VertexPredictions":
-        result = parseVertexImageResponse(raw);
         break;
       default:
         // GoogleParts: candidates[].content.parts inline data.
@@ -544,86 +521,6 @@ function buildXAIBody(
     body.images = refs;
   }
   return body;
-}
-
-/**
- * buildVertexBody assembles the Vertex AI Imagen :predict request body.
- * Vertex uses an instances/parameters envelope: instance carries the
- * prompt; parameters carries config (sampleCount, aspectRatio). The Imagen
- * generate models take text only (BUG-101), so image parts never reach
- * here: the supportsImageInput gate rejects them first. Extra fields like
- * negativePrompt and safetySetting spread into parameters via
- * options.extraFields so callers can reach Imagen-specific knobs without
- * typed chain methods.
- */
-function buildVertexBody(
-  parts: Part[],
-  options: ImageOptions,
-): Record<string, unknown> {
-  const instance: Record<string, unknown> = {
-    prompt: joinTextParts(parts),
-  };
-
-  const parameters: Record<string, unknown> = {
-    sampleCount: options.count ?? 1,
-  };
-  if (options.aspectRatio) parameters.aspectRatio = options.aspectRatio;
-  if (options.safetyFilter) parameters.safetySetting = options.safetyFilter;
-  if (options.extraFields) {
-    for (const [k, v] of Object.entries(options.extraFields)) parameters[k] = v;
-  }
-
-  return { instances: [instance], parameters };
-}
-
-/**
- * parseVertexImageResponse decodes Vertex AI Imagen :predict responses.
- * Shape: {predictions: [{bytesBase64Encoded, mimeType}]}. Vertex does not
- * return token counts in the predict response, so usage stays zero.
- */
-function parseVertexImageResponse(raw: unknown): ImageResponse {
-  const obj = (raw as { predictions?: unknown }).predictions;
-  const preds = Array.isArray(obj) ? obj : [];
-  const images: ImageData[] = [];
-  let finishReason: string | undefined;
-  for (const item of preds) {
-    if (!item || typeof item !== "object") continue;
-    const entry = item as {
-      bytesBase64Encoded?: unknown;
-      mimeType?: unknown;
-      raiFilteredReason?: unknown;
-    };
-    if (
-      typeof entry.raiFilteredReason === "string" &&
-      entry.raiFilteredReason &&
-      !finishReason
-    ) {
-      // First non-empty raiFilteredReason wins — Imagen surfaces it on the
-      // prediction entry that was blocked.
-      finishReason = entry.raiFilteredReason;
-    }
-    const b64 =
-      typeof entry.bytesBase64Encoded === "string"
-        ? entry.bytesBase64Encoded
-        : "";
-    if (!b64) continue;
-    const mime =
-      typeof entry.mimeType === "string" && entry.mimeType
-        ? entry.mimeType
-        : "image/png";
-    try {
-      images.push({ mimeType: mime, bytes: base64ToBytes(b64) });
-    } catch {
-      // skip malformed entries
-    }
-  }
-  const out: ImageResponse = {
-    images,
-    text: "",
-    usage: {},
-  };
-  if (finishReason) out.finishReason = finishReason;
-  return out;
 }
 
 /**
