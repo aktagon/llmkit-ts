@@ -20,7 +20,7 @@
 import { PROVIDERS } from "../providers/providers.ts";
 import { type StreamDef, streamConfig } from "../providers/stream.ts";
 import { APIError, ValidationError } from "../errors.ts";
-import { extractPath, extractIntPath } from "../paths.ts";
+import { extractPath, extractIntPath, optIntPath } from "../paths.ts";
 import {
   buildRequest as buildLegacyRequest,
   buildAuthHeaders,
@@ -242,8 +242,8 @@ async function consumeSSE(
     }
 
     // ADR-013: capture stream-time finish-reason BEFORE the event-level done
-    // break — Anthropic carries stop_reason on the message_stop body, which
-    // would otherwise be discarded.
+    // break, so a finish locator that names the done event still sees its
+    // body. (Anthropic's locator is message_delta:delta.stop_reason.)
     if (finishJSONPath) {
       if (finishEvent === "" || finishEvent === currentEvent) {
         const v = extractPath(parsed, finishJSONPath);
@@ -261,8 +261,13 @@ async function consumeSSE(
         const text = extractPath(parsed, cfg.deltaTextPath);
         if (text) await emit(text);
       }
-      if (currentEvent === cfg.usageEvent && cfg.usageOutputPath) {
-        usage.output = extractIntPath(parsed, cfg.usageOutputPath);
+      // Anthropic's message_delta carries the cumulative input AND output
+      // counts; a dimension the frame does not report stays unset.
+      if (currentEvent === cfg.usageEvent) {
+        const input = optIntPath(parsed, cfg.usageInputPath);
+        if (input !== undefined) usage.input = input;
+        const output = optIntPath(parsed, cfg.usageOutputPath);
+        if (output !== undefined) usage.output = output;
       }
     } else {
       const text = extractPath(parsed, cfg.deltaTextPath);
