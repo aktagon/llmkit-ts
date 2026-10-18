@@ -40,6 +40,8 @@ export interface VideoGenDef {
   pollEndpoint: string;
   // fileEndpoint is the file-retrieve template with {file_id} for two-hop providers; "" = single-hop.
   fileEndpoint: string;
+  // cancelEndpoint is the cancel template with {model} and {operation_id}; "" = no documented cancel.
+  cancelEndpoint: string;
   // submitHandleField is a dotted path to the poll handle id.
   submitHandleField: string;
   requiresOutputUri: boolean;
@@ -56,6 +58,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/async-invoke/{id}",
     fileEndpoint: "",
+    cancelEndpoint: "",
     submitHandleField: "invocationArn",
     requiresOutputUri: true,
     models: [
@@ -84,6 +87,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/v1beta/{id}",
     fileEndpoint: "",
+    cancelEndpoint: "",
     submitHandleField: "name",
     requiresOutputUri: false,
     models: [
@@ -132,6 +136,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/v1/videos/{id}",
     fileEndpoint: "",
+    cancelEndpoint: "",
     submitHandleField: "request_id",
     requiresOutputUri: false,
     models: [
@@ -157,6 +162,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/v1/query/video_generation?task_id={id}",
     fileEndpoint: "/v1/files/retrieve?file_id={file_id}",
+    cancelEndpoint: "",
     submitHandleField: "task_id",
     requiresOutputUri: false,
     models: [
@@ -182,6 +188,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/openapi/v2/video/result/{id}",
     fileEndpoint: "",
+    cancelEndpoint: "",
     submitHandleField: "Resp.video_id",
     requiresOutputUri: false,
     models: [
@@ -229,6 +236,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/api/v1/tasks/{id}",
     fileEndpoint: "",
+    cancelEndpoint: "",
     submitHandleField: "output.task_id",
     requiresOutputUri: false,
     models: [
@@ -254,6 +262,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/v2/videos/{id}",
     fileEndpoint: "",
+    cancelEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
     models: [
@@ -282,6 +291,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/{model}:fetchPredictOperation",
     fileEndpoint: "",
+    cancelEndpoint: "/{model}/operations/{operation_id}:cancel",
     submitHandleField: "name",
     requiresOutputUri: false,
     models: [
@@ -340,6 +350,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/ent/v2/tasks/{id}/creations",
     fileEndpoint: "",
+    cancelEndpoint: "",
     submitHandleField: "task_id",
     requiresOutputUri: false,
     models: [
@@ -387,6 +398,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     ],
     pollEndpoint: "/v4/async-result/{id}",
     fileEndpoint: "",
+    cancelEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
     models: [
