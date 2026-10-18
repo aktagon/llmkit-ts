@@ -9,7 +9,7 @@ export type CarriedInput = "TextOnly" | "WithReferenceImages" | "WithSeedFrame" 
  * Image request shapes: each names one request body (ADR-096).
  * JSONPredict: Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen shut down, BUG-101); removed at the next major.
  */
-export type ImageRequestShape = "InlineParts" | "JSONGenerationsOpenAI" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict" | "JSONGenerations";
+export type ImageRequestShape = "InlineParts" | "JSONGenerationsOpenAI" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict" | "JSONGenerations" | "JSONGenerationsInputRefs";
 
 /** One wire request of an image or video config, keyed by the inputs it
  * carries (ADR-096). shape is "" on a video variant; endpoint "" means
@@ -157,6 +157,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageReasoningPath: "",
     variants: [
       { carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images" },
+      { carries: ["WithReferenceImages"], shape: "JSONGenerationsInputRefs", endpoint: "/v1/images" },
     ],
     models: [
       {
@@ -165,7 +166,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "bytedance-seed/seedream-5-0-flash",
@@ -173,7 +174,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "google/gemini-2.5-flash-image",
@@ -181,7 +182,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "google/gemini-3-pro-image",
@@ -189,7 +190,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "google/gemini-3.1-flash-image",
@@ -197,7 +198,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "google/gemini-3.1-flash-lite-image",
@@ -205,7 +206,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "meta/muse-image",
@@ -221,7 +222,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "openai/gpt-5-image-mini",
@@ -229,7 +230,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "openai/gpt-5.4-image-2",
@@ -237,7 +238,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "openai/gpt-image-2",
@@ -245,7 +246,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "openai/gpt-image-2.5-sunburst",
@@ -253,7 +254,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
       {
         modelId: "tencent/hy-image-v3.5-preview",
@@ -261,7 +262,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
-        supportsImageInput: false,
+        supportsImageInput: true,
       },
     ],
   },
