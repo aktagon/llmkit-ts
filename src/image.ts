@@ -259,12 +259,12 @@ export async function generateImage(
         "safety_settings",
         `not supported by ${provider.name}`,
       );
-  } else if (shape === "JSONGenerations") {
-    // Recraft, OpenRouter (text-to-image only). The flat generations body carries only
+  } else if (shape === "JSONGenerations" || shape === "JSONGenerationsInputRefs") {
+    // Recraft, OpenRouter. The flat generations body carries only
     // size (-> `size`) and count (-> `n`); aspect_ratio is not a Recraft
     // wire field (it sizes by an explicit WxH `size`), and the gpt-image /
-    // safety knobs are OpenAI / Google only. Image parts are
-    // rejected upstream by the supportsImageInput gate.
+    // safety knobs are OpenAI / Google only. JSONGenerationsInputRefs is the
+    // same body plus input_references, so the same knobs apply.
     if (options.aspectRatio !== undefined)
       throw new ValidationError(
         "aspect_ratio",
@@ -342,6 +342,10 @@ export async function generateImage(
           break;
         case "JSONGenerations":
           body = buildRecraftGenBody(parts, request.model, options);
+          break;
+        case "JSONGenerationsInputRefs":
+          body = buildRecraftGenBody(parts, request.model, options);
+          body.input_references = imageURLContentParts(parts);
           break;
         case "InlineParts":
           body = buildImageBody(parts, options);
@@ -548,6 +552,25 @@ function buildRecraftGenBody(
     for (const [k, v] of Object.entries(options.extraFields)) body[k] = v;
   }
   return body;
+}
+
+/**
+ * imageURLContentParts maps each image part, in caller order, to an
+ * OpenRouter ContentPartImage {type:"image_url", image_url:{url}} with the
+ * bytes as a base64 data URL (live probe 2026-10-18).
+ */
+function imageURLContentParts(parts: Part[]): Array<Record<string, unknown>> {
+  const refs: Array<Record<string, unknown>> = [];
+  for (const p of parts) {
+    if ("image" in p) {
+      const mime = p.image.mimeType || "image/png";
+      refs.push({
+        type: "image_url",
+        image_url: { url: `data:${mime};base64,${bytesToBase64(p.image.bytes)}` },
+      });
+    }
+  }
+  return refs;
 }
 
 function joinTextParts(parts: Part[]): string {

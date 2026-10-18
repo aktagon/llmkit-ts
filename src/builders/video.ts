@@ -417,6 +417,17 @@ async function dispatchVideoSubmit(
         s3OutputDataConfig: { s3Uri: outputUri },
       },
     };
+  } else if (vgCfg.wireShape === "VideoOpenRouter") {
+    body = { model, prompt: joinPromptText(parts) };
+    // Image-to-video (HANDOFF-091): each frame is an OpenRouter
+    // ContentPartImage plus frame_type, first_frame then last_frame (live
+    // probe 2026-10-18; openrouter.ai/openapi.json).
+    const seed = videoSeedImage(parts);
+    if (seed) {
+      const frames = [openRouterFrame(seed, "first_frame")];
+      if (lastFrame) frames.push(openRouterFrame(lastFrame, "last_frame"));
+      body.frame_images = frames;
+    }
   } else {
     body = { model, prompt: joinPromptText(parts) };
     // Image-to-video (BUG-010): when a seed frame is present (reachable in
@@ -1156,6 +1167,16 @@ function videoSeedImage(parts: Part[]): MediaRef | undefined {
 }
 
 // veoImage is a Veo image object: raw base64 bytes and the MIME type.
+// openRouterFrame is one OpenRouter frame_images item.
+function openRouterFrame(img: MediaRef, frameType: string): Record<string, unknown> {
+  const mime = img.mimeType || "image/png";
+  return {
+    type: "image_url",
+    image_url: { url: `data:${mime};base64,${bytesToBase64(img.bytes)}` },
+    frame_type: frameType,
+  };
+}
+
 function veoImage(img: MediaRef): Record<string, string> {
   return {
     bytesBase64Encoded: bytesToBase64(img.bytes),
