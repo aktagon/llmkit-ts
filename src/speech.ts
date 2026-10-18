@@ -3,9 +3,10 @@
 // Pre-flight validation (model + text or lines required; voice or speakers;
 // provider supports speech; model known; speakers and style the model takes)
 // runs before any HTTP call. Voices are free-form: there is no catalogue.
-// Three wire shapes: SpeechInworld (base64 audio at audioContent),
-// SpeechOpenAI (raw audio body) and SpeechGemini (Interactions API, base64
-// audio in steps[]). Sync, single AudioData.
+// Four wire shapes: SpeechInworld (base64 audio at audioContent),
+// SpeechOpenAI (raw audio body), SpeechGemini (Interactions API, base64
+// audio in steps[]) and SpeechMiniMax (hex audio at data.audio). Sync, single
+// AudioData.
 
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
@@ -92,7 +93,9 @@ export async function generateSpeech(
   const start = performance.now();
 
   try {
-    const baseUrl = provider.baseUrl || cfg.baseUrl;
+    // Speech base: explicit override > the config's distinct speech base
+    // (MiniMax, HANDOFF-094) > chat base — the music base contract.
+    const baseUrl = provider.baseUrl || sgCfg.baseUrl || cfg.baseUrl;
     const authHeaders = buildAuthHeaders(provider, cfg);
     const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl, provider.apiKey);
 
@@ -139,7 +142,8 @@ export async function generateSpeech(
 // dispatchSpeechHTTP picks a wire shape per provider config (never by provider
 // name). SpeechInworld is a flat-JSON POST whose response carries base64 audio;
 // SpeechOpenAI is a flat-JSON POST whose response body is the raw audio bytes;
-// SpeechGemini is an Interactions API POST whose audio sits in steps[].
+// SpeechGemini is an Interactions API POST whose audio sits in steps[];
+// SpeechMiniMax is a flat-JSON POST whose reply carries hex audio at data.audio.
 // Query-param-key providers (Google) carry the key in the URL, as on every
 // other Google call.
 function dispatchSpeechHTTP(
@@ -162,6 +166,9 @@ function dispatchSpeechHTTP(
       break;
     case "SpeechGemini":
       body = buildGeminiSpeechBody(request);
+      break;
+    case "SpeechMiniMax":
+      body = buildMiniMaxSpeechBody(request);
       break;
     default:
       body = buildInworldSpeechBody(request);
@@ -299,6 +306,17 @@ function buildInworldSpeechBody(
   };
 }
 
+// buildMiniMaxSpeechBody assembles the MiniMax /v1/t2a_v2 request body
+// (HANDOFF-094): only the fields the reference marks required. stream,
+// output_format (hex) and audio_setting (mp3) take their defaults.
+function buildMiniMaxSpeechBody(request: SpeechRequest): Record<string, unknown> {
+  return {
+    model: request.model,
+    text: request.text,
+    voice_setting: { voice_id: request.voice },
+  };
+}
+
 function findSpeechModel(
   cfg: SpeechGenDef,
   modelId: string,
@@ -309,7 +327,8 @@ function findSpeechModel(
 // parseSpeechResponse decodes the synthesized audio per the wire shape's audio
 // response encoding (ADR-051 OAA-002). "rawBody" (OpenAI) takes the response
 // body verbatim as the audio bytes; "base64Envelope" (Inworld) parses a JSON
-// envelope and base64-decodes the audio field. A 2xx body that does not parse
+// envelope and base64-decodes the audio field; "hexEnvelope" (MiniMax)
+// hex-decodes data.audio and raises on a nonzero base_resp. A 2xx body that does not parse
 // to audio is a decoding error (HANDOFF-036 A5) — never a silent empty clip.
 function parseSpeechResponse(
   providerName: string,
@@ -322,6 +341,8 @@ function parseSpeechResponse(
     audio = { mimeType: fallbackMime, bytes: body };
   } else if (audioEncoding === "base64InteractionSteps") {
     audio = parseInteractionStepsAudio(providerName, fallbackMime, body);
+  } else if (audioEncoding === "hexEnvelope") {
+    audio = parseHexEnvelopeAudio(providerName, fallbackMime, body);
   } else {
     // base64Envelope: {"audioContent": "<base64>", "usage": {...}}.
     let root: { audioContent?: unknown };
@@ -425,4 +446,44 @@ function base64ToBytes(b64: string): Uint8Array {
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
   return out;
+}
+
+// parseHexEnvelopeAudio decodes a MiniMax t2a_v2 reply (HANDOFF-094):
+// {"data": {"audio": "<hex>"}, "base_resp": {"status_code", "status_msg"}}.
+// MiniMax reports failures in base_resp on an HTTP 200, so a nonzero
+// status_code is an APIError carrying status_msg. A success with missing
+// audio, or invalid hex, is a decoding error (HANDOFF-036 A5).
+function parseHexEnvelopeAudio(
+  providerName: string,
+  fallbackMime: string,
+  body: Uint8Array,
+): AudioData {
+  let root: {
+    data?: { audio?: unknown } | null;
+    base_resp?: { status_code?: unknown; status_msg?: unknown };
+  };
+  try {
+    root = JSON.parse(new TextDecoder().decode(body)) as typeof root;
+  } catch (err) {
+    throw new APIError(
+      200,
+      `${providerName} speech response: not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      false,
+    );
+  }
+  const code = root.base_resp?.status_code;
+  if (typeof code === "number" && code !== 0) {
+    const msg = typeof root.base_resp?.status_msg === "string" ? root.base_resp.status_msg : "";
+    throw new APIError(200, `${providerName}: ${msg} (base_resp.status_code ${code})`, false);
+  }
+  const hex = root.data?.audio;
+  if (typeof hex !== "string" || !hex) {
+    throw new APIError(200, `${providerName} speech response: missing or empty data.audio`, false);
+  }
+  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) {
+    throw new APIError(200, `${providerName} speech response: invalid hex in data.audio`, false);
+  }
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return { mimeType: fallbackMime, bytes };
 }
