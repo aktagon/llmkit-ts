@@ -546,8 +546,15 @@ function parseVideoPoll(
       const root = raw as { status?: unknown; error?: unknown };
       const status = typeof root.status === "string" ? root.status : "";
       switch (status) {
-        case "completed":
-          return videoResultFromOpenRouter(vgCfg, raw);
+        case "completed": {
+          // A completed poll without unsigned_urls[0] must be an error, not an
+          // empty success (mirrors the Veo done-without-uri guard).
+          const result = videoResultFromOpenRouter(vgCfg, raw);
+          if (result.videos.length === 0 || !result.videos[0]!.url) {
+            throw new APIError(0, "video generation: completed but carried no unsigned_urls", false);
+          }
+          return result;
+        }
         case "failed":
         case "cancelled":
         case "expired": {
