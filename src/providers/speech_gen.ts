@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 // Speech wire-shape discriminators. Each fully determines the request
 // body and the response audio path.
-export type SpeechWireShape = "SpeechInworld" | "SpeechOpenAI" | "SpeechGemini";
+export type SpeechWireShape = "SpeechInworld" | "SpeechOpenAI" | "SpeechGemini" | "SpeechMiniMax";
 
 export interface SpeechModelDef {
   modelId: string;
@@ -21,10 +21,12 @@ export interface SpeechModelDef {
 
 export interface SpeechGenDef {
   wireShape: SpeechWireShape;
-  // audioEncoding selects the response decoder: "base64Envelope" | "rawBody" | "base64InteractionSteps" (ADR-051).
+  // audioEncoding selects the response decoder: "base64Envelope" | "rawBody" | "base64InteractionSteps" | "hexEnvelope" (ADR-051).
   audioEncoding: string;
   // genEndpoint is an override; empty = use provider main endpoint.
   genEndpoint: string;
+  // baseUrl is the speech API base when it differs from the chat base; "" = use chat base.
+  baseUrl: string;
   models: SpeechModelDef[];
 }
 
@@ -33,6 +35,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     wireShape: "SpeechGemini",
     audioEncoding: "base64InteractionSteps",
     genEndpoint: "/v1beta/interactions",
+    baseUrl: "",
     models: [
       {
         modelId: "gemini-3.8-flash-lite-tts",
@@ -56,6 +59,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     wireShape: "SpeechInworld",
     audioEncoding: "base64Envelope",
     genEndpoint: "/tts/v1/voice",
+    baseUrl: "",
     models: [
       {
         modelId: "inworld-tts-1.5-max",
@@ -83,10 +87,51 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
       },
     ],
   },
+  minimax: {
+    wireShape: "SpeechMiniMax",
+    audioEncoding: "hexEnvelope",
+    genEndpoint: "/v1/t2a_v2",
+    baseUrl: "https://api.minimax.io",
+    models: [
+      {
+        modelId: "speech-2.6-hd",
+        label: "MiniMax Speech 2.6 HD",
+        outputMime: "audio/mpeg",
+        sampleRateHz: 0,
+        maxSpeakers: 0,
+        supportsSpeechStyle: false,
+      },
+      {
+        modelId: "speech-2.6-turbo",
+        label: "MiniMax Speech 2.6 Turbo",
+        outputMime: "audio/mpeg",
+        sampleRateHz: 0,
+        maxSpeakers: 0,
+        supportsSpeechStyle: false,
+      },
+      {
+        modelId: "speech-2.8-hd",
+        label: "MiniMax Speech 2.8 HD",
+        outputMime: "audio/mpeg",
+        sampleRateHz: 0,
+        maxSpeakers: 0,
+        supportsSpeechStyle: false,
+      },
+      {
+        modelId: "speech-2.8-turbo",
+        label: "MiniMax Speech 2.8 Turbo",
+        outputMime: "audio/mpeg",
+        sampleRateHz: 0,
+        maxSpeakers: 0,
+        supportsSpeechStyle: false,
+      },
+    ],
+  },
   openai: {
     wireShape: "SpeechOpenAI",
     audioEncoding: "rawBody",
     genEndpoint: "/v1/audio/speech",
+    baseUrl: "",
     models: [
       {
         modelId: "gpt-4o-mini-tts",
@@ -118,6 +163,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     wireShape: "SpeechOpenAI",
     audioEncoding: "rawBody",
     genEndpoint: "/v1/audio/speech",
+    baseUrl: "",
     models: [
       {
         modelId: "elevenlabs/eleven-v3",
