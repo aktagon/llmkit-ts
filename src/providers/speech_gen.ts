@@ -25,9 +25,9 @@ export interface SpeechGenDef {
   audioEncoding: string;
   // genEndpoint is an override; empty = use provider main endpoint.
   genEndpoint: string;
+  models: SpeechModelDef[];
   // baseUrl is the speech API base when it differs from the chat base; "" = use chat base.
   baseUrl: string;
-  models: SpeechModelDef[];
 }
 
 const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
@@ -35,7 +35,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     wireShape: "SpeechGemini",
     audioEncoding: "base64InteractionSteps",
     genEndpoint: "/v1beta/interactions",
-    baseUrl: "",
     models: [
       {
         modelId: "gemini-3.8-flash-lite-tts",
@@ -54,12 +53,12 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         supportsSpeechStyle: true,
       },
     ],
+    baseUrl: "",
   },
   inworld: {
     wireShape: "SpeechInworld",
     audioEncoding: "base64Envelope",
     genEndpoint: "/tts/v1/voice",
-    baseUrl: "",
     models: [
       {
         modelId: "inworld-tts-1.5-max",
@@ -86,12 +85,12 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         supportsSpeechStyle: false,
       },
     ],
+    baseUrl: "",
   },
   minimax: {
     wireShape: "SpeechMiniMax",
     audioEncoding: "hexEnvelope",
     genEndpoint: "/v1/t2a_v2",
-    baseUrl: "https://api.minimax.io",
     models: [
       {
         modelId: "speech-2.6-hd",
@@ -126,12 +125,12 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         supportsSpeechStyle: false,
       },
     ],
+    baseUrl: "https://api.minimax.io",
   },
   openai: {
     wireShape: "SpeechOpenAI",
     audioEncoding: "rawBody",
     genEndpoint: "/v1/audio/speech",
-    baseUrl: "",
     models: [
       {
         modelId: "gpt-4o-mini-tts",
@@ -158,12 +157,12 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         supportsSpeechStyle: false,
       },
     ],
+    baseUrl: "",
   },
   openrouter: {
     wireShape: "SpeechOpenAI",
     audioEncoding: "rawBody",
     genEndpoint: "/v1/audio/speech",
-    baseUrl: "",
     models: [
       {
         modelId: "elevenlabs/eleven-v3",
@@ -246,6 +245,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         supportsSpeechStyle: false,
       },
     ],
+    baseUrl: "",
   },
 };
 
