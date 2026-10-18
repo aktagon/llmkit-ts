@@ -519,6 +519,8 @@ function newVideoTraceID(): string {
 //     "in_progress", "outputs": {"video_url"}}.
 //   - VideoQwen: {"output": {"task_status": "SUCCEEDED"|"FAILED"|"CANCELED"|
 //     "PENDING"|"RUNNING"|"UNKNOWN", "video_url"}}.
+//   - VideoOpenRouter: {"status": "completed"|"failed"|"cancelled"|"expired"|
+//     "pending"|"in_progress", "unsigned_urls": [url], "error": "..."}.
 function parseVideoPoll(
   vgCfg: VideoGenDef,
   raw: unknown,
@@ -538,6 +540,23 @@ function parseVideoPoll(
           throw new APIError(0, `video generation ${status}`, false);
         default:
           return null; // queued, in_progress (or any non-terminal status)
+      }
+    }
+    case "VideoOpenRouter": {
+      const root = raw as { status?: unknown; error?: unknown };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "completed":
+          return videoResultFromOpenRouter(vgCfg, raw);
+        case "failed":
+        case "cancelled":
+        case "expired": {
+          const msg =
+            typeof root.error === "string" && root.error ? root.error : status;
+          throw new APIError(0, `video generation ${status}: ${msg}`, false);
+        }
+        default:
+          return null; // pending, in_progress (or any non-terminal status)
       }
     }
     case "VideoQwen": {
@@ -836,6 +855,22 @@ function videoResultFromPixVerse(
   }
   const url = typeof resp.url === "string" ? resp.url : "";
   return buildVideoResponse([{ mimeType: mime, url }]);
+}
+
+// videoResultFromOpenRouter extracts the finished video from an OpenRouter
+// poll response. OpenRouter uses download delivery: unsigned_urls[0] is an
+// absolute content URL that needs the API key, so it goes into VideoData.url
+// for the download step. The signed urls[] array is a secret and is never read.
+function videoResultFromOpenRouter(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const mime = videoFallbackMime(vgCfg);
+  const urls = (raw as { unsigned_urls?: unknown }).unsigned_urls;
+  if (!Array.isArray(urls) || typeof urls[0] !== "string") {
+    return buildVideoResponse([]);
+  }
+  return buildVideoResponse([{ mimeType: mime, url: urls[0] }]);
 }
 
 // videoResultFromTogether extracts the finished video from a Together poll
