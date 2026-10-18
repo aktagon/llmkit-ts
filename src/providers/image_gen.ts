@@ -160,6 +160,22 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     ],
     models: [
       {
+        modelId: "bytedance-seed/seedream-4.5",
+        label: "Seedream 4.5",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+        supportsImageInput: false,
+      },
+      {
+        modelId: "bytedance-seed/seedream-5-0-flash",
+        label: "Seedream 5.0 Flash",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+        supportsImageInput: false,
+      },
+      {
         modelId: "google/gemini-2.5-flash-image",
         label: "Nano Banana (Gemini 2.5 Flash Image)",
         aspectRatios: [],
@@ -192,6 +208,14 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         supportsImageInput: false,
       },
       {
+        modelId: "meta/muse-image",
+        label: "Muse Image",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+        supportsImageInput: false,
+      },
+      {
         modelId: "openai/gpt-5-image",
         label: "GPT-5 Image",
         aspectRatios: [],
@@ -210,6 +234,30 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
       {
         modelId: "openai/gpt-5.4-image-2",
         label: "GPT-5.4 Image 2",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+        supportsImageInput: false,
+      },
+      {
+        modelId: "openai/gpt-image-2",
+        label: "GPT Image 2",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+        supportsImageInput: false,
+      },
+      {
+        modelId: "openai/gpt-image-2.5-sunburst",
+        label: "GPT Image 2.5 Sunburst",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+        supportsImageInput: false,
+      },
+      {
+        modelId: "tencent/hy-image-v3.5-preview",
+        label: "Hy Image 3.5 Preview",
         aspectRatios: [],
         imageSizes: [],
         maxInputImages: 0,
