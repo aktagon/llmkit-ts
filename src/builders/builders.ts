@@ -257,6 +257,10 @@ export class Image {
   constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Image { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  /**
+   * Sets the output aspect ratio, such as "16:9". A ratio the model does
+   * not list is rejected before send. On a video, only OpenRouter sends it.
+   */
   aspectRatio(r: string): Image { const out = clone(this); out._aspectRatio = r; return out; }
   background(s: string): Image { const out = clone(this); out._background = s; return out; }
   count(n: number): Image { const out = clone(this); out._count = n; return out; }
@@ -371,11 +375,14 @@ export class Video {
   /** @internal */ client: Client;
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _referenceImages: MediaRef[] = [];
+  /** @internal */ _aspectRatio: string = "";
+  /** @internal */ _duration: number = 0;
   /** @internal */ _parts: Part[] = [];
   /** @internal */ _lastFrame?: MediaRef;
   /** @internal */ _model: string = "";
   /** @internal */ _outputURI: string = "";
   /** @internal */ _raw: boolean = false;
+  /** @internal */ _resolution: string = "";
 
   constructor(client: Client) { this.client = client; }
 
@@ -385,6 +392,16 @@ export class Video {
    * product the video keeps. Add at most 3, without Image or LastFrame.
    */
   addReferenceImage(mime: string, data: Uint8Array): Video { const out = clone(this); out._referenceImages = [...out._referenceImages, { mimeType: mime, bytes: data }]; return out; }  // ordered
+  /**
+   * Sets the output aspect ratio, such as "16:9". A ratio the model does
+   * not list is rejected before send. On a video, only OpenRouter sends it.
+   */
+  aspectRatio(r: string): Video { const out = clone(this); out._aspectRatio = r; return out; }
+  /**
+   * Sets the video length in whole seconds; 0 means the provider default.
+   * Only OpenRouter sends it. Above the model's maximum, it is rejected before send.
+   */
+  duration(seconds: number): Video { const out = clone(this); out._duration = seconds; return out; }
   image(mime: string, data: Uint8Array): Video { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   /**
    * Sets the final frame a video ends on. Send it with a first frame (Image)
@@ -394,6 +411,11 @@ export class Video {
   model(name: string): Video { const out = clone(this); out._model = name; return out; }
   outputURI(uri: string): Video { const out = clone(this); out._outputURI = uri; return out; }
   raw(): Video { const out = clone(this); out._raw = true; return out; }
+  /**
+   * Sets the video resolution, such as "720p". Only OpenRouter sends it.
+   * A resolution the model does not list is rejected before send.
+   */
+  resolution(r: string): Video { const out = clone(this); out._resolution = r; return out; }
   text(s: string): Video { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   async submit(msg: string): Promise<VideoHandle> {
     return videoSubmit(this, msg);
