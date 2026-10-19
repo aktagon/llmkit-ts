@@ -23,6 +23,8 @@ export interface SpeechGenDef {
   wireShape: SpeechWireShape;
   // audioEncoding selects the response decoder: "base64Envelope" | "rawBody" | "base64InteractionSteps" | "hexEnvelope" (ADR-051).
   audioEncoding: string;
+  // requestedOutputFormat is the format token the body sends (mp3, LINEAR16); "" = the body sends no format (HANDOFF-098).
+  requestedOutputFormat: string;
   // genEndpoint is an override; empty = use provider main endpoint.
   genEndpoint: string;
   models: SpeechModelDef[];
@@ -34,6 +36,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
   google: {
     wireShape: "SpeechGemini",
     audioEncoding: "base64InteractionSteps",
+    requestedOutputFormat: "",
     genEndpoint: "/v1beta/interactions",
     models: [
       {
@@ -66,6 +69,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
   grok: {
     wireShape: "SpeechXAI",
     audioEncoding: "rawBody",
+    requestedOutputFormat: "mp3",
     genEndpoint: "/v1/tts",
     models: [
       {
@@ -82,6 +86,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
   inworld: {
     wireShape: "SpeechInworld",
     audioEncoding: "base64Envelope",
+    requestedOutputFormat: "LINEAR16",
     genEndpoint: "/tts/v1/voice",
     models: [
       {
@@ -114,6 +119,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
   minimax: {
     wireShape: "SpeechMiniMax",
     audioEncoding: "hexEnvelope",
+    requestedOutputFormat: "",
     genEndpoint: "/v1/t2a_v2",
     models: [
       {
@@ -154,6 +160,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
   openai: {
     wireShape: "SpeechOpenAI",
     audioEncoding: "rawBody",
+    requestedOutputFormat: "mp3",
     genEndpoint: "/v1/audio/speech",
     models: [
       {
@@ -186,6 +193,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
   openrouter: {
     wireShape: "SpeechOpenAI",
     audioEncoding: "rawBody",
+    requestedOutputFormat: "mp3",
     genEndpoint: "/v1/audio/speech",
     models: [
       {
