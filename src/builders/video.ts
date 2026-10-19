@@ -260,7 +260,15 @@ export async function videoSubmit(
   });
   const imageCount = parts.filter((p) => "image" in p).length;
   validateVideoFrames(model, imageCount, b._lastFrame, b._referenceImages);
-  validateVideoOptions(provider.name, vgCfg, model, b._duration, b._aspectRatio, b._resolution);
+  validateVideoOptions(
+    provider.name,
+    vgCfg,
+    model,
+    b._duration,
+    b._aspectRatio,
+    b._resolution,
+    b._referenceImages.length,
+  );
   // ADR-096: the carried inputs select the submit request; a config with no
   // such variant cannot send it.
   const variant = selectRequestVariant(
@@ -388,8 +396,7 @@ async function dispatchVideoSubmit(
     // Veo (Gemini API) and Vertex Veo share the submit body: the model is in
     // the submit PATH (:predictLongRunning), not the body — so the body has no
     // model field. The prompt nests under instances[]; the optional parameters
-    // object ({aspectRatio, resolution} for Gemini; {sampleCount, storageUri}
-    // for Vertex) is omitted on the prompt-only hot path.
+    // object is omitted on the prompt-only hot path.
     const instance: Record<string, unknown> = { prompt: joinPromptText(parts) };
     // First frame (BUG-089): the seed rides at instances[0].image as raw
     // base64 + mimeType (no data: prefix), per the Vertex Veo reference (read
@@ -402,13 +409,22 @@ async function dispatchVideoSubmit(
     // Gemini API rejects the string "8" its docs show).
     if (lastFrame) instance.lastFrame = veoImage(lastFrame);
     body = { instances: [instance] };
+    const params: Record<string, unknown> = {};
     if (referenceImages.length > 0) {
       instance.referenceImages = referenceImages.map((img) => ({
         image: veoImage(img),
         referenceType: "asset",
       }));
-      body.parameters = { durationSeconds: 8 };
+      params.durationSeconds = 8;
     }
+    // Video options (HANDOFF-100): parameters.durationSeconds (a JSON number),
+    // aspectRatio and resolution, each only when set. With reference images
+    // validateVideoOptions allows only 8, so a set duration matches the
+    // forced 8.
+    if (durationSeconds > 0) params.durationSeconds = durationSeconds;
+    if (aspectRatio) params.aspectRatio = aspectRatio;
+    if (resolution) params.resolution = resolution;
+    if (Object.keys(params).length > 0) body.parameters = params;
   } else if (vgCfg.wireShape === "VideoBedrock") {
     // Nova Reel carries the model in the BODY (modelId, unlike the Converse
     // chat path) and writes the mp4 to the caller's S3 bucket. The optional
@@ -435,13 +451,7 @@ async function dispatchVideoSubmit(
       if (lastFrame) frames.push(openRouterFrame(lastFrame, "last_frame"));
       body.frame_images = frames;
     }
-    // Video options (HANDOFF-097): body-root fields, each sent only when set,
-    // so the prompt-only body stays {model, prompt}. duration is a JSON
-    // integer; validateVideoOptions has already checked each value against
-    // the model.
-    if (durationSeconds > 0) body.duration = durationSeconds;
-    if (aspectRatio) body.aspect_ratio = aspectRatio;
-    if (resolution) body.resolution = resolution;
+    setRootVideoOptions(body, durationSeconds, aspectRatio, resolution);
   } else if (
     vgCfg.wireShape === "VideoGrok" ||
     vgCfg.wireShape === "VideoZhipu" ||
@@ -457,6 +467,11 @@ async function dispatchVideoSubmit(
     // existing video-grok golden is unchanged.
     const seed = videoSeedImageURL(parts);
     if (seed) body.image = { url: seed };
+    // Only VideoGrok in this arm sends the options (HANDOFF-100); the other
+    // shapes reject a set option in validateVideoOptions.
+    if (vgCfg.wireShape === "VideoGrok") {
+      setRootVideoOptions(body, durationSeconds, aspectRatio, resolution);
+    }
   } else {
     const _exhaustive: never = vgCfg.wireShape;
     throw new APIError(
@@ -1253,17 +1268,46 @@ function validateVideoFrames(
   }
 }
 
+// setRootVideoOptions sets the body-root duration, aspect_ratio and
+// resolution of the VideoOpenRouter and VideoGrok bodies (HANDOFF-097,
+// HANDOFF-100), each only when set, so the prompt-only body stays
+// {model, prompt}. duration is a JSON integer; validateVideoOptions has
+// already checked each value against the model.
+function setRootVideoOptions(
+  body: Record<string, unknown>,
+  durationSeconds: number,
+  aspectRatio: string,
+  resolution: string,
+): void {
+  if (durationSeconds > 0) body.duration = durationSeconds;
+  if (aspectRatio) body.aspect_ratio = aspectRatio;
+  if (resolution) body.resolution = resolution;
+}
+
+// videoShapeSendsOptions reports whether a video wire shape has body fields
+// for duration, aspect ratio and resolution (HANDOFF-097, HANDOFF-100).
+function videoShapeSendsOptions(shape: VideoGenDef["wireShape"]): boolean {
+  return (
+    shape === "VideoOpenRouter" ||
+    shape === "VideoGrok" ||
+    shape === "VideoVeo" ||
+    shape === "VideoVertexVeo"
+  );
+}
+
 // validateVideoOptions rejects a duration, aspect ratio or resolution the
 // provider or the model cannot take, before any HTTP call (HANDOFF-097). Same
 // rules, order and messages as go/video.go validateVideoOptions:
 //
-//  1. A set option on a wire shape other than VideoOpenRouter: that shape has
-//     no body field for it. The first set option is named, in the order
+//  1. A set option on a wire shape with no body field for it (see
+//     videoShapeSendsOptions). The first set option is named, in the order
 //     duration, aspect_ratio, resolution.
 //  2. A negative duration.
 //  3. A duration above the model's maxDurationSeconds (0 = no known limit).
-//  4. A resolution the model does not list (empty list = no fixed set).
-//  5. An aspect ratio the model does not list (empty list = no fixed set).
+//  4. A duration other than 8 with reference images: Veo forces 8 seconds
+//     (ai.google.dev/gemini-api/docs/veo, read 2026-10-19; HANDOFF-100).
+//  5. A resolution the model does not list (empty list = no fixed set).
+//  6. An aspect ratio the model does not list (empty list = no fixed set).
 function validateVideoOptions(
   providerName: string,
   vgCfg: VideoGenDef,
@@ -1271,8 +1315,9 @@ function validateVideoOptions(
   durationSeconds: number,
   aspectRatio: string,
   resolution: string,
+  referenceImageCount: number,
 ): void {
-  if (vgCfg.wireShape !== "VideoOpenRouter") {
+  if (!videoShapeSendsOptions(vgCfg.wireShape)) {
     const opts: [string, boolean][] = [
       ["duration", durationSeconds !== 0],
       ["aspect_ratio", aspectRatio !== ""],
@@ -1297,6 +1342,9 @@ function validateVideoOptions(
       "duration",
       `${model.modelId} takes at most ${model.maxDurationSeconds} seconds, got ${durationSeconds}`,
     );
+  }
+  if (durationSeconds > 0 && referenceImageCount > 0 && durationSeconds !== 8) {
+    throw new ValidationError("duration", `reference images take 8 seconds, got ${durationSeconds}`);
   }
   if (resolution && model.resolutions.length > 0 && !model.resolutions.includes(resolution)) {
     throw new ValidationError("resolution", `${model.modelId} does not support resolution ${resolution}`);
