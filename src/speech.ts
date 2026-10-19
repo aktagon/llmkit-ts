@@ -219,8 +219,9 @@ function validateSpeechInputs(request: SpeechRequest): void {
 // validateSpeechModel checks the request against what the config's body can
 // carry and the model's stated speaker and style facts (BUG-091). An unknown
 // model fact sends the request; only a stated false or a stated speaker count
-// that does not match blocks it (decision 009, HANDOFF-099).
-function validateSpeechModel(
+// that does not match blocks it (decision 009, HANDOFF-099). Exported for
+// tests only; the package barrel does not re-export it.
+export function validateSpeechModel(
   request: SpeechRequest,
   cfg: SpeechGenDef,
   model: SpeechModelDef,
