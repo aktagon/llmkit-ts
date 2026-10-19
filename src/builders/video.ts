@@ -328,8 +328,8 @@ export async function videoSubmit(
 // name — the wire shape is the single discriminator) and returns the
 // provider-assigned poll handle id.
 //
-//   - VideoGrok (xAI), VideoZhipu (CogVideoX), and VideoTogether share the
-//     simple {model, prompt} submit body. They differ only in which response
+//   - VideoGrok (xAI), VideoZhipu (CogVideoX), VideoTogether, VideoMinimax and
+//     VideoVidu share the simple {model, prompt} submit body. They differ only in which response
 //     field carries the poll handle: Grok returns it as request_id, Zhipu and
 //     Together as the top-level id.
 //   - VideoQwen (DashScope) nests the prompt under an `input` object
@@ -442,7 +442,13 @@ async function dispatchVideoSubmit(
     if (durationSeconds > 0) body.duration = durationSeconds;
     if (aspectRatio) body.aspect_ratio = aspectRatio;
     if (resolution) body.resolution = resolution;
-  } else {
+  } else if (
+    vgCfg.wireShape === "VideoGrok" ||
+    vgCfg.wireShape === "VideoZhipu" ||
+    vgCfg.wireShape === "VideoTogether" ||
+    vgCfg.wireShape === "VideoMinimax" ||
+    vgCfg.wireShape === "VideoVidu"
+  ) {
     body = { model, prompt: joinPromptText(parts) };
     // Image-to-video (BUG-010): when a seed frame is present (reachable in
     // this arm only for grok-imagine-video; Veo has its own arm above),
@@ -451,6 +457,13 @@ async function dispatchVideoSubmit(
     // existing video-grok golden is unchanged.
     const seed = videoSeedImageURL(parts);
     if (seed) body.image = { url: seed };
+  } else {
+    const _exhaustive: never = vgCfg.wireShape;
+    throw new APIError(
+      0,
+      `video submit: unsupported wire shape ${String(_exhaustive)}`,
+      false,
+    );
   }
   // {model} in the submit endpoint is substituted with the per-call model
   // (Veo's :predictLongRunning path); a no-op for providers that carry the
