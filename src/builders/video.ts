@@ -260,6 +260,7 @@ export async function videoSubmit(
   });
   const imageCount = parts.filter((p) => "image" in p).length;
   validateVideoFrames(model, imageCount, b._lastFrame, b._referenceImages);
+  validateVideoOptions(provider.name, vgCfg, model, b._duration, b._aspectRatio, b._resolution);
   // ADR-096: the carried inputs select the submit request; a config with no
   // such variant cannot send it.
   const variant = selectRequestVariant(
@@ -304,6 +305,9 @@ export async function videoSubmit(
       parts,
       b._lastFrame,
       b._referenceImages,
+      b._duration,
+      b._aspectRatio,
+      b._resolution,
     );
     firePost(b._middleware as MiddlewareFn[], {
       ...baseEvent,
@@ -350,6 +354,9 @@ async function dispatchVideoSubmit(
   parts: Part[],
   lastFrame: MediaRef | undefined,
   referenceImages: MediaRef[],
+  durationSeconds: number,
+  aspectRatio: string,
+  resolution: string,
 ): Promise<string> {
   // Submit endpoint is the selected request variant's (ADR-096), resolved
   // against the config-declared base (Option D); handle id read from the config-declared dotted path (OQ7).
@@ -428,6 +435,13 @@ async function dispatchVideoSubmit(
       if (lastFrame) frames.push(openRouterFrame(lastFrame, "last_frame"));
       body.frame_images = frames;
     }
+    // Video options (HANDOFF-097): body-root fields, each sent only when set,
+    // so the prompt-only body stays {model, prompt}. duration is a JSON
+    // integer; validateVideoOptions has already checked each value against
+    // the model.
+    if (durationSeconds > 0) body.duration = durationSeconds;
+    if (aspectRatio) body.aspect_ratio = aspectRatio;
+    if (resolution) body.resolution = resolution;
   } else {
     body = { model, prompt: joinPromptText(parts) };
     // Image-to-video (BUG-010): when a seed frame is present (reachable in
@@ -1223,6 +1237,62 @@ function validateVideoFrames(
   }
   if (lastFrame && imageCount === 0) {
     throw new ValidationError("last_frame", "requires a first frame");
+  }
+}
+
+// validateVideoOptions rejects a duration, aspect ratio or resolution the
+// provider or the model cannot take, before any HTTP call (HANDOFF-097). Same
+// rules, order and messages as go/video.go validateVideoOptions:
+//
+//  1. A set option on a wire shape other than VideoOpenRouter: that shape has
+//     no body field for it. The first set option is named, in the order
+//     duration, aspect_ratio, resolution.
+//  2. A negative duration.
+//  3. A duration above the model's maxDurationSeconds (0 = no known limit).
+//  4. A resolution the model does not list (empty list = no fixed set).
+//  5. An aspect ratio the model does not list (empty list = no fixed set).
+function validateVideoOptions(
+  providerName: string,
+  vgCfg: VideoGenDef,
+  model: VideoModelDef,
+  durationSeconds: number,
+  aspectRatio: string,
+  resolution: string,
+): void {
+  if (vgCfg.wireShape !== "VideoOpenRouter") {
+    const opts: [string, boolean][] = [
+      ["duration", durationSeconds !== 0],
+      ["aspect_ratio", aspectRatio !== ""],
+      ["resolution", resolution !== ""],
+    ];
+    for (const [field, set] of opts) {
+      if (set) {
+        throw new ValidationError(field, `${providerName} video does not send ${field}`);
+      }
+    }
+    return;
+  }
+  if (durationSeconds < 0) {
+    throw new ValidationError("duration", "must be positive");
+  }
+  if (
+    durationSeconds > 0 &&
+    model.maxDurationSeconds > 0 &&
+    durationSeconds > model.maxDurationSeconds
+  ) {
+    throw new ValidationError(
+      "duration",
+      `${model.modelId} takes at most ${model.maxDurationSeconds} seconds, got ${durationSeconds}`,
+    );
+  }
+  if (resolution && model.resolutions.length > 0 && !model.resolutions.includes(resolution)) {
+    throw new ValidationError("resolution", `${model.modelId} does not support resolution ${resolution}`);
+  }
+  if (aspectRatio && model.aspectRatios.length > 0 && !model.aspectRatios.includes(aspectRatio)) {
+    throw new ValidationError(
+      "aspect_ratio",
+      `${model.modelId} does not support aspect ratio ${aspectRatio}`,
+    );
   }
 }
 
