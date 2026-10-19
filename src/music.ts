@@ -10,6 +10,7 @@ import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
   type MusicGenDef,
   type MusicModelDef,
+  type MusicWireShape,
   musicGenConfig,
 } from "./providers/music_gen.ts";
 import { APIError, ValidationError } from "./errors.ts";
@@ -199,10 +200,13 @@ function dispatchMusicHTTP(
       const body = buildMinimaxMusicBody(parts, model);
       return { url: baseUrl + mgCfg.genEndpoint, body };
     }
-    default: {
-      // MusicGenerateContent (Gemini).
+    case "MusicGenerateContent": {
       const body = buildGeminiMusicBody(parts);
       return { url: buildMusicURL(provider, cfg, mgCfg, model), body };
+    }
+    default: {
+      const _exhaustive: never = mgCfg.wireShape;
+      throw new APIError(0, `music: unsupported wire shape ${String(_exhaustive)}`, false);
     }
   }
 }
@@ -324,8 +328,8 @@ function findMusicModel(
 // parseMusicResponse decodes the audio payloads per wire shape. Each shape's
 // response diverges enough (predictions[] vs candidates[] vs data.audio,
 // base64 vs hex) that a switch is clearer than a generic walker.
-function parseMusicResponse(
-  wireShape: string,
+export function parseMusicResponse(
+  wireShape: MusicWireShape,
   fallbackMime: string,
   raw: unknown,
 ): MusicResponse {
@@ -334,8 +338,12 @@ function parseMusicResponse(
       return parseVertexMusicResponse(raw, fallbackMime);
     case "MusicMinimax":
       return parseMinimaxMusicResponse(raw, fallbackMime);
-    default:
+    case "MusicGenerateContent":
       return parseGeminiMusicResponse(raw, fallbackMime);
+    default: {
+      const _exhaustive: never = wireShape;
+      throw new APIError(0, `music: unsupported wire shape ${String(_exhaustive)}`, false);
+    }
   }
 }
 
