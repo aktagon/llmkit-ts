@@ -80,7 +80,7 @@ export async function generateSpeech(
       `${request.model} is not a known speech-generation model for ${provider.name}`,
     );
   }
-  validateSpeechModel(request, model);
+  validateSpeechModel(request, sgCfg, model);
 
   const baseEvent: Event = {
     op: "speech_generation",
@@ -216,18 +216,24 @@ function validateSpeechInputs(request: SpeechRequest): void {
   }
 }
 
-// validateSpeechModel checks the request against the model's speaker and
-// style facts (BUG-091).
-function validateSpeechModel(request: SpeechRequest, model: SpeechModelDef): void {
+// validateSpeechModel checks the request against what the config's body can
+// carry and the model's stated speaker and style facts (BUG-091). An unknown
+// model fact sends the request; only a stated false or a stated speaker count
+// that does not match blocks it (decision 009, HANDOFF-099).
+function validateSpeechModel(
+  request: SpeechRequest,
+  cfg: SpeechGenDef,
+  model: SpeechModelDef,
+): void {
   const speakers = request.speakers ?? [];
   if (speakers.length > 0) {
-    if (model.maxSpeakers === 0) {
+    if (!cfg.multiSpeaker || model.maxSpeakers === 1) {
       throw new ValidationError(
         "speakers",
         `${model.modelId} does not support multiple speakers`,
       );
     }
-    if (speakers.length !== model.maxSpeakers) {
+    if (model.maxSpeakers !== undefined && speakers.length !== model.maxSpeakers) {
       throw new ValidationError(
         "speakers",
         `exactly ${model.maxSpeakers} speakers are required, got ${speakers.length}`,
@@ -235,7 +241,7 @@ function validateSpeechModel(request: SpeechRequest, model: SpeechModelDef): voi
     }
   }
   const styled = !!request.style || (request.lines ?? []).some((l) => !!l.style);
-  if (!model.supportsSpeechStyle && styled) {
+  if (styled && (!cfg.carriesSpeechStyle || model.supportsSpeechStyle === false)) {
     throw new ValidationError("style", `${model.modelId} does not support a speech style`);
   }
 }
