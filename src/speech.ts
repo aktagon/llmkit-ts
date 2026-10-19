@@ -3,10 +3,10 @@
 // Pre-flight validation (model + text or lines required; voice or speakers;
 // provider supports speech; model known; speakers and style the model takes)
 // runs before any HTTP call. Voices are free-form: there is no catalogue.
-// Four wire shapes: SpeechInworld (base64 audio at audioContent),
+// Five wire shapes: SpeechInworld (base64 audio at audioContent),
 // SpeechOpenAI (raw audio body), SpeechGemini (Interactions API, base64
-// audio in steps[]) and SpeechMiniMax (hex audio at data.audio). Sync, single
-// AudioData.
+// audio in steps[]), SpeechMiniMax (hex audio at data.audio) and SpeechXAI
+// (raw audio body). Sync, single AudioData.
 
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
@@ -143,7 +143,8 @@ export async function generateSpeech(
 // name). SpeechInworld is a flat-JSON POST whose response carries base64 audio;
 // SpeechOpenAI is a flat-JSON POST whose response body is the raw audio bytes;
 // SpeechGemini is an Interactions API POST whose audio sits in steps[];
-// SpeechMiniMax is a flat-JSON POST whose reply carries hex audio at data.audio.
+// SpeechMiniMax is a flat-JSON POST whose reply carries hex audio at data.audio;
+// SpeechXAI is a flat-JSON POST whose response body is the raw audio bytes.
 // Query-param-key providers (Google) carry the key in the URL, as on every
 // other Google call.
 function dispatchSpeechHTTP(
@@ -169,6 +170,9 @@ function dispatchSpeechHTTP(
       break;
     case "SpeechMiniMax":
       body = buildMiniMaxSpeechBody(request);
+      break;
+    case "SpeechXAI":
+      body = buildXAISpeechBody(request);
       break;
     default:
       body = buildInworldSpeechBody(request);
@@ -317,6 +321,19 @@ function buildMiniMaxSpeechBody(request: SpeechRequest): Record<string, unknown>
   };
 }
 
+// buildXAISpeechBody assembles the xAI /v1/tts request body (HANDOFF-095).
+// The endpoint has no model field. language is always "auto" (llmkit has no
+// language option), and with_timestamps is never sent: it switches the reply
+// from raw audio bytes to JSON.
+function buildXAISpeechBody(request: SpeechRequest): Record<string, unknown> {
+  return {
+    text: request.text,
+    voice_id: request.voice,
+    language: "auto",
+    output_format: { codec: "mp3" },
+  };
+}
+
 function findSpeechModel(
   cfg: SpeechGenDef,
   modelId: string,
@@ -325,7 +342,7 @@ function findSpeechModel(
 }
 
 // parseSpeechResponse decodes the synthesized audio per the wire shape's audio
-// response encoding (ADR-051 OAA-002). "rawBody" (OpenAI) takes the response
+// response encoding (ADR-051 OAA-002). "rawBody" (OpenAI, xAI) takes the response
 // body verbatim as the audio bytes; "base64Envelope" (Inworld) parses a JSON
 // envelope and base64-decodes the audio field; "hexEnvelope" (MiniMax)
 // hex-decodes data.audio and raises on a nonzero base_resp. A 2xx body that does not parse
