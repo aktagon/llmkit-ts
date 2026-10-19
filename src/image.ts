@@ -292,6 +292,13 @@ export async function generateImage(
         "safety_settings",
         `not supported by ${provider.name}`,
       );
+  } else if (shape === "JSONPredict" || shape === "") {
+    // No runtime sends JSONPredict (Vertex Imagen removed, BUG-101); "" is the
+    // shape of a video variant, never an image one.
+    throw new Error(`image: unsupported request shape ${shape}`);
+  } else {
+    const _exhaustive: never = shape;
+    throw new Error(`image: unsupported request shape ${String(_exhaustive)}`);
   }
 
   const baseEvent: Event = {
@@ -388,14 +395,22 @@ export async function generateImage(
           imgCfg.usageReasoningPath,
         );
         break;
-      default:
-        // GoogleParts: candidates[].content.parts inline data.
+      case "GoogleParts":
+        // candidates[].content.parts inline data.
         result = parseImageResponse(
           raw,
           imgCfg.usageInputPath,
           imgCfg.usageOutputPath,
           imgCfg.usageReasoningPath,
         );
+        break;
+      case "VertexPredictions":
+        // No runtime parses VertexPredictions (Vertex Imagen removed, BUG-101).
+        throw new APIError(0, `image: unsupported response shape ${imgCfg.responseShape}`, false);
+      default: {
+        const _exhaustive: never = imgCfg.responseShape;
+        throw new APIError(0, `image: unsupported response shape ${String(_exhaustive)}`, false);
+      }
     }
     if (options.raw) result.raw = raw;
     firePost(options.middleware, {

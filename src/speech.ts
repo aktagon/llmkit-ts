@@ -163,7 +163,7 @@ function dispatchSpeechHTTP(
   let body: Record<string, unknown>;
   switch (sgCfg.wireShape) {
     case "SpeechOpenAI":
-      body = buildOpenAISpeechBody(request);
+      body = buildOpenAISpeechBody(request, sgCfg.requestedOutputFormat);
       break;
     case "SpeechGemini":
       body = buildGeminiSpeechBody(request);
@@ -172,10 +172,15 @@ function dispatchSpeechHTTP(
       body = buildMiniMaxSpeechBody(request);
       break;
     case "SpeechXAI":
-      body = buildXAISpeechBody(request);
+      body = buildXAISpeechBody(request, sgCfg.requestedOutputFormat);
       break;
-    default:
-      body = buildInworldSpeechBody(request);
+    case "SpeechInworld":
+      body = buildInworldSpeechBody(request, sgCfg.requestedOutputFormat);
+      break;
+    default: {
+      const _exhaustive: never = sgCfg.wireShape;
+      throw new APIError(0, `speech: unsupported wire shape ${String(_exhaustive)}`, false);
+    }
   }
   return { url, body };
 }
@@ -284,33 +289,35 @@ function buildGeminiSpeechBody(
 }
 
 // buildOpenAISpeechBody assembles the OpenAI /v1/audio/speech request body.
-// Slice 1 fixes response_format=mp3 (KISS); format selection is a later slice.
+// response_format is the config's requested output format (HANDOFF-098).
 // A style is sent as instructions (BUG-091), which gpt-4o-mini-tts accepts.
 function buildOpenAISpeechBody(
   request: SpeechRequest,
+  outputFormat: string,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: request.model,
     input: request.text,
     voice: request.voice,
-    response_format: "mp3",
+    response_format: outputFormat,
   };
   if (request.style) body.instructions = request.style;
   return body;
 }
 
 // buildInworldSpeechBody assembles the Inworld /tts/v1/voice request body.
-// Slice 1 sends a fixed audioConfig (LINEAR16/22050 -> WAV) and BALANCED
-// delivery; format/sample-rate selection is a later slice (ADR-049 OQ-5).
+// audioEncoding is the config's requested output format (HANDOFF-098); the
+// sample rate (22050 -> WAV) and BALANCED delivery are fixed (ADR-049 OQ-5).
 function buildInworldSpeechBody(
   request: SpeechRequest,
+  outputFormat: string,
 ): Record<string, unknown> {
   return {
     text: request.text,
     voiceId: request.voice,
     modelId: request.model,
     audioConfig: {
-      audioEncoding: "LINEAR16",
+      audioEncoding: outputFormat,
       sampleRateHertz: 22050,
     },
     deliveryMode: "BALANCED",
@@ -332,12 +339,16 @@ function buildMiniMaxSpeechBody(request: SpeechRequest): Record<string, unknown>
 // The endpoint has no model field. language is always "auto" (llmkit has no
 // language option), and with_timestamps is never sent: it switches the reply
 // from raw audio bytes to JSON.
-function buildXAISpeechBody(request: SpeechRequest): Record<string, unknown> {
+// output_format.codec is the config's requested output format (HANDOFF-098).
+function buildXAISpeechBody(
+  request: SpeechRequest,
+  outputFormat: string,
+): Record<string, unknown> {
   return {
     text: request.text,
     voice_id: request.voice,
     language: "auto",
-    output_format: { codec: "mp3" },
+    output_format: { codec: outputFormat },
   };
 }
 
@@ -367,7 +378,7 @@ function parseSpeechResponse(
     audio = parseInteractionStepsAudio(providerName, fallbackMime, body);
   } else if (audioEncoding === "hexEnvelope") {
     audio = parseHexEnvelopeAudio(providerName, fallbackMime, body);
-  } else {
+  } else if (audioEncoding === "base64Envelope") {
     // base64Envelope: {"audioContent": "<base64>", "usage": {...}}.
     let root: { audioContent?: unknown };
     try {
@@ -400,6 +411,8 @@ function parseSpeechResponse(
         false,
       );
     }
+  } else {
+    throw new APIError(0, `speech: unsupported audio encoding ${audioEncoding}`, false);
   }
   return {
     audio,
