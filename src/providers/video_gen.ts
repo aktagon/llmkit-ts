@@ -247,7 +247,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["1080p", "480p", "4K", "720p"],
-        aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"],
+        aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16", "9:21"],
         maxInputImages: 0,
       },
       {
@@ -259,7 +259,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["480p", "720p"],
-        aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"],
+        aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16", "9:21"],
         maxInputImages: 0,
       },
       {
