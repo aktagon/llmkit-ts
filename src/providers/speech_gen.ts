@@ -5,7 +5,7 @@ import type { ProviderName } from "./providers.ts";
 
 // Speech wire-shape discriminators. Each fully determines the request
 // body and the response audio path.
-export type SpeechWireShape = "SpeechInworld" | "SpeechOpenAI" | "SpeechGemini" | "SpeechMiniMax";
+export type SpeechWireShape = "SpeechInworld" | "SpeechOpenAI" | "SpeechGemini" | "SpeechMiniMax" | "SpeechXAI";
 
 export interface SpeechModelDef {
   modelId: string;
@@ -59,6 +59,22 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         sampleRateHz: 24000,
         maxSpeakers: 2,
         supportsSpeechStyle: true,
+      },
+    ],
+    baseUrl: "",
+  },
+  grok: {
+    wireShape: "SpeechXAI",
+    audioEncoding: "rawBody",
+    genEndpoint: "/v1/tts",
+    models: [
+      {
+        modelId: "grok-tts",
+        label: "Grok TTS",
+        outputMime: "audio/mpeg",
+        sampleRateHz: 0,
+        maxSpeakers: 0,
+        supportsSpeechStyle: false,
       },
     ],
     baseUrl: "",
