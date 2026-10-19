@@ -13,10 +13,10 @@ export interface SpeechModelDef {
   outputMime: string;
   /** ADR-037 advisory fact (queryable, never gated); 0 when unverified. */
   sampleRateHz: number;
-  /** Speakers a multi-speaker request declares; 0 = one voice only (BUG-091). */
-  maxSpeakers: number;
-  /** Whether a style (style, addStyledLine) is sent to this model (BUG-091). */
-  supportsSpeechStyle: boolean;
+  /** Speakers the model takes (1 or 2); undefined = unknown, which sends (decision 009). */
+  maxSpeakers?: number;
+  /** Whether the provider accepts a style (style, addStyledLine); undefined = unknown, only false blocks (decision 009). */
+  supportsSpeechStyle?: boolean;
 }
 
 export interface SpeechGenDef {
@@ -28,6 +28,10 @@ export interface SpeechGenDef {
   models: SpeechModelDef[];
   // baseUrl is the speech API base when it differs from the chat base; "" = use chat base.
   baseUrl: string;
+  /** llmkit's body for this config can carry a style; false rejects every style (HANDOFF-099). */
+  carriesSpeechStyle: boolean;
+  /** The config has a multi-speaker body; false rejects every speaker request (HANDOFF-099). */
+  multiSpeaker: boolean;
 }
 
 const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
@@ -41,8 +45,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Gemini 3.1 Flash TTS Preview",
         outputMime: "audio/l16",
         sampleRateHz: 0,
-        maxSpeakers: 0,
-        supportsSpeechStyle: false,
       },
       {
         modelId: "gemini-3.8-flash-lite-tts",
@@ -62,6 +64,8 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
       },
     ],
     baseUrl: "",
+    carriesSpeechStyle: true,
+    multiSpeaker: true,
   },
   grok: {
     wireShape: "SpeechXAI",
@@ -73,11 +77,12 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Grok TTS",
         outputMime: "audio/mpeg",
         sampleRateHz: 24000,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
     ],
     baseUrl: "",
+    carriesSpeechStyle: false,
+    multiSpeaker: false,
   },
   inworld: {
     wireShape: "SpeechInworld",
@@ -89,7 +94,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Inworld TTS 1.5 Max",
         outputMime: "audio/wav",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: false,
       },
       {
@@ -97,7 +101,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Inworld TTS 1.5 Mini",
         outputMime: "audio/wav",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: false,
       },
       {
@@ -105,11 +108,12 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Inworld TTS 2",
         outputMime: "audio/wav",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
     ],
     baseUrl: "",
+    carriesSpeechStyle: false,
+    multiSpeaker: false,
   },
   minimax: {
     wireShape: "SpeechMiniMax",
@@ -121,7 +125,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "MiniMax Speech 2.6 HD",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -129,7 +132,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "MiniMax Speech 2.6 Turbo",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -137,7 +139,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "MiniMax Speech 2.8 HD",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -145,11 +146,12 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "MiniMax Speech 2.8 Turbo",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
     ],
     baseUrl: "https://api.minimax.io",
+    carriesSpeechStyle: false,
+    multiSpeaker: false,
   },
   openai: {
     wireShape: "SpeechOpenAI",
@@ -161,7 +163,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "GPT-4o mini TTS",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -169,7 +170,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "TTS 1",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: false,
       },
       {
@@ -177,11 +177,12 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "TTS 1 HD",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: false,
       },
     ],
     baseUrl: "",
+    carriesSpeechStyle: true,
+    multiSpeaker: false,
   },
   openrouter: {
     wireShape: "SpeechOpenAI",
@@ -217,7 +218,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Fish Audio Drama 3",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -225,7 +225,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Fish Audio S2.1 Pro",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -233,7 +232,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Gemini 3.1 Flash TTS Preview",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -241,7 +239,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Gemini 3.8 Flash Lite TTS",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -249,7 +246,6 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
         label: "Gemini 3.8 Flash TTS",
         outputMime: "audio/mpeg",
         sampleRateHz: 0,
-        maxSpeakers: 0,
         supportsSpeechStyle: true,
       },
       {
@@ -270,6 +266,8 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
       },
     ],
     baseUrl: "",
+    carriesSpeechStyle: false,
+    multiSpeaker: false,
   },
 };
 
