@@ -177,7 +177,7 @@ import { google } from "@aktagon/llmkit-ts/builders";
 
 const c = google(process.env.GOOGLE_API_KEY!);
 const img = await c.image
-  .model("gemini-3.1-flash-image-preview")
+  .model("gemini-nano-banana-2.1")
   .aspectRatio("16:9")
   .imageSize("2K")
   .generate("A nano banana dish, studio lighting");
@@ -189,7 +189,7 @@ For compositional editing, chain `.text(...)` and `.image(mime, bytes)` to inter
 
 ```ts
 await c.image
-  .model("gemini-3.1-flash-image-preview")
+  .model("gemini-nano-banana-2.1")
   .text("Person:")
   .image("image/png", personBytes)
   .text("Outfit:")
@@ -201,7 +201,7 @@ Aspect ratios and sizes validate against a per-model whitelist before the HTTP r
 
 | Provider | Model                          | Aspect ratios                                                                   | Sizes                               |
 | -------- | ------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------- |
-| Google   | Nano Banana 2 (Flash)          | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9, **1:4, 4:1, 1:8, 8:1**     | 512, 1K, 2K, 4K                     |
+| Google   | Nano Banana 2.1                | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9, **1:4, 4:1, 1:8, 8:1**     | 1K, 2K, 4K                          |
 | Google   | Nano Banana Pro                | 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9                             | 1K, 2K, 4K                          |
 | OpenAI   | gpt-image-2 / 1.5 / 1 / 1-mini | n/a (size only)                                                                 | any (e.g. `1024x1024`, `1536x1024`) |
 | xAI      | grok-imagine-image-quality     | 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 1:2, 2:1, 19.5:9, 9:19.5, 20:9, 9:20, auto | 1k, 2k                              |
