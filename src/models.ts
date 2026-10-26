@@ -7,6 +7,7 @@ import {
   compiledInModels,
   catalogueByProvider,
   ontologyCapabilities,
+  type CatalogueConfig,
 } from "./catalogue.ts";
 import type { Models, ScopedModels } from "./builders/catalogue.ts";
 import {
@@ -165,11 +166,7 @@ export async function catalogueRunList(
   let caught: unknown = null;
   try {
     for (;;) {
-      const reqUrl = appendCursor(
-        buildCatalogueUrl(scoped.target, pcfg, cfg.endpoint),
-        cfg.cursorParam,
-        cursor,
-      );
+      const reqUrl = listPageUrl(scoped.target, pcfg, cfg, cursor);
       const page = await fetchCataloguePage(
         reqUrl,
         scoped.target,
@@ -314,6 +311,23 @@ function parseSingleRecord(kind: string, body: string): ParsedModelRecord {
     default:
       throw new ErrModelsNotSupported();
   }
+}
+
+// The URL of one list page: the endpoint, the provider's fixed list query
+// (BUG-107: OpenRouter lists text-output models only without
+// output_modalities=all), then the cursor. Get-by-id never sends the list query.
+export function listPageUrl(
+  provider: Provider,
+  pcfg: ProviderSpec,
+  cfg: CatalogueConfig,
+  cursor: string,
+): string {
+  let reqUrl = buildCatalogueUrl(provider, pcfg, cfg.endpoint);
+  if (cfg.listQuery) {
+    const sep = reqUrl.includes("?") ? "&" : "?";
+    reqUrl = `${reqUrl}${sep}${cfg.listQuery}`;
+  }
+  return appendCursor(reqUrl, cfg.cursorParam, cursor);
 }
 
 // Splices the pagination cursor into the URL using the cursor query-param
