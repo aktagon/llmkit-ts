@@ -8,7 +8,7 @@ import { google, Client } from "../src/builders/index.ts";
 export async function main(c?: Client): Promise<void> {
   const client = c ?? google(process.env.GOOGLE_API_KEY ?? "k");
   const img = await client.image
-    .model("gemini-3.1-flash-image-preview")
+    .model("gemini-nano-banana-2.1")
     .aspectRatio("16:9")
     .imageSize("2K")
     .generate("A nano banana dish, studio lighting");
