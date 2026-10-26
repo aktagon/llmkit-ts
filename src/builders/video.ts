@@ -165,8 +165,8 @@ export class VideoHandle {
         let finalResult = vgCfg.fileEndpoint
           ? await resolveVideoFile(base, vgCfg, raw, headers, this.provider.timeoutMs)
           : result;
-        // Delivery dispatch (VID-005). Download-delivery providers (Veo)
-        // returned a temporary fetch URI in VideoData.url; GET it and fill
+        // Delivery dispatch (VID-005). Download-delivery providers
+        // (OpenRouter) returned a temporary fetch URI in VideoData.url; GET it and fill
         // VideoData.bytes (clearing url, per the source-XOR contract). Url-
         // and output-uri-delivery providers leave the url.
         if (vgCfg.outputDelivery === "DeliveryDownload") {
@@ -389,24 +389,19 @@ async function dispatchVideoSubmit(
       aspect_ratio: "16:9",
     };
     postHeaders = { ...headers, "Ai-trace-id": newVideoTraceID() };
-  } else if (
-    vgCfg.wireShape === "VideoVeo" ||
-    vgCfg.wireShape === "VideoVertexVeo"
-  ) {
-    // Veo (Gemini API) and Vertex Veo share the submit body: the model is in
-    // the submit PATH (:predictLongRunning), not the body — so the body has no
+  } else if (vgCfg.wireShape === "VideoVertexVeo") {
+    // Vertex Veo carries the model in the submit PATH (:predictLongRunning), not the body — so the body has no
     // model field. The prompt nests under instances[]; the optional parameters
     // object is omitted on the prompt-only hot path.
     const instance: Record<string, unknown> = { prompt: joinPromptText(parts) };
     // First frame (BUG-089): the seed rides at instances[0].image as raw
     // base64 + mimeType (no data: prefix), per the Vertex Veo reference (read
-    // 2026-10-15). The Gemini API shape is not yet live-verified.
+    // 2026-10-15).
     const veoSeed = videoSeedImage(parts);
     if (veoSeed) instance.image = veoImage(veoSeed);
     // Last frame and asset reference images (BUG-089): same
     // {bytesBase64Encoded, mimeType} wrapper. Reference images force an
-    // 8-second video, sent as the NUMBER 8 on both APIs (live 2026-10-15: the
-    // Gemini API rejects the string "8" its docs show).
+    // 8-second video, sent as the NUMBER 8.
     if (lastFrame) instance.lastFrame = veoImage(lastFrame);
     body = { instances: [instance] };
     const params: Record<string, unknown> = {};
@@ -601,7 +596,7 @@ function parseVideoPoll(
       switch (status) {
         case "completed": {
           // A completed poll without unsigned_urls[0] must be an error, not an
-          // empty success (mirrors the Veo done-without-uri guard).
+          // empty success (mirrors the Vertex Veo done-without-bytes guard).
           const result = videoResultFromOpenRouter(vgCfg, raw);
           if (result.videos.length === 0 || !result.videos[0]!.url) {
             throw new APIError(0, "video generation: completed but carried no unsigned_urls", false);
@@ -713,41 +708,11 @@ function parseVideoPoll(
           return null; // 5 (generating) or any non-terminal status
       }
     }
-    case "VideoVeo": {
-      // Operation-based LRO: poll until done=true (the long-running-operation
-      // done flag, not a status string). A done op carrying an error object is
-      // a terminal failure; otherwise the response holds the finished video.
-      const root = raw as {
-        done?: unknown;
-        error?: { message?: unknown };
-      };
-      if (root.done !== true) {
-        return null;
-      }
-      if (root.error && typeof root.error === "object") {
-        const msg =
-          typeof root.error.message === "string" && root.error.message
-            ? root.error.message
-            : "operation failed";
-        throw new APIError(0, `video generation failed: ${msg}`, false);
-      }
-      // A done op with neither error nor a usable uri must surface as an error,
-      // not a silent zero-byte success: download delivery would otherwise GET
-      // nothing and return a VideoData with empty bytes and empty url.
-      const result = videoResultFromVeo(vgCfg, raw);
-      if (result.videos.length === 0 || !result.videos[0]!.url) {
-        throw new APIError(
-          0,
-          "video generation: operation done but carried no video uri",
-          false,
-        );
-      }
-      return result;
-    }
     case "VideoVertexVeo": {
-      // Vertex Veo operation poll (fetchPredictOperation): same done/error LRO
-      // shape as Gemini Veo, but the finished video arrives as inline base64 in
-      // the poll body (response.videos[0].bytesBase64Encoded), not a fetch URI.
+      // Vertex Veo operation poll (fetchPredictOperation), an LRO: poll until
+      // done=true; a done op carrying an error object is a terminal failure.
+      // The finished video arrives as inline base64 in the poll body
+      // (response.videos[0].bytesBase64Encoded), not a fetch URI.
       const root = raw as {
         done?: unknown;
         error?: { message?: unknown };
@@ -762,8 +727,7 @@ function parseVideoPoll(
             : "operation failed";
         throw new APIError(0, `video generation failed: ${msg}`, false);
       }
-      // Mirror the Veo done+no-uri guard: a done op carrying no decodable bytes
-      // must surface as an error, not a silent zero-byte success.
+      // A done op carrying no decodable bytes must surface as an error, not a silent zero-byte success.
       const result = videoResultFromVertexVeo(vgCfg, raw);
       if (result.videos.length === 0 || !result.videos[0]!.bytes?.length) {
         throw new APIError(
@@ -784,8 +748,8 @@ function parseVideoPoll(
       switch (status) {
         case "Completed": {
           // A Completed invocation that echoes no output s3 uri must surface as
-          // an error, not a silent empty success (mirrors the Veo done+no-uri
-          // guard): the caller would otherwise get a "successful" response
+          // an error, not a silent empty success (mirrors the Vertex Veo
+          // done-without-bytes guard): the caller would otherwise get a "successful" response
           // whose url is empty and never find the mp4.
           const result = videoResultFromBedrock(vgCfg, raw);
           if (result.videos.length === 0 || !result.videos[0]!.url) {
@@ -1022,38 +986,9 @@ function videoResultFromMinimaxFile(
   return buildVideoResponse([{ mimeType: mime, url }]);
 }
 
-// videoResultFromVeo extracts the finished video reference from a Veo LRO poll
-// response. Veo uses download delivery: the response carries a temporary
-// Files-API download URI at
-// response.generateVideoResponse.generatedSamples[0].video.uri. This places it
-// in VideoData.url; the wait() download step (outputDelivery=DeliveryDownload)
-// then fetches the bytes into VideoData.bytes and clears url.
-function videoResultFromVeo(
-  vgCfg: VideoGenDef,
-  raw: unknown,
-): VideoResponse {
-  const mime = videoFallbackMime(vgCfg);
-  const root = raw as {
-    response?: {
-      generateVideoResponse?: { generatedSamples?: unknown };
-    };
-  };
-  const gvr = root.response?.generateVideoResponse;
-  const samples = Array.isArray(gvr?.generatedSamples)
-    ? gvr.generatedSamples
-    : [];
-  if (samples.length === 0) {
-    return buildVideoResponse([]);
-  }
-  const first = samples[0] as { video?: { uri?: unknown } };
-  const uri =
-    first.video && typeof first.video.uri === "string" ? first.video.uri : "";
-  return buildVideoResponse([{ mimeType: mime, url: uri }]);
-}
-
 // videoResultFromVertexVeo extracts the finished video from a Vertex Veo
-// fetchPredictOperation poll response. Unlike Gemini Veo (which returns a fetch
-// URI), Vertex Veo returns the bytes inline as base64 at
+// fetchPredictOperation poll response. Vertex Veo returns the bytes inline as
+// base64 at
 // response.videos[0].bytesBase64Encoded with the mime at .mimeType. This is
 // download delivery with NO fetch hop: the bytes are decoded straight into
 // VideoData.bytes here and VideoData.url stays empty, so the wait() download
@@ -1137,7 +1072,7 @@ function appendVideoAuth(
 }
 
 // downloadVideoBytes fetches the finished video for download-delivery providers
-// (vgCfg.outputDelivery === DeliveryDownload, e.g. Veo). The poll result placed
+// (vgCfg.outputDelivery === DeliveryDownload, e.g. OpenRouter). The poll result placed
 // the temporary fetch URI in VideoData.url; this GETs each one (carrying the
 // provider's query-param auth when applicable) and moves the payload into
 // VideoData.bytes, clearing url so the source-XOR contract holds (VID-004):
@@ -1192,7 +1127,7 @@ function joinPromptText(parts: Part[]): string {
 
 // videoSeedImage returns the single image-to-video seed frame, or undefined on
 // the text-to-video hot path. Throws on more than one image part: every wired
-// image-to-video shape (Grok, BUG-010; Veo first frame, BUG-089) conditions on
+// image-to-video shape (Grok, BUG-010; Vertex Veo first frame, BUG-089) conditions on
 // a single seed frame, so rejecting is honest where silently using the first
 // would reintroduce the silent-drop bug.
 function videoSeedImage(parts: Part[]): MediaRef | undefined {
@@ -1226,8 +1161,8 @@ function veoImage(img: MediaRef): Record<string, string> {
   };
 }
 
-// The most asset reference images a Veo request takes (Gemini API and Vertex
-// Veo pages, read 2026-10-15).
+// The most asset reference images a Vertex Veo request takes (Vertex Veo page,
+// read 2026-10-15).
 const MAX_VIDEO_REFERENCE_IMAGES = 3;
 
 // validateVideoFrames rejects a last frame or reference images the model or
@@ -1256,8 +1191,8 @@ function validateVideoFrames(
     );
   }
   if (refs > 0 && (imageCount > 0 || lastFrame)) {
-    // Live 2026-10-15: Veo answers 400 "Unsupported video generation
-    // request"; Vertex documents the inputs as exclusive.
+    // Vertex documents the inputs as exclusive (live 2026-10-15, the Gemini
+    // API Veo answered 400 "Unsupported video generation request").
     throw new ValidationError(
       "reference_images",
       "cannot be combined with a first or last frame",
@@ -1290,7 +1225,6 @@ function videoShapeSendsOptions(shape: VideoGenDef["wireShape"]): boolean {
   return (
     shape === "VideoOpenRouter" ||
     shape === "VideoGrok" ||
-    shape === "VideoVeo" ||
     shape === "VideoVertexVeo"
   );
 }
