@@ -128,41 +128,24 @@ export function buildRequest(
   // resolveTurns runs first and only here: it is the one place cfg and the
   // message list meet, so the ADR-085 RSN-006 shape check is made once rather
   // than remembered in each builder below.
-  const msgs = resolveTurns(toMessageList(request), cfg);
+  const msgs = resolveTurns(requestMsgs(request), cfg);
   if (cfg.chatWireShape === "ChatBedrock") {
     if (request.system) {
       body.system = [{ text: request.system }];
     }
-    body.messages = buildBedrockMessages(msgs, cfg, request.images ?? []);
+    body.messages = buildBedrockMessages(msgs, cfg);
   } else if (cfg.chatWireShape === "ChatGoogle") {
     if (request.system) {
       body.system_instruction = { parts: [{ text: request.system }] };
     }
-    body.contents = buildGoogleContents(
-      msgs,
-      cfg,
-      request.files ?? [],
-      request.images ?? [],
-    );
+    body.contents = buildGoogleContents(msgs, cfg);
   } else if (cfg.chatWireShape === "ChatResponsesOpenAI") {
     // ADR-055 Responses envelope: the SAME flat {role, content} array as Chat
     // Completions, but under the "input" key (not "messages") and POSTed to
     // /v1/responses. buildMessages is shared so the only wire delta is the key.
-    body.input = buildMessages(
-      msgs,
-      request.system ?? "",
-      cfg,
-      request.files ?? [],
-      request.images ?? [],
-    );
+    body.input = buildMessages(msgs, request.system ?? "", cfg);
   } else {
-    body.messages = buildMessages(
-      msgs,
-      request.system ?? "",
-      cfg,
-      request.files ?? [],
-      request.images ?? [],
-    );
+    body.messages = buildMessages(msgs, request.system ?? "", cfg);
     if (cfg.systemPlacement === "TopLevelField" && request.system) {
       body.system = request.system;
     }
@@ -558,6 +541,12 @@ export function toolCallInput(call: ToolCall): Record<string, unknown> {
 // branch and no runtime carrier guard.
 export type Msg =
   | { kind: "text"; role: string; text: string }
+  // The final user turn of a Text, stream or batch request: the prompt text plus
+  // the files and images attached to it (BUG-108). A variant of its own because
+  // media rides only on this turn, and "text" carries only {role, text}.
+  // requestMsgs appends it after the history, so every builder reads one ordered
+  // list and never chooses between history and prompt.
+  | { kind: "prompt"; text: string; files: File[]; images: InputImage[] }
   | { kind: "calls"; calls: ToolCall[] }
   | { kind: "result"; result: ToolResult }
   // An assistant turn the provider itself serialized, replayed verbatim instead
@@ -608,23 +597,25 @@ function toInternal(messages: Message[]): Msg[] {
   });
 }
 
-// toMessageList funnels both request shapes — explicit history
-// (request.messages) and the degenerate single turn (request.user) — into one
-// internal list, so every path dispatches on the same sum.
-function toMessageList(request: PromptRequest): Msg[] {
-  if (request.messages && request.messages.length > 0) {
-    return toInternal(request.messages);
-  }
+// requestMsgs is the one place a public request becomes the message list the
+// builders read: the validated history, then the prompt as the last user turn
+// (BUG-108). The Agent's request carries no prompt, so only its history is read.
+function requestMsgs(request: PromptRequest): Msg[] {
+  const msgs = toInternal(request.messages ?? []);
   if (request.user) {
-    return [{ kind: "text", role: "user", text: request.user }];
+    msgs.push({
+      kind: "prompt",
+      text: request.user,
+      files: request.files ?? [],
+      images: request.images ?? [],
+    });
   }
-  return [];
+  return msgs;
 }
 
 function buildBedrockMessages(
   msgs: Msg[],
   cfg: ProviderSpec,
-  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
   const entries = msgs.map((m): Record<string, unknown> => {
     // Bedrock never replays: ChatBedrock declares assistantTurnUnanchored
@@ -657,9 +648,14 @@ function buildBedrockMessages(
       case "text":
         return {
           role: cfg.roleMappings[m.role] ?? m.role,
+          content: [{ text: m.text }],
+        };
+      case "prompt":
+        return {
+          role: cfg.roleMappings.user ?? "user",
           content:
-            images.length > 0 && m.role === "user" && msgs.length === 1
-              ? buildBedrockContentParts(m.text, images)
+            m.images.length > 0
+              ? buildBedrockContentParts(m.text, m.images)
               : [{ text: m.text }],
         };
       default: {
@@ -698,10 +694,7 @@ function isToolResult(m: Msg): boolean {
 function buildGoogleContents(
   msgs: Msg[],
   cfg: ProviderSpec,
-  files: File[] = [],
-  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
-  const hasMedia = files.length > 0 || images.length > 0;
   return msgs.map((m): Record<string, unknown> => {
     // A replayed Google turn is candidates[0].content verbatim — the same
     // {role, parts} object the contents array takes, so it drops straight in.
@@ -715,7 +708,7 @@ function buildGoogleContents(
         // fall through to the projection
       }
     }
-    return googleProjectedEntry(m, cfg, files, images, hasMedia, msgs.length);
+    return googleProjectedEntry(m, cfg);
   });
 }
 
@@ -724,10 +717,6 @@ function buildGoogleContents(
 function googleProjectedEntry(
   m: Msg,
   cfg: ProviderSpec,
-  files: File[],
-  images: InputImage[],
-  hasMedia: boolean,
-  msgCount: number,
 ): Record<string, unknown> {
   switch (m.kind) {
     case "result":
@@ -752,20 +741,15 @@ function googleProjectedEntry(
     case "text":
       return {
         role: cfg.roleMappings[m.role] ?? m.role,
-        parts:
-          hasMedia && m.role === "user" && msgCount === 1
-            ? buildGoogleContentParts(m.text, files, images)
-            : [{ text: m.text }],
+        parts: [{ text: m.text }],
+      };
+    case "prompt":
+      return {
+        role: cfg.roleMappings.user ?? "user",
+        parts: buildGoogleContentParts(m.text, m.files, m.images),
       };
     case "turn":
-      return googleProjectedEntry(
-        m.fallback,
-        cfg,
-        files,
-        images,
-        hasMedia,
-        msgCount,
-      );
+      return googleProjectedEntry(m.fallback, cfg);
     default: {
       const _exhaustive: never = m;
       throw new Error(`unhandled Msg variant: ${JSON.stringify(_exhaustive)}`);
@@ -884,8 +868,6 @@ function buildMessages(
   msgs: Msg[],
   system: string,
   cfg: ProviderSpec,
-  files: File[] = [],
-  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
 
@@ -896,12 +878,9 @@ function buildMessages(
     });
   }
 
-  const hasMedia = files.length > 0 || images.length > 0;
   for (const m of msgs) {
     if (m.kind === "turn" && appendFlatReplayedTurn(out, m, cfg)) continue;
-    out.push(
-      ...flatProjectedEntry(m, cfg, files, images, hasMedia, msgs.length),
-    );
+    out.push(...flatProjectedEntry(m, cfg));
   }
 
   return out;
@@ -915,10 +894,6 @@ function buildMessages(
 function flatProjectedEntry(
   m: Msg,
   cfg: ProviderSpec,
-  files: File[],
-  images: InputImage[],
-  hasMedia: boolean,
-  msgCount: number,
 ): Array<Record<string, unknown>> {
   switch (m.kind) {
     case "result":
@@ -926,15 +901,16 @@ function flatProjectedEntry(
     case "calls":
       return toolCallMsg(m.calls, cfg);
     case "text":
-      // Attach media only on the degenerate single-turn user path, matching
-      // Go's `len(msgs)==0 && req.User != ""` media branch — history turns
-      // carry plain-string content.
+      return [{ role: cfg.roleMappings[m.role] ?? m.role, content: m.text }];
+    case "prompt":
+      // Media rides only on the final prompt turn; history turns carry
+      // plain-string content.
       return [
         {
-          role: cfg.roleMappings[m.role] ?? m.role,
+          role: cfg.roleMappings.user ?? "user",
           content:
-            hasMedia && m.role === "user" && msgCount === 1
-              ? buildFlatContentParts(m.text, files, images, cfg)
+            m.files.length > 0 || m.images.length > 0
+              ? buildFlatContentParts(m.text, m.files, m.images, cfg)
               : m.text,
         },
       ];
@@ -942,14 +918,7 @@ function flatProjectedEntry(
       // A payload the splice could not place falls back to its projection.
       // resolveTurns should already have unwrapped anything unplaceable — this
       // arm is what keeps "should" from being load-bearing.
-      return flatProjectedEntry(
-        m.fallback,
-        cfg,
-        files,
-        images,
-        hasMedia,
-        msgCount,
-      );
+      return flatProjectedEntry(m.fallback, cfg);
     default: {
       const _exhaustive: never = m;
       throw new Error(`unhandled Msg variant: ${JSON.stringify(_exhaustive)}`);
