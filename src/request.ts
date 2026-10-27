@@ -122,41 +122,24 @@ export function buildRequest(
     setNestedField(body, maxTokensKey, maxTokensValue);
   }
 
-  const msgs = toMessageList(request);
+  const msgs = requestMsgs(request);
   if (cfg.chatWireShape === "ChatBedrock") {
     if (request.system) {
       body.system = [{ text: request.system }];
     }
-    body.messages = buildBedrockMessages(msgs, cfg, request.images ?? []);
+    body.messages = buildBedrockMessages(msgs, cfg);
   } else if (cfg.chatWireShape === "ChatGoogle") {
     if (request.system) {
       body.system_instruction = { parts: [{ text: request.system }] };
     }
-    body.contents = buildGoogleContents(
-      msgs,
-      cfg,
-      request.files ?? [],
-      request.images ?? [],
-    );
+    body.contents = buildGoogleContents(msgs, cfg);
   } else if (cfg.chatWireShape === "ChatResponsesOpenAI") {
     // ADR-055 Responses envelope: the SAME flat {role, content} array as Chat
     // Completions, but under the "input" key (not "messages") and POSTed to
     // /v1/responses. buildMessages is shared so the only wire delta is the key.
-    body.input = buildMessages(
-      msgs,
-      request.system ?? "",
-      cfg,
-      request.files ?? [],
-      request.images ?? [],
-    );
+    body.input = buildMessages(msgs, request.system ?? "", cfg);
   } else {
-    body.messages = buildMessages(
-      msgs,
-      request.system ?? "",
-      cfg,
-      request.files ?? [],
-      request.images ?? [],
-    );
+    body.messages = buildMessages(msgs, request.system ?? "", cfg);
     if (cfg.systemPlacement === "TopLevelField" && request.system) {
       body.system = request.system;
     }
@@ -557,6 +540,12 @@ export function toolCallInput(call: ToolCall): Record<string, unknown> {
 // branch and no runtime carrier guard.
 type Msg =
   | { kind: "text"; role: string; text: string }
+  // The final user turn of a Text, stream or batch request: the prompt text plus
+  // the files and images attached to it (BUG-108). A variant of its own because
+  // media rides only on this turn, and "text" carries only {role, text}.
+  // requestMsgs appends it after the history, so every builder reads one ordered
+  // list and never chooses between history and prompt.
+  | { kind: "prompt"; text: string; files: File[]; images: InputImage[] }
   | { kind: "calls"; calls: ToolCall[] }
   | { kind: "result"; result: ToolResult };
 
@@ -585,23 +574,25 @@ function toInternal(messages: Message[]): Msg[] {
   });
 }
 
-// toMessageList funnels both request shapes — explicit history
-// (request.messages) and the degenerate single turn (request.user) — into one
-// internal list, so every path dispatches on the same sum.
-function toMessageList(request: PromptRequest): Msg[] {
-  if (request.messages && request.messages.length > 0) {
-    return toInternal(request.messages);
-  }
+// requestMsgs is the one place a public request becomes the message list the
+// builders read: the validated history, then the prompt as the last user turn
+// (BUG-108). The Agent's request carries no prompt, so only its history is read.
+function requestMsgs(request: PromptRequest): Msg[] {
+  const msgs = toInternal(request.messages ?? []);
   if (request.user) {
-    return [{ kind: "text", role: "user", text: request.user }];
+    msgs.push({
+      kind: "prompt",
+      text: request.user,
+      files: request.files ?? [],
+      images: request.images ?? [],
+    });
   }
-  return [];
+  return msgs;
 }
 
 function buildBedrockMessages(
   msgs: Msg[],
   cfg: ProviderSpec,
-  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
   return msgs.map((m): Record<string, unknown> => {
     switch (m.kind) {
@@ -627,9 +618,14 @@ function buildBedrockMessages(
       case "text":
         return {
           role: cfg.roleMappings[m.role] ?? m.role,
+          content: [{ text: m.text }],
+        };
+      case "prompt":
+        return {
+          role: cfg.roleMappings.user ?? "user",
           content:
-            images.length > 0 && m.role === "user" && msgs.length === 1
-              ? buildBedrockContentParts(m.text, images)
+            m.images.length > 0
+              ? buildBedrockContentParts(m.text, m.images)
               : [{ text: m.text }],
         };
       default: {
@@ -645,10 +641,7 @@ function buildBedrockMessages(
 function buildGoogleContents(
   msgs: Msg[],
   cfg: ProviderSpec,
-  files: File[] = [],
-  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
-  const hasMedia = files.length > 0 || images.length > 0;
   return msgs.map((m): Record<string, unknown> => {
     switch (m.kind) {
       case "result":
@@ -673,10 +666,12 @@ function buildGoogleContents(
       case "text":
         return {
           role: cfg.roleMappings[m.role] ?? m.role,
-          parts:
-            hasMedia && m.role === "user" && msgs.length === 1
-              ? buildGoogleContentParts(m.text, files, images)
-              : [{ text: m.text }],
+          parts: [{ text: m.text }],
+        };
+      case "prompt":
+        return {
+          role: cfg.roleMappings.user ?? "user",
+          parts: buildGoogleContentParts(m.text, m.files, m.images),
         };
       default: {
         const _exhaustive: never = m;
@@ -799,8 +794,6 @@ function buildMessages(
   msgs: Msg[],
   system: string,
   cfg: ProviderSpec,
-  files: File[] = [],
-  images: InputImage[] = [],
 ): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
 
@@ -811,7 +804,6 @@ function buildMessages(
     });
   }
 
-  const hasMedia = files.length > 0 || images.length > 0;
   for (const m of msgs) {
     switch (m.kind) {
       case "result":
@@ -821,14 +813,16 @@ function buildMessages(
         out.push(toolCallMsg(m.calls, cfg));
         break;
       case "text":
-        // Attach media only on the degenerate single-turn user path, matching
-        // Go's `len(msgs)==0 && req.User != ""` media branch — history turns
-        // carry plain-string content.
+        out.push({ role: cfg.roleMappings[m.role] ?? m.role, content: m.text });
+        break;
+      case "prompt":
+        // Media rides only on the final prompt turn; history turns carry
+        // plain-string content.
         out.push({
-          role: cfg.roleMappings[m.role] ?? m.role,
+          role: cfg.roleMappings.user ?? "user",
           content:
-            hasMedia && m.role === "user" && msgs.length === 1
-              ? buildFlatContentParts(m.text, files, images, cfg)
+            m.files.length > 0 || m.images.length > 0
+              ? buildFlatContentParts(m.text, m.files, m.images, cfg)
               : m.text,
         });
         break;

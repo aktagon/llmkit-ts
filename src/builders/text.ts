@@ -76,25 +76,12 @@ export function buildPromptArgs(
   if (finalText) textSegments.push(finalText);
   const user = textSegments.join("");
 
-  // Legacy TS Request treats `messages` and `user` as mutually exclusive
-  // (request.ts uses if/else if). The typed-builder shields callers
-  // from that quirk: when history is present, append the final user turn
-  // to the message list; otherwise use the simpler `user` field.
+  // History and the final prompt travel separately; requestMsgs (request.ts)
+  // appends the prompt, with its files and images, after the history (BUG-108).
   const request: Request = {};
   if (b._system) request.system = b._system;
-  if (b._history.length > 0) {
-    const messages = [...b._history];
-    if (user)
-      messages.push({
-        role: "user",
-        content: user,
-        toolCalls: [],
-        toolResult: null,
-      });
-    request.messages = messages;
-  } else if (user) {
-    request.user = user;
-  }
+  if (b._history.length > 0) request.messages = [...b._history];
+  if (user) request.user = user;
   if (b._files.length > 0) request.files = b._files;
   if (images.length > 0) request.images = images;
   if (b._schema) request.schema = b._schema;
