@@ -12,6 +12,7 @@ import {
   imageGenConfig,
 } from "./providers/image_gen.ts";
 import { APIError, ValidationError } from "./errors.ts";
+import { checkPartKinds } from "./part_kinds.ts";
 import { partsCarry, selectRequestVariant } from "./request_variant.ts";
 import { sendHTTP } from "./http.ts";
 import { extractIntPath, optIntPath } from "./paths.ts";
@@ -23,22 +24,10 @@ import type { Provider, SafetySetting, Usage } from "./types.ts";
 export type { MediaRef } from "./structs.ts";
 import type { MediaRef } from "./structs.ts";
 
-/**
- * Universal multimodal input atom. Discriminated union: a Part is a text
- * part, an image part, a lyrics part (a text payload tagged as song
- * lyrics, used only by music generation — ADR-033), or an audio part (a
- * public URL or local bytes, used only by transcription — ADR-048).
- * Construct via object literal — typed-builder accumulators (`c.text.text(s)`,
- * `c.image.image(m, b)`, `c.music.lyrics(s)`, ...) are the canonical
- * user-facing path; standalone Part constructors (`audio`, `audioBytes`)
- * exist for varargs terminals (transcription).
- */
-export type Part =
-  | { text: string }
-  | { image: MediaRef }
-  | { lyrics: string }
-  | { audio: string }
-  | { audioBytes: MediaRef };
+// Part is declared in ./structs.ts (ADR-100 MSG-005) and re-exported here so
+// existing `import { Part } from "./image.ts"` callsites keep working.
+export type { Part } from "./structs.ts";
+import type { Part } from "./structs.ts";
 
 /**
  * audio constructs an audio-bearing Part from a public URL, for transcription
@@ -46,7 +35,7 @@ export type Part =
  * source. Mirror of Go parts.Audio.
  */
 export function audio(url: string): Part {
-  return { audio: url };
+  return { audioUrl: url };
 }
 
 /**
@@ -56,7 +45,7 @@ export function audio(url: string): Part {
  * obtain a URL, then submits that. Mirror of Go parts.AudioBytes.
  */
 export function audioBytes(mime: string, raw: Uint8Array): Part {
-  return { audioBytes: { mimeType: mime, bytes: raw } };
+  return { audio: { mimeType: mime, bytes: raw } };
 }
 
 export type { ImageData } from "./structs.ts";
@@ -141,6 +130,7 @@ export async function generateImage(
   }
 
   const parts = normalizeImageParts(request);
+  checkPartKinds("image_generation", parts);
 
   const imgCfg = imageGenConfig(provider.name);
   if (!imgCfg) {

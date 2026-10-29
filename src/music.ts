@@ -14,6 +14,7 @@ import {
   musicGenConfig,
 } from "./providers/music_gen.ts";
 import { APIError, ValidationError } from "./errors.ts";
+import { checkPartKinds } from "./part_kinds.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
@@ -68,23 +69,10 @@ export async function generateMusic(
   }
 
   const parts = normalizeMusicParts(request);
+  checkPartKinds("music_generation", parts);
   parts.forEach((part, i) => {
-    let set = 0;
-    if ("text" in part && part.text) set++;
-    if ("lyrics" in part && part.lyrics) {
-      set++;
-    }
-    if ("image" in part) {
-      throw new ValidationError(
-        `parts[${i}]`,
-        "music generation does not accept image parts",
-      );
-    }
-    if (set !== 1) {
-      throw new ValidationError(
-        `parts[${i}]`,
-        "must have exactly one of text or lyrics set",
-      );
+    if (("text" in part && !part.text) || ("lyrics" in part && !part.lyrics)) {
+      throw new ValidationError(`parts[${i}]`, "empty part");
     }
   });
 

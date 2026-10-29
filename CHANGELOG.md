@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING — `Part` has eight variants, and the audio keys are renamed.**
+  `Part` is `{ text } | { image } | { file } | { toolCall } | { toolResult } |
+  { lyrics } | { audioUrl } | { audio }`. A public audio URL moved from
+  `{ audio: string }` to `{ audioUrl: string }`, and local audio bytes moved
+  from `{ audioBytes: MediaRef }` to `{ audio: MediaRef }`. The `audio(url)`
+  and `audioBytes(mime, raw)` constructors keep their names and return the new
+  shapes. A `switch` over every `Part` key must handle `file`, `toolCall` and
+  `toolResult`.
+- Image, music, video and transcription reject a part kind they do not accept,
+  before any HTTP call, with a `ValidationError` that names the kind, for
+  example `parts[1]: image generation does not accept tool_call parts`. Image
+  generation used to ignore a lyrics or audio part.
+
 ## [3.0.0] — 2026-10-27
 
 ### Added

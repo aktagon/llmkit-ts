@@ -516,3 +516,42 @@ export interface VideoResponse {
    */
   raw?: unknown;
 }
+
+/**
+ * Part is the universal multimodal input atom: exactly one of text, an image, an uploaded file, a tool call, a tool result, lyrics, an audio URL or audio bytes. Every capability takes the same Part (ADR-100 MSG-010); each one rejects a kind it does not accept with a ValidationError that names the kind (MSG-011).
+ */
+export type Part =
+  | { /** text is a text payload. */ text: string }
+  | { /** image is an inline image: its mime type and raw bytes. */ image: MediaRef }
+  | { /** file is a reference to a file uploaded to the provider. */ file: File }
+  | { /** toolCall is one tool invocation the model issued on an assistant turn (ADR-100 MSG-008). */ toolCall: ToolCall }
+  | { /** toolResult is the result of one tool call, on a tool turn (ADR-100 MSG-008). */ toolResult: ToolResult }
+  | { /** lyrics is song lyrics, for music generation (ADR-033). */ lyrics: string }
+  | { /** audioUrl is a public audio URL, for transcription (ADR-048). The provider fetches it. */ audioUrl: string }
+  | { /** audio is local audio bytes, for transcription (ADR-048). The runtime uploads them first when the provider needs a URL. */ audio: MediaRef };
+
+/**
+ * PART_KINDS maps each Part key to its variant name (ADR-100 MSG-012).
+ */
+export const PART_KINDS: Readonly<Record<string, string>> = {
+  text: "text",
+  image: "image",
+  file: "file",
+  toolCall: "tool_call",
+  toolResult: "tool_result",
+  lyrics: "lyrics",
+  audioUrl: "audio_url",
+  audio: "audio",
+};
+
+/**
+ * ACCEPTED_PART_KINDS lists the Part variants each capability accepts,
+ * keyed by the capability label (acceptsPartKind, ADR-100 MSG-011).
+ */
+export const ACCEPTED_PART_KINDS: Readonly<Record<string, readonly string[]>> = {
+  chat: ["text", "image", "file", "tool_call", "tool_result"],
+  image_generation: ["text", "image"],
+  music_generation: ["text", "lyrics"],
+  transcription: ["audio_url", "audio"],
+  video_generation: ["text", "image"],
+};
