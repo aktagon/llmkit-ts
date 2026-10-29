@@ -363,7 +363,7 @@ export interface Request {
 }
 
 /**
- * Response is the universal response container returned by text-generation terminals (Text.Prompt, Agent.Prompt). Five fields; all five are core (no per-capability augmentation).
+ * Response is the universal response container returned by text-generation terminals (Text.Prompt, Agent.Prompt). Every field is core (no per-capability augmentation).
  */
 export interface Response {
   /**
@@ -395,6 +395,16 @@ export interface Response {
    * providerTurn is the assistant turn this response carried, as the provider serialized it (ADR-085). Always captured — unlike raw, it is not opt-in — so a caller running their own loop on Text.Prompt can thread the turn into the next request without parsing raw per provider, which is the work this library exists to absorb. Null when the response carries no assistant turn at the wire shape's declared position, or when the shape declares none (Bedrock).
    */
   providerTurn?: ProviderTurn;
+
+  /**
+   * id is the provider-assigned id of this response, passed through verbatim (OpenAI chatcmpl-..., Anthropic msg_..., Google responseId). ABSENT (not empty) when the response carries none: Bedrock Converse sends no id (ADR-081).
+   */
+  id?: string;
+
+  /**
+   * model is the model the provider reports for this response, passed through verbatim. It can differ from the requested model: OpenAI returns the dated snapshot, and Google reports the served version (modelVersion). ABSENT (not empty) when the response carries none: Bedrock Converse reports no model (ADR-081).
+   */
+  model?: string;
 }
 
 /**

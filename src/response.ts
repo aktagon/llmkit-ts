@@ -8,7 +8,12 @@
 // entry point IS the function the send path calls, not a second implementation
 // beside it.
 
-import { PROVIDERS, RESPONSE_TEXT_CONFIGS } from "./providers/providers.ts";
+import {
+  PROVIDERS,
+  RESPONSE_TEXT_CONFIGS,
+  wireShapeResponseIdPath,
+  wireShapeResponseModelPath,
+} from "./providers/providers.ts";
 import type { ProviderName, ProviderSpec } from "./providers/providers.ts";
 import { cachingConfig } from "./providers/caching.ts";
 import { ValidationError } from "./errors.ts";
@@ -152,8 +157,26 @@ export function decodeResponse(
     const message = extractPath(raw, cfg.finishMessagePath);
     if (message) result.finishMessage = message;
   }
+  setResponseIdentity(result, raw, cfg.responseIdPath, cfg.responseModelPath);
   if (providerTurn) result.providerTurn = providerTurn;
   return result;
+}
+
+/**
+ * setResponseIdentity sets the response id and the reported model (ADR-099
+ * CRF-012) from the given paths. Each stays absent when its path is empty
+ * (Bedrock) or the body has no value there.
+ */
+function setResponseIdentity(
+  result: Response,
+  raw: unknown,
+  idPath: string,
+  modelPath: string,
+): void {
+  const id = idPath ? extractPath(raw, idPath) : "";
+  if (id) result.id = id;
+  const model = modelPath ? extractPath(raw, modelPath) : "";
+  if (model) result.model = model;
 }
 
 /**
@@ -216,6 +239,8 @@ export function encodeResponse(
   setWirePath(raw, cfg.reasoningTokensPath, response.usage.reasoning);
   setWirePath(raw, cfg.finishReasonPath, response.finishReason);
   setWirePath(raw, cfg.finishMessagePath, response.finishMessage);
+  setWirePath(raw, cfg.responseIdPath, response.id);
+  setWirePath(raw, cfg.responseModelPath, response.model);
   return JSON.stringify(raw);
 }
 
@@ -261,6 +286,12 @@ function parseResponsesEnvelope(raw: unknown): Response {
   };
   const status = extractPath(raw, "status");
   if (status) result.finishReason = status;
+  setResponseIdentity(
+    result,
+    raw,
+    wireShapeResponseIdPath("ChatResponsesOpenAI"),
+    wireShapeResponseModelPath("ChatResponsesOpenAI"),
+  );
   return result;
 }
 
@@ -292,6 +323,8 @@ function encodeResponsesEnvelope(response: Response): Record<string, unknown> {
     response.usage.reasoning,
   );
   setWirePath(raw, "status", response.finishReason);
+  setWirePath(raw, wireShapeResponseIdPath("ChatResponsesOpenAI"), response.id);
+  setWirePath(raw, wireShapeResponseModelPath("ChatResponsesOpenAI"), response.model);
   return raw;
 }
 
