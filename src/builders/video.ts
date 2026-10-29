@@ -19,6 +19,7 @@ import {
   videoGenConfig,
 } from "../providers/video_gen.ts";
 import { APIError, ValidationError } from "../errors.ts";
+import { checkPartKinds } from "../part_kinds.ts";
 import type { CarriedInput, RequestVariant } from "../providers/image_gen.ts";
 import { partsCarry, selectRequestVariant } from "../request_variant.ts";
 import { sendHTTP } from "../http.ts";
@@ -235,13 +236,8 @@ export async function videoSubmit(
     );
   }
 
+  checkPartKinds("video_generation", parts);
   parts.forEach((part, i) => {
-    if ("lyrics" in part) {
-      throw new ValidationError(
-        `parts[${i}]`,
-        "video generation does not accept lyrics parts",
-      );
-    }
     if ("image" in part) {
       // Image-to-video seed frame (BUG-010): accepted only by models whose
       // VideoModelDef sets supportsImageToVideo; text-to-video-only models
