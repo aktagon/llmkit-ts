@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING — `Request` has no `user` field.** Put the final prompt as the
+  last user turn of `messages`. The `ToolDefinition` (name, description and
+  input schema of a tool) and `SafetySetting` types are exported from the
+  package root.
 - **BREAKING — `Part` has eight variants, and the audio keys are renamed.**
   `Part` is `{ text } | { image } | { file } | { toolCall } | { toolResult } |
   { lyrics } | { audioUrl } | { audio }`. A public audio URL moved from

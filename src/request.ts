@@ -597,13 +597,10 @@ function toInternal(messages: Message[]): Msg[] {
 }
 
 // requestMsgs is the one place a public request becomes the message list the
-// builders read: the validated turns, then `user` as a final text turn.
+// builders read: the validated turns, the final prompt included (ADR-098
+// RQC-001).
 function requestMsgs(request: PromptRequest): Msg[] {
-  const msgs = toInternal(request.messages ?? []);
-  if (request.user) {
-    msgs.push({ kind: "parts", role: "user", parts: [{ text: request.user }] });
-  }
-  return msgs;
+  return toInternal(request.messages ?? []);
 }
 
 // requestHasFiles reports whether any turn carries a file part.

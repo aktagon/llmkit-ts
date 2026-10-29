@@ -278,6 +278,91 @@ export interface ProviderTurn {
 }
 
 /**
+ * Request is the one form of a chat call (ADR-098): every turn, the tool definitions, and every option that shapes the request body. Text, Agent and batch build one and encode it; nothing else builds a chat body (RQC-001). Settings that do not shape the request (transport, caching, middleware, the Agent's loop limit, raw) stay outside it (RQC-002). Unset and empty fields are absent from the wire body.
+ */
+export interface Request {
+  /**
+   * model is the model id. When set, it wins over the builder's and the client's model (RQC-004); empty keeps the usual resolution.
+   */
+  model?: string;
+
+  /**
+   * system is the system prompt. Empty sends none.
+   */
+  system?: string;
+
+  /**
+   * messages are every turn, including the final prompt (RQC-001). Media are parts of a user turn (ADR-100 MSG-015).
+   */
+  messages?: Message[];
+
+  /**
+   * tools are the tools the model may call (RQC-018).
+   */
+  tools?: ToolDefinition[];
+
+  /**
+   * schema is the JSON Schema text for structured output. Empty asks for none.
+   */
+  schema?: string;
+
+  /**
+   * maxTokens is the cap on output tokens.
+   */
+  maxTokens?: number;
+
+  /**
+   * temperature is the sampling temperature.
+   */
+  temperature?: number;
+
+  /**
+   * topP is the nucleus sampling probability mass.
+   */
+  topP?: number;
+
+  /**
+   * topK is the number of most likely tokens sampled from.
+   */
+  topK?: number;
+
+  /**
+   * stop are the stop sequences. Empty sets none.
+   */
+  stop?: string[];
+
+  /**
+   * seed is the sampling seed.
+   */
+  seed?: number;
+
+  /**
+   * frequencyPenalty is the penalty on tokens by how often they appeared.
+   */
+  frequencyPenalty?: number;
+
+  /**
+   * presencePenalty is the penalty on tokens that already appeared.
+   */
+  presencePenalty?: number;
+
+  /**
+   * reasoningEffort is the reasoning effort level, such as "low" or "high". Empty sends none.
+   */
+  reasoningEffort?: string;
+
+  /**
+   * thinkingBudget is the token budget for extended thinking.
+   */
+  thinkingBudget?: number;
+
+  /**
+   * safetySettings are the per-category safety filters for Gemini providers. Empty sets none.
+   */
+  safetySettings?: SafetySetting[];
+}
+
+/**
  * Response is the universal response container returned by text-generation terminals (Text.Prompt, Agent.Prompt). Five fields; all five are core (no per-capability augmentation).
  */
 export interface Response {
@@ -310,6 +395,21 @@ export interface Response {
    * providerTurn is the assistant turn this response carried, as the provider serialized it (ADR-085). Always captured — unlike raw, it is not opt-in — so a caller running their own loop on Text.Prompt can thread the turn into the next request without parsing raw per provider, which is the work this library exists to absorb. Null when the response carries no assistant turn at the wire shape's declared position, or when the shape declares none (Bedrock).
    */
   providerTurn?: ProviderTurn;
+}
+
+/**
+ * SafetySetting configures one per-category content safety filter for Gemini providers. Category and threshold pass through verbatim to the wire body: use the HARM_CATEGORY_* and HARM_BLOCK_THRESHOLD_* constants or Google's latest string values.
+ */
+export interface SafetySetting {
+  /**
+   * category is the harm category, for example "HARM_CATEGORY_DANGEROUS_CONTENT".
+   */
+  category: string;
+
+  /**
+   * threshold is the block threshold, for example "BLOCK_ONLY_HIGH" or "BLOCK_NONE".
+   */
+  threshold: string;
 }
 
 /**
@@ -350,6 +450,26 @@ export interface ToolCall {
    * input is the JSON-decoded argument object the model passed. Null on absent or empty arg sets; otherwise a provider-specific JSON value (typically an object, but type-erased through OptionalAny because schemas vary per tool).
    */
   input?: unknown;
+}
+
+/**
+ * ToolDefinition is a tool the model may call, as the request describes it: name, description and input schema (ADR-098 RQC-018). It is plain data; the Agent keeps the function that runs the tool beside the Request.
+ */
+export interface ToolDefinition {
+  /**
+   * name is the tool name the model calls it by. ToolCall.name carries it back.
+   */
+  name: string;
+
+  /**
+   * description tells the model what the tool does and when to call it.
+   */
+  description: string;
+
+  /**
+   * schema is the JSON Schema of the tool's input object.
+   */
+  schema: Record<string, unknown>;
 }
 
 /**
