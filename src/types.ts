@@ -19,6 +19,7 @@ export type {
   ToolCall,
   ToolDefinition,
   ToolResult,
+  WireRequest,
 } from "./structs.ts";
 
 export interface Provider {

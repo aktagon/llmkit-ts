@@ -65,6 +65,7 @@ export type {
   ProviderTurn,
   SafetySetting,
   ToolDefinition,
+  WireRequest,
 } from "./types.ts";
 // Capability vocabulary (ADR-019 catalogue filter + ADR-030
 // Client.supports query).

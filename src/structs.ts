@@ -628,6 +628,26 @@ export interface VideoResponse {
 }
 
 /**
+ * WireRequest is a chat request as the provider receives it, minus the key (ADR-098 RQC-006). EncodeRequest returns it. The base URL is the client's; the send path adds auth and caller headers.
+ */
+export interface WireRequest {
+  /**
+   * path is the endpoint path, with the model filled in where the wire shape puts it.
+   */
+  path: string;
+
+  /**
+   * headers are the content headers only, such as anthropic-beta. They need no key.
+   */
+  headers: Record<string, string>;
+
+  /**
+   * body is the JSON request body.
+   */
+  body: Uint8Array;
+}
+
+/**
  * Part is the universal multimodal input atom: exactly one of text, an image, an uploaded file, a tool call, a tool result, lyrics, an audio URL or audio bytes. Every capability takes the same Part (ADR-100 MSG-010); each one rejects a kind it does not accept with a ValidationError that names the kind (MSG-011).
  */
 export type Part =
