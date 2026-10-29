@@ -347,7 +347,7 @@ export interface Request {
   presencePenalty?: number;
 
   /**
-   * reasoningEffort is the reasoning effort level, such as "low" or "high". Empty sends none.
+   * reasoningEffort is the reasoning effort level, such as "low" or "high". Unset sends none.
    */
   reasoningEffort?: string;
 
