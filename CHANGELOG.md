@@ -38,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ValidationError`, before any HTTP call. It used to send it.
 - **BREAKING — a request with no turn fails** with a `ValidationError` on
   field `messages`, before any HTTP call. It used to be sent.
-- `.reasoningEffort(level)` sends the level it is given, so
-  `.reasoningEffort("")` sends an empty effort. Unset sends none.
+- `.reasoningEffort("")` sets an empty effort: it is validated and sent like
+  any other value. It used to be dropped. Unset sends none.
 - A stream sends the request's content headers, such as the
   `anthropic-beta` that structured output needs. It used to drop them.
 - Text, stream, the Agent and batch put the builder's model in
