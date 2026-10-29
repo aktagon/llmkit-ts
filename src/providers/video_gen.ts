@@ -6,7 +6,7 @@ import type { RequestVariant } from "./image_gen.ts";
 
 // Video wire-shape discriminators. Each selects the submit-body build,
 // poll mechanism, and result-extraction transform.
-export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoBedrock" | "VideoVertexVeo" | "VideoVidu" | "VideoPixVerse" | "VideoOpenRouter";
+export type VideoWireShape = "VideoGrok" | "VideoZhipu" | "VideoTogether" | "VideoQwen" | "VideoMinimax" | "VideoBedrock" | "VideoVertexVeo" | "VideoVidu" | "VideoPixVerse" | "VideoOpenRouter" | "VideoGeminiOmni";
 
 // Output-delivery modes: download bytes | return URL | caller S3 URI.
 export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "DeliveryOutputURI";
@@ -44,9 +44,15 @@ export interface VideoGenDef {
   fileEndpoint: string;
   // cancelEndpoint is the cancel template with {model} and {operation_id}; "" = no documented cancel.
   cancelEndpoint: string;
+  // deleteEndpoint is the stored-job delete template with {id}; "" = nothing to delete.
+  deleteEndpoint: string;
   // submitHandleField is a dotted path to the poll handle id.
   submitHandleField: string;
   requiresOutputUri: boolean;
+  // Usage paths are dotted from the root of the finished poll reply; "" = unreported.
+  usageInputPath: string;
+  usageOutputPath: string;
+  usageReasoningPath: string;
   models: VideoModelDef[];
 }
 
@@ -61,8 +67,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/async-invoke/{id}",
     fileEndpoint: "",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "invocationArn",
     requiresOutputUri: true,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "amazon.nova-reel-v1:0",
@@ -73,6 +83,37 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxDurationSeconds: 6,
         outputMime: "video/mp4",
         resolutions: ["720p"],
+        aspectRatios: [],
+        maxInputImages: 0,
+      },
+    ],
+  },
+  google: {
+    wireShape: "VideoGeminiOmni",
+    outputDelivery: "DeliveryDownload",
+    videoBaseUrl: "",
+    variants: [
+      { carries: ["TextOnly"], shape: "", endpoint: "/v1beta/interactions" },
+    ],
+    pollEndpoint: "/v1beta/interactions/{id}",
+    fileEndpoint: "",
+    cancelEndpoint: "",
+    deleteEndpoint: "/v1beta/interactions/{id}",
+    submitHandleField: "id",
+    requiresOutputUri: false,
+    usageInputPath: "usage.total_input_tokens",
+    usageOutputPath: "usage.total_output_tokens",
+    usageReasoningPath: "usage.total_thought_tokens",
+    models: [
+      {
+        modelId: "gemini-omni-1.1-flash",
+        label: "Gemini Omni 1.1 Flash",
+        supportsImageToVideo: false,
+        supportsLastFrame: false,
+        supportsReferenceImages: false,
+        maxDurationSeconds: 0,
+        outputMime: "video/mp4",
+        resolutions: [],
         aspectRatios: [],
         maxInputImages: 0,
       },
@@ -89,8 +130,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/v1/videos/{id}",
     fileEndpoint: "",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "request_id",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "grok-imagine-video",
@@ -140,8 +185,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/v1/query/video_generation?task_id={id}",
     fileEndpoint: "/v1/files/retrieve?file_id={file_id}",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "task_id",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "MiniMax-Hailuo-2.3",
@@ -169,8 +218,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/v1/videos/{id}",
     fileEndpoint: "",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "alibaba/wan-3.0",
@@ -304,8 +357,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/openapi/v2/video/result/{id}",
     fileEndpoint: "",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "Resp.video_id",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "v4.5",
@@ -355,8 +412,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/api/v1/tasks/{id}",
     fileEndpoint: "",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "output.task_id",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "wan2.2-t2v-plus",
@@ -382,8 +443,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/v2/videos/{id}",
     fileEndpoint: "",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "minimax/video-01-director",
@@ -412,8 +477,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/{model}:fetchPredictOperation",
     fileEndpoint: "",
     cancelEndpoint: "/{model}/operations/{operation_id}:cancel",
+    deleteEndpoint: "",
     submitHandleField: "name",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "veo-3.1-fast-generate-001",
@@ -475,8 +544,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/ent/v2/tasks/{id}/creations",
     fileEndpoint: "",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "task_id",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "viduq1",
@@ -526,8 +599,12 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     pollEndpoint: "/v4/async-result/{id}",
     fileEndpoint: "",
     cancelEndpoint: "",
+    deleteEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
+    usageInputPath: "",
+    usageOutputPath: "",
+    usageReasoningPath: "",
     models: [
       {
         modelId: "cogvideox-3",

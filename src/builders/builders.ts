@@ -259,7 +259,8 @@ export class Image {
   addMiddleware(...fns: MiddlewareFn[]): Image { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   /**
    * Sets the output aspect ratio, such as "16:9". A ratio the model does
-   * not list is rejected before send. On a video, OpenRouter, Grok and Veo send it.
+   * not list is rejected before send. On a video, OpenRouter, Grok, Veo and
+   * Gemini Omni send it.
    */
   aspectRatio(r: string): Image { const out = clone(this); out._aspectRatio = r; return out; }
   background(s: string): Image { const out = clone(this); out._background = s; return out; }
@@ -378,6 +379,7 @@ export class Video {
   /** @internal */ _aspectRatio: string = "";
   /** @internal */ _duration: number = 0;
   /** @internal */ _parts: Part[] = [];
+  /** @internal */ _keepStored: boolean = false;
   /** @internal */ _lastFrame?: MediaRef;
   /** @internal */ _model: string = "";
   /** @internal */ _outputURI: string = "";
@@ -394,7 +396,8 @@ export class Video {
   addReferenceImage(mime: string, data: Uint8Array): Video { const out = clone(this); out._referenceImages = [...out._referenceImages, { mimeType: mime, bytes: data }]; return out; }  // ordered
   /**
    * Sets the output aspect ratio, such as "16:9". A ratio the model does
-   * not list is rejected before send. On a video, OpenRouter, Grok and Veo send it.
+   * not list is rejected before send. On a video, OpenRouter, Grok, Veo and
+   * Gemini Omni send it.
    */
   aspectRatio(r: string): Video { const out = clone(this); out._aspectRatio = r; return out; }
   /**
@@ -405,6 +408,12 @@ export class Video {
   duration(seconds: number): Video { const out = clone(this); out._duration = seconds; return out; }
   image(mime: string, data: Uint8Array): Video { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   /**
+   * Keeps the stored video job after Wait has the video. By default Wait
+   * deletes it on providers that store jobs (Gemini Omni). The handle records
+   * the choice, so a resumed Wait applies it.
+   */
+  keepStored(): Video { const out = clone(this); out._keepStored = true; return out; }
+  /**
    * Sets the final frame a video ends on. Send it with a first frame (Image)
    * on a model that takes a last frame; otherwise it is rejected before send.
    */
@@ -413,7 +422,8 @@ export class Video {
   outputURI(uri: string): Video { const out = clone(this); out._outputURI = uri; return out; }
   raw(): Video { const out = clone(this); out._raw = true; return out; }
   /**
-   * Sets the video resolution, such as "720p". OpenRouter, Grok and Veo send it.
+   * Sets the video resolution, such as "720p". OpenRouter, Grok, Veo and
+   * Gemini Omni send it.
    * A resolution the model does not list is rejected before send.
    */
   resolution(r: string): Video { const out = clone(this); out._resolution = r; return out; }
