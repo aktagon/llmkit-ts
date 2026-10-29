@@ -20,13 +20,20 @@ import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
 import { resolveTurns } from "./provider_turn.ts";
 import type {
-  InputImage,
   Provider,
   Request as PromptRequest,
   PromptOptions,
   Tool,
 } from "./types.ts";
-import type { File, Message, ToolCall, ToolResult } from "./structs.ts";
+import type {
+  MediaRef,
+  Message,
+  Part,
+  ToolCall,
+  ToolResult,
+} from "./structs.ts";
+import { checkPartKinds, partKind } from "./part_kinds.ts";
+import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
 
 // ADR-031 honest no-default contract: the single predicate every model
@@ -208,7 +215,7 @@ export function buildRequest(
   // the provider's upload declares (uploadBetaHeader), composed onto any
   // existing anthropic-beta (e.g. structured output) — comma-separated,
   // deduped. Anthropic declares none since its Files API left beta (BUG-078).
-  if (headersOut && (request.files?.length ?? 0) > 0) {
+  if (headersOut && requestHasFiles(request)) {
     const fu = fileUploadConfig(provider.name);
     if (fu && fu.betaHeader) {
       headersOut["anthropic-beta"] = appendBeta(
@@ -514,10 +521,10 @@ export function validateOptions(
   }
 }
 
-// The message builders below are tool-aware (ADR-020 / ADR-026): each turn is
-// dispatched on its carrier field — toolResult, then toolCalls, then text — so
-// the Agent path (history with tool turns) and the Text/batch path (text-only)
-// route through the same builder. A text turn is the degenerate no-tool case.
+// The message builders below read one ordered list of turns (ADR-100): each
+// turn is a role plus parts, validated once in toInternal, so the Agent path
+// (history with tool turns) and the Text/batch path route through the same
+// builder.
 
 // toolCallInput normalises ToolCall.input (widened to `unknown` in ADR-020)
 // back to a plain object for the wire, mirroring the Tool.run({...}) contract.
@@ -533,58 +540,50 @@ export function toolCallInput(call: ToolCall): Record<string, unknown> {
   return {};
 }
 
-// Internal message representation (ADR-026 PIPE-007). A message is a sum: it
-// is *exactly one of* text, tool-calls, or tool-result. The public `Message`
-// (structs.ts) is a flat product that can represent illegal multi-carrier
-// combinations; this internal union cannot, so the builders below dispatch on
-// `kind` exhaustively — a missing case is a compile error, with no silent-drop
-// branch and no runtime carrier guard.
-export type Msg =
-  | { kind: "text"; role: string; text: string }
-  // The final user turn of a Text, stream or batch request: the prompt text plus
-  // the files and images attached to it (BUG-108). A variant of its own because
-  // media rides only on this turn, and "text" carries only {role, text}.
-  // requestMsgs appends it after the history, so every builder reads one ordered
-  // list and never chooses between history and prompt.
-  | { kind: "prompt"; text: string; files: File[]; images: InputImage[] }
-  | { kind: "calls"; calls: ToolCall[] }
-  | { kind: "result"; result: ToolResult }
-  // An assistant turn the provider itself serialized, replayed verbatim instead
-  // of rebuilt (ADR-085). It carries the projection it replaces so resolveTurns
-  // can drop back to reconstruction when the payload was captured under a
-  // different wire shape — the alternative, deciding that at build time, would
-  // put the same check in three places. Not a fourth carrier: it WRAPS one of the
-  // other three, which stays the projection consumers read.
-  | { kind: "turn"; shape: string; wire: string; fallback: Msg };
+// A validated turn: a role and its parts, each part one kind the role may
+// carry (ADR-100 MSG-002).
+export type PartsMsg = { kind: "parts"; role: string; parts: Part[] };
 
-// Exhaustiveness at each Msg dispatch is enforced inline (ADR-026 PIPE-007):
-// the `const _: never = m` in every `default:` makes adding a fourth kind
-// without handling it a compile error, rather than a silent runtime fallthrough.
+// Internal message representation (ADR-026 PIPE-007). Builders dispatch on
+// `kind` exhaustively — a missing case is a compile error.
+export type Msg =
+  | PartsMsg
+  // An assistant turn the provider itself serialized, replayed verbatim instead
+  // of rebuilt (ADR-085). It carries the turn it replaces so resolveTurns can
+  // drop back to reconstruction when the payload was captured under a
+  // different wire shape — the alternative, deciding that at build time, would
+  // put the same check in three places.
+  | { kind: "turn"; shape: string; wire: string; fallback: PartsMsg };
+
+// ROLE_PARTS lists the part kinds each role may carry (ADR-100 MSG-002).
+const ROLE_PARTS: Readonly<Record<string, readonly string[]>> = {
+  user: ["text", "image", "file"],
+  assistant: ["text", "tool_call"],
+  tool: ["tool_result"],
+};
 
 // toInternal converts the public, untrusted Message[] into the internal sum
-// (ADR-026 PIPE-008). This is the single carrier-validation boundary: a message
-// carrying more than one of {content, toolCalls, toolResult} is rejected here,
-// not silently mis-serialized downstream.
+// (ADR-026 PIPE-008). This is the single validation boundary: a part that
+// sets no kind or two, a kind chat does not accept (MSG-011), or a kind the
+// role cannot carry (MSG-002) is rejected here, naming it, not
+// mis-serialized downstream.
 function toInternal(messages: Message[]): Msg[] {
-  return messages.map((m): Msg => {
-    const hasResult = m.toolResult != null;
-    const hasCalls = (m.toolCalls?.length ?? 0) > 0;
-    const hasText = (m.content ?? "").length > 0;
-    if ((hasResult ? 1 : 0) + (hasCalls ? 1 : 0) + (hasText ? 1 : 0) > 1) {
-      throw new ValidationError(
-        "message",
-        "must carry only one of text, toolCalls, or toolResult",
-      );
-    }
-    const projected: Msg = hasResult
-      ? { kind: "result", result: m.toolResult! }
-      : hasCalls
-        ? { kind: "calls", calls: m.toolCalls! }
-        : { kind: "text", role: m.role, text: m.content ?? "" };
-    // providerTurn is not a fourth carrier — it is the same turn in the provider's
-    // own serialization, so it never participates in the one-carrier check above.
-    // When present it supersedes the projection on the wire while the projection
-    // stays what consumers read.
+  return messages.map((m, i): Msg => {
+    checkPartKinds("chat", m.parts, `messages[${i}].parts`);
+    const allowed = ROLE_PARTS[m.role] ?? [];
+    m.parts.forEach((p, j) => {
+      const kind = partKind(p);
+      if (!allowed.includes(kind)) {
+        throw new ValidationError(
+          `messages[${i}].parts[${j}]`,
+          `${m.role} turn does not accept ${kind} parts`,
+        );
+      }
+    });
+    const projected: PartsMsg = { kind: "parts", role: m.role, parts: m.parts };
+    // providerTurn is the same turn in the provider's own serialization. When
+    // present it supersedes the parts on the wire while the parts stay what
+    // consumers read.
     if (m.providerTurn) {
       return {
         kind: "turn",
@@ -598,106 +597,119 @@ function toInternal(messages: Message[]): Msg[] {
 }
 
 // requestMsgs is the one place a public request becomes the message list the
-// builders read: the validated history, then the prompt as the last user turn
-// (BUG-108). The Agent's request carries no prompt, so only its history is read.
+// builders read: the validated turns, then `user` as a final text turn.
 function requestMsgs(request: PromptRequest): Msg[] {
   const msgs = toInternal(request.messages ?? []);
   if (request.user) {
-    msgs.push({
-      kind: "prompt",
-      text: request.user,
-      files: request.files ?? [],
-      images: request.images ?? [],
-    });
+    msgs.push({ kind: "parts", role: "user", parts: [{ text: request.user }] });
   }
   return msgs;
+}
+
+// requestHasFiles reports whether any turn carries a file part.
+function requestHasFiles(request: PromptRequest): boolean {
+  return (request.messages ?? []).some((m) =>
+    m.parts.some((p) => "file" in p),
+  );
+}
+
+// plainText returns the text of a turn that is at most one text part, which
+// the flat envelopes send as a content string rather than a block list. A
+// turn with no parts sends "" as before ADR-100.
+function plainText(parts: Part[]): string | undefined {
+  if (parts.length === 0) return "";
+  const [only] = parts;
+  if (parts.length === 1 && only && "text" in only) return only.text;
+  return undefined;
+}
+
+function toolCallsOf(parts: Part[]): ToolCall[] {
+  return parts.flatMap((p) => ("toolCall" in p ? [p.toolCall] : []));
+}
+
+function dataURI(img: MediaRef): string {
+  return `data:${img.mimeType};base64,${bytesToBase64(img.bytes)}`;
+}
+
+function unwrap(m: Msg): PartsMsg {
+  return m.kind === "turn" ? m.fallback : m;
 }
 
 function buildBedrockMessages(
   msgs: Msg[],
   cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
-  const entries = msgs.map((m): Record<string, unknown> => {
-    // Bedrock never replays: ChatBedrock declares assistantTurnUnanchored
-    // rather than a position (ADR-085 OQ-5), so there is no container to splice
-    // into. Reconstruct from the projection instead of falling through to the
-    // exhaustiveness throw — resolveTurns should already have unwrapped this, and
-    // a throw reaching a caller is the wrong way to report that it did not. When
-    // OQ-5 anchors Converse, this becomes a real splice.
-    while (m.kind === "turn") m = m.fallback;
-    switch (m.kind) {
-      case "result":
-        return {
-          role: "user",
-          content: [
-            {
-              toolResult: {
-                toolUseId: m.result.toolUseId,
-                content: [{ text: m.result.content }],
-              },
-            },
-          ],
-        };
-      case "calls":
-        return {
-          role: cfg.roleMappings.assistant ?? "assistant",
-          content: m.calls.map((c) => ({
-            toolUse: { toolUseId: c.id, name: c.name, input: toolCallInput(c) },
-          })),
-        };
-      case "text":
-        return {
-          role: cfg.roleMappings[m.role] ?? m.role,
-          content: [{ text: m.text }],
-        };
-      case "prompt":
-        return {
-          role: cfg.roleMappings.user ?? "user",
-          content:
-            m.images.length > 0
-              ? buildBedrockContentParts(m.text, m.images)
-              : [{ text: m.text }],
-        };
-      default: {
-        const _exhaustive: never = m;
-        throw new Error(
-          `unhandled Msg variant: ${JSON.stringify(_exhaustive)}`,
-        );
-      }
-    }
-  });
+  // Bedrock never replays: ChatBedrock declares assistantTurnUnanchored
+  // rather than a position (ADR-085 OQ-5), so there is no container to splice
+  // into. Reconstruct from the parts — resolveTurns should already have
+  // unwrapped this. When OQ-5 anchors Converse, this becomes a real splice.
+  //
   // Converse wants every toolResult answering one assistant turn inside ONE
-  // user message; one message per result is a 400 (live, 2026-10-15). A
-  // result that follows a result joins the message the first one opened.
+  // user message; one message per result is a 400 (live, 2026-10-15). A tool
+  // turn that follows a tool turn joins the message the first one opened.
   const out: Array<Record<string, unknown>> = [];
   let open: unknown[] | undefined;
-  msgs.forEach((m, i) => {
-    const entry = entries[i] as Record<string, unknown>;
-    if (!isToolResult(m)) {
+  for (const m of msgs.map(unwrap)) {
+    const content = bedrockContent(m.parts);
+    if (m.role !== "tool") {
       open = undefined;
-      out.push(entry);
+      out.push({ role: cfg.roleMappings[m.role] ?? m.role, content });
     } else if (open) {
-      open.push(...(entry.content as unknown[]));
+      open.push(...content);
     } else {
-      open = entry.content as unknown[];
-      out.push(entry);
+      open = content;
+      out.push({ role: "user", content });
     }
-  });
+  }
   return out;
 }
 
-function isToolResult(m: Msg): boolean {
-  while (m.kind === "turn") m = m.fallback;
-  return m.kind === "result";
+// bedrockContent renders a turn's parts as a Converse content array, in part
+// order (ADR-060, ADR-100 MSG-003). Converse has no block for an uploaded
+// file id, so a file part is not sent, as before ADR-100. A turn with no
+// parts sends one empty text block.
+function bedrockContent(parts: Part[]): Array<Record<string, unknown>> {
+  if (parts.length === 0) return [{ text: "" }];
+  return parts.flatMap((p): Array<Record<string, unknown>> => {
+    if ("file" in p) return [];
+    if ("image" in p) {
+      return [
+        {
+          image: {
+            format: bedrockImageFormat(p.image.mimeType),
+            source: { bytes: bytesToBase64(p.image.bytes) },
+          },
+        },
+      ];
+    }
+    if ("toolCall" in p) {
+      const c = p.toolCall;
+      return [{ toolUse: { toolUseId: c.id, name: c.name, input: toolCallInput(c) } }];
+    }
+    if ("toolResult" in p) {
+      const r = p.toolResult;
+      return [{ toolResult: { toolUseId: r.toolUseId, content: [{ text: r.content }] } }];
+    }
+    return [{ text: "text" in p ? p.text : "" }];
+  });
 }
 
 function buildGoogleContents(
   msgs: Msg[],
   cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
+  // Google's wire identifies a tool result by the function NAME, but the
+  // universal ToolResult carries only toolUseId. Recover id->name from the
+  // tool call parts, which always precede their result in a valid history.
+  // An unmatched id passes through unchanged.
+  const idToName = new Map<string, string>();
   return msgs.map((m): Record<string, unknown> => {
+    const turn = unwrap(m);
+    for (const c of toolCallsOf(turn.parts)) idToName.set(c.id, c.name);
     // A replayed Google turn is candidates[0].content verbatim — the same
     // {role, parts} object the contents array takes, so it drops straight in.
+    // Its calls still fed idToName above, because a LATER tool result is
+    // matched by name against them.
     if (m.kind === "turn" && m.shape === "ChatGoogle") {
       try {
         const payload: unknown = JSON.parse(m.wire);
@@ -705,156 +717,45 @@ function buildGoogleContents(
           return payload as Record<string, unknown>;
         }
       } catch {
-        // fall through to the projection
+        // fall through to the reconstruction
       }
     }
-    return googleProjectedEntry(m, cfg);
+    const role =
+      turn.role === "tool" ? "user" : (cfg.roleMappings[turn.role] ?? turn.role);
+    return { role, parts: googleParts(turn.parts, idToName) };
   });
 }
 
-// googleProjectedEntry renders one canonical message as a Google `contents`
-// entry — the reconstruction path. Mirrors flatProjectedEntry, final arm included.
-function googleProjectedEntry(
-  m: Msg,
-  cfg: ProviderSpec,
-): Record<string, unknown> {
-  switch (m.kind) {
-    case "result":
-      return {
-        role: "user",
-        parts: [
-          {
-            functionResponse: {
-              name: m.result.toolUseId,
-              response: { result: m.result.content },
-            },
-          },
-        ],
-      };
-    case "calls":
-      return {
-        role: cfg.roleMappings.assistant ?? "model",
-        parts: m.calls.map((c) => ({
-          functionCall: { name: c.name, args: toolCallInput(c) },
-        })),
-      };
-    case "text":
-      return {
-        role: cfg.roleMappings[m.role] ?? m.role,
-        parts: [{ text: m.text }],
-      };
-    case "prompt":
-      return {
-        role: cfg.roleMappings.user ?? "user",
-        parts: buildGoogleContentParts(m.text, m.files, m.images),
-      };
-    case "turn":
-      return googleProjectedEntry(m.fallback, cfg);
-    default: {
-      const _exhaustive: never = m;
-      throw new Error(`unhandled Msg variant: ${JSON.stringify(_exhaustive)}`);
+// googleParts renders a turn's parts for Google, in part order. A turn with
+// no parts sends one empty text part, as before ADR-100.
+function googleParts(
+  parts: Part[],
+  idToName: Map<string, string>,
+): Array<Record<string, unknown>> {
+  if (parts.length === 0) return [{ text: "" }];
+  return parts.map((p): Record<string, unknown> => {
+    if ("file" in p) {
+      return { file_data: { file_uri: p.file.uri, mime_type: p.file.mimeType } };
     }
-  }
-}
-
-// buildFlatContentParts builds the OpenAI/Anthropic user-message content array
-// when files or images are attached, mirroring the Go/Python/Rust
-// _build_flat_content_parts (BUG-014, ADR-060). File blocks come first, then
-// image blocks, then the prompt text last. The document-vs-file and the image
-// block shape are selected by chatWireShape (ChatAnthropic), never by provider
-// name.
-function buildFlatContentParts(
-  text: string,
-  files: File[],
-  images: InputImage[],
-  cfg: ProviderSpec,
-): Array<Record<string, unknown>> {
-  const isAnthropic = cfg.chatWireShape === "ChatAnthropic";
-  const parts: Array<Record<string, unknown>> = [];
-  for (const f of files) {
-    parts.push(
-      isAnthropic
-        ? { type: "document", source: { type: "file", file_id: f.id } }
-        : { type: "file", file: { file_id: f.id } },
-    );
-  }
-  for (const img of images) {
-    if (isAnthropic) {
-      if (img.url.startsWith("data:")) {
-        const [mimeType, data] = parseDataURI(img.url);
-        parts.push({
-          type: "image",
-          source: { type: "base64", media_type: mimeType, data },
-        });
-      } else {
-        parts.push({ type: "image", source: { type: "url", url: img.url } });
-      }
-    } else {
-      parts.push({
-        type: "image_url",
-        image_url: { url: img.url, detail: img.detail || "auto" },
-      });
+    if ("image" in p) {
+      return {
+        inline_data: { mime_type: p.image.mimeType, data: bytesToBase64(p.image.bytes) },
+      };
     }
-  }
-  parts.push({ type: "text", text });
-  return parts;
-}
-
-// parseDataURI extracts the MIME type and base64 payload from a data URI
-// ("data:image/png;base64,iVBOR..."). A non-data URI returns ["", uri].
-// Mirrors Go's parseDataURI.
-function parseDataURI(uri: string): [string, string] {
-  if (!uri.startsWith("data:")) return ["", uri];
-  const rest = uri.slice("data:".length);
-  const comma = rest.indexOf(",");
-  if (comma < 0) return ["", uri];
-  const meta = rest.slice(0, comma); // "image/png;base64"
-  const data = rest.slice(comma + 1);
-  const mimeType = meta.endsWith(";base64")
-    ? meta.slice(0, -";base64".length)
-    : meta;
-  return [mimeType, data];
-}
-
-// buildGoogleContentParts builds a Google parts[] array with file_data +
-// inline_data media ahead of the prompt text (ADR-060), mirroring Go's
-// buildGoogleContentParts.
-function buildGoogleContentParts(
-  text: string,
-  files: File[],
-  images: InputImage[],
-): Array<Record<string, unknown>> {
-  const parts: Array<Record<string, unknown>> = [];
-  for (const f of files) {
-    parts.push({
-      file_data: { file_uri: f.uri, mime_type: f.mimeType },
-    });
-  }
-  for (const img of images) {
-    const [uriMime, data] = parseDataURI(img.url);
-    const mimeType = uriMime || img.mimeType || "image/jpeg";
-    parts.push({ inline_data: { mime_type: mimeType, data } });
-  }
-  parts.push({ text });
-  return parts;
-}
-
-// buildBedrockContentParts builds a Converse content[] array with image blocks
-// ahead of the prompt text (ADR-060), mirroring Go's buildBedrockContentParts.
-function buildBedrockContentParts(
-  text: string,
-  images: InputImage[],
-): Array<Record<string, unknown>> {
-  const parts: Array<Record<string, unknown>> = [];
-  for (const img of images) {
-    const [uriMime, data] = parseDataURI(img.url);
-    const mimeType = uriMime || img.mimeType;
-    parts.push({
-      image: { format: bedrockImageFormat(mimeType), source: { bytes: data } },
-    });
-  }
-  parts.push({ text });
-  return parts;
+    if ("toolCall" in p) {
+      return { functionCall: { name: p.toolCall.name, args: toolCallInput(p.toolCall) } };
+    }
+    if ("toolResult" in p) {
+      const r = p.toolResult;
+      return {
+        functionResponse: {
+          name: idToName.get(r.toolUseId) || r.toolUseId,
+          response: { result: r.content },
+        },
+      };
+    }
+    return { text: "text" in p ? p.text : "" };
+  });
 }
 
 // bedrockImageFormat derives the Converse `format` token from a MIME type
@@ -880,50 +781,98 @@ function buildMessages(
 
   for (const m of msgs) {
     if (m.kind === "turn" && appendFlatReplayedTurn(out, m, cfg)) continue;
-    out.push(...flatProjectedEntry(m, cfg));
+    out.push(...flatProjectedEntry(unwrap(m), cfg));
   }
 
   return out;
 }
 
-// flatProjectedEntry renders one canonical message as flat-envelope entries —
-// the reconstruction path, and the counterpart of appendFlatReplayedTurn below.
-// Both return a LIST for the same reason: on ChatResponsesOpenAI a single
-// assistant turn is not a single wire entry, whether its bytes are the
-// provider's (replay) or llmkit's (reconstruction).
+// flatProjectedEntry renders one turn as flat-envelope entries — the
+// reconstruction path, and the counterpart of appendFlatReplayedTurn below.
+// Both return a LIST for the same reason: one turn is not always one wire
+// entry. A Chat Completions or Responses tool turn is one entry per result,
+// and a Responses assistant turn is one entry per part.
 function flatProjectedEntry(
-  m: Msg,
+  m: PartsMsg,
   cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
-  switch (m.kind) {
-    case "result":
-      return [toolResultMsg(m.result, cfg)];
-    case "calls":
-      return toolCallMsg(m.calls, cfg);
-    case "text":
-      return [{ role: cfg.roleMappings[m.role] ?? m.role, content: m.text }];
-    case "prompt":
-      // Media rides only on the final prompt turn; history turns carry
-      // plain-string content.
-      return [
-        {
-          role: cfg.roleMappings.user ?? "user",
-          content:
-            m.files.length > 0 || m.images.length > 0
-              ? buildFlatContentParts(m.text, m.files, m.images, cfg)
-              : m.text,
-        },
-      ];
-    case "turn":
-      // A payload the splice could not place falls back to its projection.
-      // resolveTurns should already have unwrapped anything unplaceable — this
-      // arm is what keeps "should" from being load-bearing.
-      return flatProjectedEntry(m.fallback, cfg);
-    default: {
-      const _exhaustive: never = m;
-      throw new Error(`unhandled Msg variant: ${JSON.stringify(_exhaustive)}`);
+  const anthropic = cfg.chatWireShape === "ChatAnthropic";
+  const responses = cfg.chatWireShape === "ChatResponsesOpenAI";
+  if (m.role === "tool") {
+    const results = m.parts.flatMap((p) => ("toolResult" in p ? [p.toolResult] : []));
+    // Anthropic puts every result in one user message (ADR-100 MSG-009).
+    if (anthropic) {
+      return [{ role: "user", content: results.map(anthropicToolResultBlock) }];
     }
+    return results.map((r) => (responses ? responsesToolResult(r) : openAIToolResult(r)));
   }
+  const role = cfg.roleMappings[m.role] ?? m.role;
+  if (anthropic) return [{ role, content: anthropicContent(m.parts) }];
+  if (m.role !== "assistant") return [{ role, content: openAIContent(m.parts) }];
+  if (responses) {
+    // Responses keeps order: each text part is an assistant message entry and
+    // each tool call its own function_call item (ADR-055, BUG-050).
+    if (m.parts.length === 0) return [{ role, content: "" }];
+    return m.parts.map((p) =>
+      "toolCall" in p
+        ? responsesFunctionCall(p.toolCall)
+        : { role, content: "text" in p ? p.text : "" },
+    );
+  }
+  // Chat Completions has no order between text and tool calls: the text parts
+  // join into content and the tool calls go into tool_calls (ADR-100
+  // MSG-003). A turn with only tool calls carries no content key.
+  const calls = toolCallsOf(m.parts);
+  const entry: Record<string, unknown> = { role };
+  if (calls.length > 0) entry.tool_calls = calls.map(openAIToolCall);
+  if (calls.length < m.parts.length || calls.length === 0) {
+    entry.content = m.parts
+      .flatMap((p) => ("text" in p ? [p.text] : []))
+      .join("\n");
+  }
+  return [entry];
+}
+
+// openAIContent renders a user turn's content for Chat Completions and
+// Responses: a string for at most one text part, else blocks in part order.
+// The image detail stays "auto", the value every golden carries (MSG-015).
+function openAIContent(parts: Part[]): unknown {
+  const text = plainText(parts);
+  if (text !== undefined) return text;
+  return parts.map((p): Record<string, unknown> => {
+    if ("file" in p) return { type: "file", file: { file_id: p.file.id } };
+    if ("image" in p) {
+      return { type: "image_url", image_url: { url: dataURI(p.image), detail: "auto" } };
+    }
+    return { type: "text", text: "text" in p ? p.text : "" };
+  });
+}
+
+// anthropicContent renders a user or assistant turn's content for Anthropic: a
+// string for at most one text part, else blocks in part order.
+function anthropicContent(parts: Part[]): unknown {
+  const text = plainText(parts);
+  if (text !== undefined) return text;
+  return parts.map((p): Record<string, unknown> => {
+    if ("file" in p) {
+      return { type: "document", source: { type: "file", file_id: p.file.id } };
+    }
+    if ("image" in p) {
+      return {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: p.image.mimeType,
+          data: bytesToBase64(p.image.bytes),
+        },
+      };
+    }
+    if ("toolCall" in p) {
+      const c = p.toolCall;
+      return { type: "tool_use", id: c.id, name: c.name, input: toolCallInput(c) };
+    }
+    return { type: "text", text: "text" in p ? p.text : "" };
+  });
 }
 
 // appendFlatReplayedTurn appends a captured assistant turn to a flat-envelope
@@ -1032,85 +981,54 @@ function attachToolDefs(
   );
 }
 
-// Returns a LIST because one canonical assistant turn is not always one wire
-// entry. Chat Completions and Anthropic fold N calls into a single message
-// carrying an array; Responses has no assistant envelope for tool calls at all
-// and spreads the same N calls across N peer input[] items (BUG-050).
-function toolCallMsg(
-  calls: ToolCall[],
-  cfg: ProviderSpec,
-): Array<Record<string, unknown>> {
-  if (cfg.chatWireShape === "ChatAnthropic") {
-    return [
-      {
-        role: cfg.roleMappings.assistant ?? "assistant",
-        content: calls.map((c) => ({
-          type: "tool_use",
-          id: c.id,
-          name: c.name,
-          input: toolCallInput(c),
-        })),
-      },
-    ];
-  }
-  // Responses (ADR-055): each call is its own top-level input[] item, paired to
-  // its output by call_id rather than by position in a tool_calls array.
-  // LIVE-ANCHORED 2026-08-13 — the collapsed form below is rejected 400
-  // missing_required_parameter on input[1].content (Responses accepts the
-  // assistant role, then demands the content a tool_calls-only message lacks).
-  // Witnessed by reconstruct-responses-openai-parallel-calls.json.
-  if (cfg.chatWireShape === "ChatResponsesOpenAI") {
-    return calls.map((c) => ({
-      type: "function_call",
-      call_id: c.id,
-      name: c.name,
-      arguments: JSON.stringify(toolCallInput(c)),
-    }));
-  }
-  return [
-    {
-      role: cfg.roleMappings.assistant ?? "assistant",
-      tool_calls: calls.map((c) => ({
-        id: c.id,
-        type: "function",
-        function: {
-          name: c.name,
-          arguments: JSON.stringify(toolCallInput(c)),
-        },
-      })),
-    },
-  ];
+// openAIToolCall renders one Chat Completions tool call, with the arguments
+// as a JSON string.
+function openAIToolCall(c: ToolCall): Record<string, unknown> {
+  return {
+    id: c.id,
+    type: "function",
+    function: { name: c.name, arguments: JSON.stringify(toolCallInput(c)) },
+  };
 }
 
-function toolResultMsg(
-  result: ToolResult,
-  cfg: ProviderSpec,
-): Record<string, unknown> {
-  if (cfg.chatWireShape === "ChatAnthropic") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: result.toolUseId,
-          content: result.content,
-        },
-      ],
-    };
-  }
-  // Responses (ADR-055) does not accept the Chat Completions tool message:
-  // input[] entries carry only the roles assistant/system/developer/user, and
-  // a tool result is a top-level typed item instead. LIVE-ANCHORED 2026-08-13
-  // — the shape below returns 200, the role:"tool" fallthrough is rejected 400
-  // invalid_value on input[3]. Witnessed by
-  // replay-responses-openai-reasoning.json.
-  if (cfg.chatWireShape === "ChatResponsesOpenAI") {
-    return {
-      type: "function_call_output",
-      call_id: result.toolUseId,
-      output: result.content,
-    };
-  }
+// Responses (ADR-055): each call is its own top-level input[] item, paired to
+// its output by call_id rather than by position in a tool_calls array.
+// LIVE-ANCHORED 2026-08-13 — the collapsed Chat Completions form is rejected
+// 400 missing_required_parameter on input[1].content (Responses accepts the
+// assistant role, then demands the content a tool_calls-only message lacks).
+// Witnessed by reconstruct-responses-openai-parallel-calls.json.
+function responsesFunctionCall(c: ToolCall): Record<string, unknown> {
+  return {
+    type: "function_call",
+    call_id: c.id,
+    name: c.name,
+    arguments: JSON.stringify(toolCallInput(c)),
+  };
+}
+
+function anthropicToolResultBlock(result: ToolResult): Record<string, unknown> {
+  return {
+    type: "tool_result",
+    tool_use_id: result.toolUseId,
+    content: result.content,
+  };
+}
+
+// Responses (ADR-055) does not accept the Chat Completions tool message:
+// input[] entries carry only the roles assistant/system/developer/user, and
+// a tool result is a top-level typed item instead. LIVE-ANCHORED 2026-08-13
+// — the shape below returns 200, the role:"tool" fallthrough is rejected 400
+// invalid_value on input[3]. Witnessed by
+// replay-responses-openai-reasoning.json.
+function responsesToolResult(result: ToolResult): Record<string, unknown> {
+  return {
+    type: "function_call_output",
+    call_id: result.toolUseId,
+    output: result.content,
+  };
+}
+
+function openAIToolResult(result: ToolResult): Record<string, unknown> {
   return {
     role: "tool",
     content: result.content,
