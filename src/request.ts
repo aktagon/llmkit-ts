@@ -19,22 +19,36 @@ import {
 import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
 import { resolveTurns } from "./provider_turn.ts";
-import type {
-  Provider,
-  Request as PromptRequest,
-  PromptOptions,
-  Tool,
-} from "./types.ts";
+import type { MiddlewareFn } from "./providers/middleware.ts";
+import type { Provider } from "./types.ts";
 import type {
   MediaRef,
   Message,
   Part,
+  Request as PromptRequest,
   ToolCall,
+  ToolDefinition,
   ToolResult,
+  WireRequest,
 } from "./structs.ts";
 import { checkPartKinds, partKind } from "./part_kinds.ts";
 import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
+
+// SendOptions are the settings of a chat call that do not shape the request
+// (ADR-098 RQC-002): transport, send policy (caching) and response handling.
+// Every request-shaping option lives on Request.
+export interface SendOptions {
+  signal?: AbortSignal;
+  caching?: boolean;
+  cacheTTL?: number; // seconds
+  middleware?: MiddlewareFn[];
+  /**
+   * Opt-in: populate Response.raw with the parsed provider response body
+   * (ADR-014). Plumbed by the typed-builder's `.raw()` chain method.
+   */
+  raw?: boolean;
+}
 
 // ADR-031 honest no-default contract: the single predicate every model
 // resolution point dispatches on. Local daemons declare no default — what a
@@ -95,39 +109,127 @@ export function resolveChatProtocol(
   );
 }
 
-export function buildRequest(
-  provider: Provider,
-  request: PromptRequest,
+// withWireShape returns cfg with the endpoint and wire shape of one of the
+// provider's chat protocols. The default shape is cfg itself.
+function withWireShape(
   cfg: ProviderSpec,
-  options: PromptOptions,
-  tools: Tool[] = [],
-  // headersOut, when supplied, collects request headers produced during body
-  // construction (e.g. the anthropic-beta header for structured output). The
-  // caller merges these into executeRequest. Body-only callers (batch) omit it.
-  headersOut?: Record<string, string>,
-): Record<string, unknown> {
+  shape: string,
+): ProviderSpec | undefined {
+  if (shape === cfg.chatWireShape) return cfg;
+  for (const cp of cfg.chatProtocols) {
+    if (cp.wireShape === shape) {
+      return { ...cfg, endpoint: cp.endpoint, chatWireShape: cp.wireShape };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * encodeRequest encodes a chat request for a provider's wire shape (ADR-098).
+ * It is keyless and makes no network call: the WireRequest carries the path
+ * and the content headers, and the caller's send path adds the base URL, the
+ * key and its own headers (RQC-006). An empty chatWireShape selects the
+ * provider's default. The model is request.model, else the provider's
+ * default.
+ */
+export function encodeRequest(
+  provider: string,
+  chatWireShape: string,
+  request: PromptRequest,
+): WireRequest {
+  const base = PROVIDERS[provider as ProviderName];
+  if (!base) {
+    throw new ValidationError("provider", `unknown: ${provider}`);
+  }
+  const cfg = chatWireShape ? withWireShape(base, chatWireShape) : base;
+  if (!cfg) {
+    throw new ValidationError(
+      "chatWireShape",
+      `provider "${provider}" does not support wire shape "${chatWireShape}"`,
+    );
+  }
+  const req = prepareRequest({ name: provider as ProviderName, apiKey: "" }, cfg, request);
+  const { body, headers } = encodeBody(provider as ProviderName, cfg, req);
+  return {
+    path: requestPath(cfg, req.model),
+    headers,
+    body: new TextEncoder().encode(JSON.stringify(body)),
+  };
+}
+
+// requestPath is the endpoint with the model filled in where the wire shape
+// puts it (WireRequest.path, RQC-006). It holds no key.
+export function requestPath(cfg: ProviderSpec, model: string): string {
+  return cfg.endpoint.replaceAll("{model}", model);
+}
+
+// validateRequest checks that the request carries a turn. The final prompt is
+// a turn like any other (ADR-098), so an empty messages means nothing to send.
+function validateRequest(request: PromptRequest): void {
+  if (!request.messages || request.messages.length === 0) {
+    throw new ValidationError(
+      "messages",
+      "set text(), history() or image() before calling prompt",
+    );
+  }
+}
+
+// A Request whose model prepareRequest has resolved.
+export type PreparedRequest = PromptRequest & { model: string };
+
+/**
+ * prepareRequest is the one setup step of a chat call (RQC-017): Text,
+ * stream, the Agent, batch and encodeRequest all run it before they encode.
+ * It checks that the request has a turn and that the provider takes each
+ * option, then resolves the model: request.model, which carries the builder's
+ * model, wins over provider.model and the provider's default (RQC-004). The
+ * returned Request is a copy that carries the resolved model.
+ */
+export function prepareRequest(
+  provider: Provider,
+  cfg: ProviderSpec,
+  request: PromptRequest,
+): PreparedRequest {
+  validateRequest(request);
+  validateOptions(provider.name, request);
+  return { ...request, model: request.model || resolveModel(provider, cfg) };
+}
+
+/**
+ * encodeBody is the one chat body builder (RQC-001): encodeRequest, Text,
+ * stream, batch and the Agent loop all encode through it. It returns the body
+ * as an object, because caching, streaming and the batch envelope change it
+ * after encoding, and the content headers (anthropic-beta, the protocol
+ * header). request.model must be resolved (prepareRequest).
+ */
+export function encodeBody(
+  providerName: ProviderName,
+  cfg: ProviderSpec,
+  request: PreparedRequest,
+): { body: Record<string, unknown>; headers: Record<string, string> } {
   const body: Record<string, unknown> = {};
-  const model = resolveModel(provider, cfg);
+  const headers: Record<string, string> = {};
+  const model = request.model;
 
   if (cfg.modelInBody) {
     body.model = model;
   }
 
   const supportedMap = new Map(
-    supportedOptions(provider.name).map((o) => [o.key, o.jsonKey]),
+    supportedOptions(providerName).map((o) => [o.key, o.jsonKey]),
   );
   const overridesMap = new Map(
-    optionOverrides(provider.name).map((o) => [o.key, o]),
+    optionOverrides(providerName).map((o) => [o.key, o]),
   );
 
   const maxTokensKey = resolveOptionKey(
-    provider.name,
+    providerName,
     model,
     cfg.chatWireShape,
     OptionKeys.MAX_TOKENS,
     supportedMap,
   );
-  const maxTokensValue = options.maxTokens ?? cfg.defaultMaxTokens;
+  const maxTokensValue = request.maxTokens ?? cfg.defaultMaxTokens;
   if (maxTokensKey !== undefined) {
     setNestedField(body, maxTokensKey, maxTokensValue);
   }
@@ -158,10 +260,10 @@ export function buildRequest(
     }
   }
 
-  // Tool definitions (Agent path). The Text/batch paths pass no tools, so this
-  // is a no-op there — the body stays byte-identical (PIPE-005).
-  if (tools.length > 0) {
-    attachToolDefs(body, tools, cfg);
+  // Tool definitions (Agent path). Text and batch set none, so this is a
+  // no-op there — the body stays byte-identical (PIPE-005).
+  if (request.tools && request.tools.length > 0) {
+    attachToolDefs(body, request.tools, cfg);
   }
 
   if (cfg.wrapsOptionsIn) {
@@ -169,8 +271,8 @@ export function buildRequest(
     applyOptions(
       body,
       optBody,
-      options,
-      provider.name,
+      request,
+      providerName,
       model,
       cfg.chatWireShape,
       supportedMap,
@@ -187,8 +289,8 @@ export function buildRequest(
     applyOptions(
       body,
       body,
-      options,
-      provider.name,
+      request,
+      providerName,
       model,
       cfg.chatWireShape,
       supportedMap,
@@ -198,34 +300,40 @@ export function buildRequest(
 
   if (
     cfg.safetySettingsWirePath &&
-    options.safetySettings &&
-    options.safetySettings.length > 0
+    request.safetySettings &&
+    request.safetySettings.length > 0
   ) {
-    body[cfg.safetySettingsWirePath] = options.safetySettings.map((s) => ({
+    body[cfg.safetySettingsWirePath] = request.safetySettings.map((s) => ({
       category: s.category,
       threshold: s.threshold,
     }));
   }
 
   if (request.schema) {
-    applyStructuredOutput(body, headersOut, request.schema, provider.name);
+    applyStructuredOutput(body, headers, request.schema, providerName);
   }
 
   // BUG-017: when the request references uploaded files, it carries the beta
   // the provider's upload declares (uploadBetaHeader), composed onto any
   // existing anthropic-beta (e.g. structured output) — comma-separated,
   // deduped. Anthropic declares none since its Files API left beta (BUG-078).
-  if (headersOut && requestHasFiles(request)) {
-    const fu = fileUploadConfig(provider.name);
+  if (requestHasFiles(request)) {
+    const fu = fileUploadConfig(providerName);
     if (fu && fu.betaHeader) {
-      headersOut["anthropic-beta"] = appendBeta(
-        headersOut["anthropic-beta"] ?? "",
+      headers["anthropic-beta"] = appendBeta(
+        headers["anthropic-beta"] ?? "",
         fu.betaHeader,
       );
     }
   }
 
-  return body;
+  // Required protocol header (e.g. anthropic-version): keyless, so it belongs
+  // to the content headers.
+  if (cfg.requiredHeader) {
+    headers[cfg.requiredHeader] = cfg.requiredHeaderValue;
+  }
+
+  return { body, headers };
 }
 
 // appendBeta composes a beta token onto an existing anthropic-beta header value
@@ -246,7 +354,7 @@ export function appendBeta(existing: string, add: string): string {
 // is collected into headersOut for the caller to forward to executeRequest.
 function applyStructuredOutput(
   body: Record<string, unknown>,
-  headersOut: Record<string, string> | undefined,
+  headersOut: Record<string, string>,
   schema: string,
   providerName: ProviderName,
 ): void {
@@ -263,7 +371,7 @@ function applyStructuredOutput(
   if (def.enforceStrict) setAdditionalPropertiesFalse(parsed);
   if (def.removeAdditionalProps) removeAdditionalProperties(parsed);
 
-  if (def.betaHeader && headersOut) {
+  if (def.betaHeader) {
     headersOut["anthropic-beta"] = def.betaHeader;
   }
 
@@ -375,7 +483,7 @@ export function resolveOptionKey(
 function applyOptions(
   root: Record<string, unknown>,
   target: Record<string, unknown>,
-  options: PromptOptions,
+  options: PromptRequest,
   provider: ProviderName,
   model: string,
   chatWireShape: string,
@@ -406,8 +514,8 @@ function applyOptions(
     apply(OptionKeys.TEMPERATURE, options.temperature);
   if (options.topP !== undefined) apply(OptionKeys.TOP_P, options.topP);
   if (options.topK !== undefined) apply(OptionKeys.TOP_K, options.topK);
-  if (options.stopSequences && options.stopSequences.length > 0)
-    apply(OptionKeys.STOP_SEQUENCES, options.stopSequences);
+  if (options.stop && options.stop.length > 0)
+    apply(OptionKeys.STOP_SEQUENCES, options.stop);
   if (options.seed !== undefined) apply(OptionKeys.SEED, options.seed);
   if (options.frequencyPenalty !== undefined)
     apply(OptionKeys.FREQUENCY_PENALTY, options.frequencyPenalty);
@@ -415,7 +523,7 @@ function applyOptions(
     apply(OptionKeys.PRESENCE_PENALTY, options.presencePenalty);
   if (options.thinkingBudget !== undefined)
     apply(OptionKeys.THINKING_BUDGET, options.thinkingBudget);
-  if (options.reasoningEffort)
+  if (options.reasoningEffort !== undefined)
     apply(OptionKeys.REASONING_EFFORT, options.reasoningEffort);
 }
 
@@ -482,7 +590,7 @@ function mergeIntoParent(
 
 export function validateOptions(
   name: ProviderName,
-  options: PromptOptions,
+  options: PromptRequest,
 ): void {
   if (!PROVIDERS[name]) return;
   const supported = new Set(supportedOptions(name).map((o) => o.key));
@@ -495,7 +603,7 @@ export function validateOptions(
   };
   if (options.topK !== undefined) requireOption(OptionKeys.TOP_K, "topK");
   if (options.seed !== undefined) requireOption(OptionKeys.SEED, "seed");
-  if (options.stopSequences && options.stopSequences.length > 0)
+  if (options.stop && options.stop.length > 0)
     requireOption(OptionKeys.STOP_SEQUENCES, "stopSequences");
   if (options.frequencyPenalty !== undefined)
     requireOption(OptionKeys.FREQUENCY_PENALTY, "frequencyPenalty");
@@ -503,10 +611,10 @@ export function validateOptions(
     requireOption(OptionKeys.PRESENCE_PENALTY, "presencePenalty");
   if (options.thinkingBudget !== undefined)
     requireOption(OptionKeys.THINKING_BUDGET, "thinkingBudget");
-  if (options.reasoningEffort)
+  if (options.reasoningEffort !== undefined)
     requireOption(OptionKeys.REASONING_EFFORT, "reasoningEffort");
 
-  if (options.reasoningEffort) {
+  if (options.reasoningEffort !== undefined) {
     const ov = overrides.get(OptionKeys.REASONING_EFFORT);
     if (
       ov &&
@@ -922,7 +1030,7 @@ function appendFlatReplayedTurn(
 // by provider name.
 function attachToolDefs(
   body: Record<string, unknown>,
-  tools: Tool[],
+  tools: ToolDefinition[],
   cfg: ProviderSpec,
 ): void {
   if (cfg.chatWireShape === "ChatBedrock") {
@@ -1033,15 +1141,19 @@ function openAIToolResult(result: ToolResult): Record<string, unknown> {
   };
 }
 
+// executeRequest posts an encoded chat body. It adds what the keyless encoder
+// leaves out (RQC-006): the base URL, the region, the key and the caller's
+// headers. model is the resolved Request.model, which fills the path.
 export async function executeRequest(
   provider: Provider,
   cfg: ProviderSpec,
+  model: string,
   body: Record<string, unknown>,
-  options: PromptOptions,
-  extraHeaders?: Record<string, string>,
+  options: SendOptions,
+  contentHeaders: Record<string, string>,
 ): Promise<{ status: number; ok: boolean; text: string }> {
   const baseUrl = provider.baseUrl || cfg.baseUrl;
-  const url = buildUrl(baseUrl + cfg.endpoint, provider, cfg);
+  const url = buildUrl(baseUrl + requestPath(cfg, model), provider, cfg);
   const jsonBody = JSON.stringify(body);
 
   let headers: Record<string, string>;
@@ -1075,9 +1187,7 @@ export async function executeRequest(
     };
   }
 
-  if (extraHeaders) {
-    Object.assign(headers, extraHeaders);
-  }
+  Object.assign(headers, contentHeaders);
 
   const httpResp = await sendHTTP(url, {
     method: "POST",
@@ -1126,13 +1236,13 @@ export function buildAuthHeaders(
   return headers;
 }
 
+// buildUrl adds the region and a query-parameter key to a URL whose model
+// placeholder requestPath has already filled.
 export function buildUrl(
-  base: string,
+  url: string,
   provider: Provider,
   cfg: ProviderSpec,
 ): string {
-  const model = resolveModel(provider, cfg);
-  let url = base.replaceAll("{model}", model);
   if (cfg.regionEnvVar) {
     const region = process.env[cfg.regionEnvVar] || "";
     url = url.replaceAll("{region}", region);

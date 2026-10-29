@@ -178,7 +178,7 @@ export class Text {
   /** @internal */ _presencePenalty?: number;
   /** @internal */ _protocol: string = "";
   /** @internal */ _raw: boolean = false;
-  /** @internal */ _reasoningEffort: string = "";
+  /** @internal */ _reasoningEffort?: string;
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _schema: string = "";
   /** @internal */ _seed?: number;
@@ -437,7 +437,7 @@ export class Agent {
   /** @internal */ _model: string = "";
   /** @internal */ _presencePenalty?: number;
   /** @internal */ _raw: boolean = false;
-  /** @internal */ _reasoningEffort: string = "";
+  /** @internal */ _reasoningEffort?: string;
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _seed?: number;
   /** @internal */ _stopSequences: string[] = [];

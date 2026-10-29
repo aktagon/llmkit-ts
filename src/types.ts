@@ -1,8 +1,6 @@
 // Public types for the llmkit TS SDK.
 
 import type { ProviderName } from "./providers/providers.ts";
-import type { MiddlewareFn } from "./providers/middleware.ts";
-import type { SafetySetting } from "./structs.ts";
 
 //
 // Canonical declarations live at ./structs.ts; these lines keep every
@@ -109,36 +107,9 @@ export const IMAGE_SAFETY_FILTER_BLOCK_SOME = "block_some";
 export const IMAGE_SAFETY_FILTER_BLOCK_MOST = "block_most";
 export const IMAGE_SAFETY_FILTER_BLOCK_ONLY_HIGH = "block_only_high";
 
-export interface PromptOptions {
-  signal?: AbortSignal;
-  temperature?: number;
-  topP?: number;
-  topK?: number;
-  maxTokens?: number;
-  stopSequences?: string[];
-  seed?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  thinkingBudget?: number;
-  reasoningEffort?: string;
-  caching?: boolean;
-  cacheTTL?: number; // seconds
-  middleware?: MiddlewareFn[];
-  safetySettings?: SafetySetting[];
-  /**
-   * Opt-in: populate Response.raw with the parsed provider response body
-   * (ADR-014). Plumbed by the typed-builder's `.raw()` chain method.
-   */
-  raw?: boolean;
-}
-
 export interface Tool {
   name: string;
   description: string;
   schema: Record<string, unknown>;
   run: (input: Record<string, unknown>) => string | Promise<string>;
-}
-
-export interface AgentOptions extends PromptOptions {
-  maxToolIterations?: number;
 }

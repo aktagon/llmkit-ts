@@ -26,8 +26,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   example `parts[1]: image generation does not accept tool_call parts`. Image
   generation used to ignore a lyrics or audio part.
 - The `WireRequest` type (the path, content headers and body of a chat
-  request) is exported from the package root. No public function returns it
-  yet.
+  request) is exported from the package root.
+- **BREAKING — `PromptOptions` and `AgentOptions` are removed.** No public
+  function took them. Every option of a chat call is a field of `Request`
+  or a builder method (`.temperature(0.7)`).
+- **BREAKING — `BatchHandle.wait` and `poll` take only `raw`,
+  `pollIntervalMs`, `pollTimeoutMs` and `signal`.** Their options type no
+  longer lists the sampling options, `caching` or `middleware`, which these
+  methods never read. Set them on the `Text` builder before `.batch(...)`.
+- **BREAKING — batch rejects an option the provider does not take**, with a
+  `ValidationError`, before any HTTP call. It used to send it.
+- **BREAKING — a request with no turn fails** with a `ValidationError` on
+  field `messages`, before any HTTP call. It used to be sent.
+- `.reasoningEffort(level)` sends the level it is given, so
+  `.reasoningEffort("")` sends an empty effort. Unset sends none.
+- A stream sends the request's content headers, such as the
+  `anthropic-beta` that structured output needs. It used to drop them.
+- Text, stream, the Agent and batch put the builder's model in
+  `Request.model`. A Google resource cache is created for that model.
+
+### Added
+
+- `encodeRequest(provider, chatWireShape, request)` encodes a chat request
+  for a provider's wire shape and returns a `WireRequest`: the path with the
+  model filled in, the content headers, and the JSON body. It needs no key
+  and makes no network call. An empty `chatWireShape` selects the provider's
+  default.
 
 ## [3.0.0] — 2026-10-27
 
