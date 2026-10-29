@@ -27,7 +27,7 @@ import { ValidationError } from "../errors.ts";
 import type { SendOptions } from "../request.ts";
 import type { Provider, Request, Response } from "../types.ts";
 import type { Text } from "./builders.ts";
-import { buildPromptArgs, textProvider } from "./text.ts";
+import { buildPromptArgs, textProvider, textSendOptions } from "./text.ts";
 
 export class BatchHandle {
   id: string;
@@ -96,11 +96,7 @@ function batchInputs(
     );
   }
   const requests = prompts.map((p) => buildPromptArgs(b, p).request);
-  const options: SendOptions = {};
-  if (b._caching) options.caching = true;
-  if (b._middleware.length > 0) options.middleware = b._middleware;
-  if (b._raw) options.raw = true;
-  return { provider: textProvider(b), requests, options };
+  return { provider: textProvider(b), requests, options: textSendOptions(b) };
 }
 
 // The single batch terminal on the Text builder: c.text.<config>.batch(...).

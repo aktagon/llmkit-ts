@@ -82,12 +82,19 @@ export function buildPromptArgs(
     request.reasoningEffort = b._reasoningEffort;
   if (b._safetySettings.length > 0) request.safetySettings = b._safetySettings;
 
+  return { provider, request, options: textSendOptions(b) };
+}
+
+// textSendOptions are the chain settings that do not shape the request
+// (RQC-002): caching and its TTL, middleware and raw. Prompt and batch read
+// them from here.
+export function textSendOptions(b: Text): SendOptions {
   const options: SendOptions = {};
   if (b._caching) options.caching = true;
+  if (b._cacheTTL !== undefined) options.cacheTTL = b._cacheTTL;
   if (b._middleware.length > 0) options.middleware = b._middleware;
   if (b._raw) options.raw = true;
-
-  return { provider, request, options };
+  return options;
 }
 
 // textProvider is the client's provider as the send paths read it: name, key,
