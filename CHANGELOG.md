@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before any HTTP call, with a `ValidationError` that names the kind, for
   example `parts[1]: image generation does not accept tool_call parts`. Image
   generation used to ignore a lyrics or audio part.
+- The `WireRequest` type (the path, content headers and body of a chat
+  request) is exported from the package root. No public function returns it
+  yet.
 
 ## [3.0.0] — 2026-10-27
 
