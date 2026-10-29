@@ -15,12 +15,14 @@ import { attachRaw, decodeResponseRaw } from "./response.ts";
 import {
   appendBeta,
   buildAuthHeaders,
-  buildRequest,
+  encodeBody,
+  prepareRequest,
   resolveModel,
-  validateOptions,
+  type PreparedRequest,
+  type SendOptions,
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
-import type { Event, MiddlewareFn } from "./providers/middleware.ts";
+import type { Event } from "./providers/middleware.ts";
 import { sendHTTP } from "./http.ts";
 import {
   classifyByConfig,
@@ -35,19 +37,19 @@ import {
 } from "./job.ts";
 import type {
   BatchHandle,
-  PromptOptions,
   Provider,
   Request as PromptRequest,
   Response as PromptResponse,
 } from "./types.ts";
 
-// Sampling/caching fields mirror PromptOptions so chain methods on the
-// typed-builder (max_tokens, temperature, ...) propagate from
-// ``Text.batch(...)`` through to the wire body of every queued request.
-// Per ADR-012 REQ-PROP-003: every helper for ``Text`` MUST read every
-// chain field; previously BatchOptions only carried middleware +
-// pollIntervalMs, so sampling options were silently dropped.
-export interface BatchOptions extends Partial<PromptOptions> {
+// BatchOptions are the poll policy of BatchHandle.wait and poll, plus the
+// response handling (raw). The request-shaping options of every queued request
+// travel on its Request (ADR-098 RQC-001), and submit takes SendOptions.
+export interface BatchOptions {
+  /**
+   * Opt-in: populate each Response.raw with the parsed result line (ADR-014).
+   */
+  raw?: boolean;
   pollIntervalMs?: number;
   /**
    * pollTimeoutMs is the OVERALL poll-loop wall-clock backstop for waitBatch
@@ -61,7 +63,6 @@ export interface BatchOptions extends Partial<PromptOptions> {
    * context.Context — the poll loop rejects with the abort reason when signalled.
    */
   signal?: AbortSignal;
-  middleware?: MiddlewareFn[];
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
@@ -73,7 +74,7 @@ const DEFAULT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 export async function submitBatch(
   provider: Provider,
   requests: PromptRequest[],
-  options: BatchOptions = {},
+  options: SendOptions = {},
 ): Promise<BatchHandle> {
   const cfg = PROVIDERS[provider.name];
   if (!cfg) {
@@ -89,13 +90,17 @@ export async function submitBatch(
       `batching not supported: ${provider.name}`,
     );
   }
-  validateOptions(provider.name, {});
+  // The one setup step on every item (RQC-017), before the batch_submit
+  // event: an item with an option the provider does not take fails here.
+  const prepared = requests.map((r) => prepareRequest(provider, cfg, r));
 
+  // Every item comes from one builder, so the first item's model is the
+  // batch's. An empty batch reports the provider's model.
   const baseEvent: Event = {
     op: "batch_submit",
     phase: "pre",
     provider: provider.name,
-    model: resolveModel(provider, cfg),
+    model: prepared[0]?.model ?? resolveModel(provider, cfg),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
@@ -107,7 +112,7 @@ export async function submitBatch(
 
     let body: Uint8Array;
     if (bc.inputMode === "FileReferenceInput") {
-      const jsonl = await buildBatchJsonl(requests, provider, cfg, bc, options);
+      const jsonl = await buildBatchJsonl(prepared, provider, cfg, bc, options);
       const fileId = await uploadBatchFile(base, jsonl, bc, headers, provider.timeoutMs);
       const payload: Record<string, unknown> = {
         [bc.inputField]: fileId,
@@ -117,7 +122,7 @@ export async function submitBatch(
       body = new TextEncoder().encode(JSON.stringify(payload));
     } else {
       const { payload, betaHeaders } = await buildBatchBody(
-        requests,
+        prepared,
         provider,
         cfg,
         bc,
@@ -355,15 +360,15 @@ function batchRequestCount(
 
 // Returns the batch payload plus the contract-bearing anthropic-beta values the
 // per-request bodies require (files-api / structured output), composed across
-// items, so the caller can attach them to the batch CREATE request (buildRequest
-// collects them into headersOut per request; the batch submit otherwise sends
+// items, so the caller can attach them to the batch CREATE request (encodeBody
+// returns them per request; the batch submit otherwise sends
 // only auth headers).
 async function buildBatchBody(
-  requests: PromptRequest[],
+  requests: PreparedRequest[],
   provider: Provider,
   cfg: ProviderSpec,
   bc: BatchDef,
-  options: BatchOptions,
+  options: SendOptions,
 ): Promise<{
   payload: Record<string, unknown>;
   betaHeaders: Record<string, string>;
@@ -372,8 +377,7 @@ async function buildBatchBody(
   const betaHeaders: Record<string, string> = {};
   for (let i = 0; i < requests.length; i++) {
     const req = requests[i]!;
-    const reqHeaders: Record<string, string> = {};
-    const reqBody = buildRequest(provider, req, cfg, options, [], reqHeaders);
+    const { body: reqBody, headers: reqHeaders } = encodeBody(provider.name, cfg, req);
     if (reqHeaders["anthropic-beta"]) {
       betaHeaders["anthropic-beta"] = appendBeta(
         betaHeaders["anthropic-beta"] ?? "",
@@ -381,7 +385,7 @@ async function buildBatchBody(
       );
     }
     if (options.caching) {
-      await applyCaching(reqBody, provider, cfg, options);
+      await applyCaching(reqBody, provider, cfg, req.model, options);
     }
     if (bc.itemBodyField) {
       items.push({
@@ -399,18 +403,18 @@ async function buildBatchBody(
 }
 
 async function buildBatchJsonl(
-  requests: PromptRequest[],
+  requests: PreparedRequest[],
   provider: Provider,
   cfg: ProviderSpec,
   bc: BatchDef,
-  options: BatchOptions,
+  options: SendOptions,
 ): Promise<Uint8Array> {
   const lines: string[] = [];
   for (let i = 0; i < requests.length; i++) {
     const req = requests[i]!;
-    const reqBody = buildRequest(provider, req, cfg, options);
+    const { body: reqBody } = encodeBody(provider.name, cfg, req);
     if (options.caching) {
-      await applyCaching(reqBody, provider, cfg, options);
+      await applyCaching(reqBody, provider, cfg, req.model, options);
     }
     lines.push(
       JSON.stringify({
