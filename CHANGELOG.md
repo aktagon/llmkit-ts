@@ -53,8 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `text.cacheTTL(seconds)` sets how long the cache that `.caching()` creates
-  lives. Google resource caching sends it on the cache-create request;
+- `text.cacheTTL(seconds)` and `agent.cacheTTL(seconds)` set how long the
+  cache that `.caching()` creates lives. Google resource caching sends it on the cache-create request;
   without it, Google's default TTL (3600 s) applies. Other providers ignore
   it. Since the removal of `PromptOptions.cacheTTL`, no chat call could set a
   TTL.
