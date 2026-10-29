@@ -30,8 +30,9 @@ function isObject(v: unknown): v is JSONObject {
  * (a leading system turn becomes request.system) with text content, and every
  * option the provider takes, under any key the encoder may write for it. So
  * max_tokens and max_completion_tokens both decode to maxTokens (RQC-010).
- * The model comes from the body, or from wire.path where the provider puts it
- * in the URL. Any field the Request does not model, such as stream, tools or
+ * A bare-string stop decodes as a one-item list, stream false as no stream,
+ * and a developer turn as the system turn. The model comes from the body, or
+ * from wire.path where the provider puts it in the URL. Any field the Request does not model, such as stream, tools or
  * a content list, throws a ValidationError that names it (RQC-007).
  */
 export function decodeRequest(
@@ -73,6 +74,8 @@ export function decodeRequest(
   const hasTurns = "messages" in body;
   const turns = body.messages;
   delete body.messages;
+  // stream false asks for what an absent stream does (HANDOFF-105 R3b).
+  if (body.stream === false) delete body.stream;
   rejectUnmodeled(body, "");
   if (hasTurns) decodeTurns(req, cfg, turns);
   return req;
@@ -196,8 +199,13 @@ function setOption(req: Request, param: OptionKey, v: unknown): string | undefin
       req.reasoningEffort = v;
       return undefined;
     case OptionKeys.STOP_SEQUENCES:
+      // A bare string is a one-item list (HANDOFF-105 R3b).
+      if (typeof v === "string") {
+        req.stop = [v];
+        return undefined;
+      }
       if (!Array.isArray(v) || !v.every((s) => typeof s === "string")) {
-        return "must be a list of strings";
+        return "must be a string or a list of strings";
       }
       req.stop = v as string[];
       return undefined;
@@ -239,7 +247,9 @@ function decodeTurns(req: Request, cfg: ProviderSpec, v: unknown): void {
   if (!Array.isArray(v)) {
     throw new ValidationError("messages", "must be a list");
   }
-  const roles = new Map<string, string>();
+  // OpenAI's developer role is its system role for newer models
+  // (HANDOFF-105 R3b); the provider's role mappings come after it.
+  const roles = new Map<string, string>([["developer", "system"]]);
   for (const [canonical, onWire] of Object.entries(cfg.roleMappings)) {
     roles.set(onWire, canonical);
   }
