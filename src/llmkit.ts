@@ -79,6 +79,8 @@ export { decodeResponse, encodeResponse } from "./response.ts";
 // share. It returns the path, the content headers and the body; the send path
 // adds the base URL, the key and the caller's headers (RQC-006).
 export { encodeRequest } from "./request.ts";
+// decodeRequest is its inverse for the ChatOpenAI wire shape (RQC-007..013).
+export { decodeRequest } from "./request_decode.ts";
 // Async-job poll surface (ADR-062 / ADR-063): the normalized JobStatus that
 // BatchHandle.poll / TranscriptionHandle.poll return, plus its JobState and
 // failure cause. Public because they are what poll() returns (POLL-004).
