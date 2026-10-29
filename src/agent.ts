@@ -199,6 +199,8 @@ export class Agent {
         if (decoded.providerTurn) result.providerTurn = decoded.providerTurn;
         if (decoded.finishReason) result.finishReason = decoded.finishReason;
         if (decoded.finishMessage) result.finishMessage = decoded.finishMessage;
+        if (decoded.id) result.id = decoded.id;
+        if (decoded.model) result.model = decoded.model;
         return attachRaw(result, respText, !!this.options.raw);
       }
 
