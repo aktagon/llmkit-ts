@@ -27,16 +27,17 @@ import {
 import { APIError, ValidationError } from "../errors.ts";
 import { extractPath, extractIntPath, optIntPath } from "../paths.ts";
 import {
-  buildRequest as buildLegacyRequest,
   buildAuthHeaders,
   buildUrl,
+  encodeBody,
+  prepareRequest,
+  requestPath,
   resolveChatProtocol,
-  validateOptions,
+  type SendOptions,
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event } from "../providers/middleware.ts";
 import type {
-  PromptOptions,
   Provider,
   Request as PromptRequest,
   Response as PromptResponse,
@@ -78,7 +79,7 @@ async function runStream(
   request: PromptRequest,
   protocol: string,
   onChunk: (text: string) => void | Promise<void>,
-  options: PromptOptions = {},
+  options: SendOptions = {},
 ): Promise<PromptResponse> {
   const baseCfg = PROVIDERS[provider.name];
   if (!baseCfg) {
@@ -105,20 +106,20 @@ async function runStream(
     );
   }
 
-  validateOptions(provider.name, options);
+  const prepared = prepareRequest(provider, cfg, request);
 
   const baseEvent: Event = {
     op: "llm_request",
     phase: "pre",
     provider: provider.name,
-    model: provider.model || cfg.defaultModel,
+    model: prepared.model,
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
   const start = performance.now();
 
   try {
-    const body = buildLegacyRequest(provider, request, cfg, options);
+    const { body, headers: content } = encodeBody(provider.name, cfg, prepared);
     if (streamCfg.param) {
       body[streamCfg.param] =
         streamCfg.paramValue === "true" ? true : streamCfg.paramValue;
@@ -127,9 +128,11 @@ async function runStream(
     if (streamCfg.usageOptIn) {
       body.stream_options = { include_usage: true };
     }
-    const headers = buildAuthHeaders(provider, cfg);
+    const headers = { ...buildAuthHeaders(provider, cfg), ...content };
     const baseUrl = provider.baseUrl || cfg.baseUrl;
-    const endpoint = streamCfg.endpoint || cfg.endpoint;
+    const endpoint = streamCfg.endpoint
+      ? streamCfg.endpoint.replaceAll("{model}", prepared.model)
+      : requestPath(cfg, prepared.model);
     const url = buildUrl(baseUrl + endpoint, provider, cfg);
 
     const httpResp = await sendHTTP(url, {
@@ -319,7 +322,7 @@ export class TextStream implements AsyncIterable<string> {
   #provider: Provider;
   #request: PromptRequest;
   #protocol: string;
-  #options: PromptOptions;
+  #options: SendOptions;
   #resp: PromptResponse | null = null;
   #err: Error | null = null;
 

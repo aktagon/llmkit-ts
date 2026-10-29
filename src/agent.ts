@@ -12,17 +12,16 @@ import { APIError, ValidationError } from "./errors.ts";
 import { accumulateUsage, attachRaw, decodeResponse } from "./response.ts";
 import { matchingBlocks } from "./paths.ts";
 import {
-  buildRequest,
+  encodeBody,
   executeRequest,
-  resolveModel,
+  prepareRequest,
   toolCallInput,
-  validateOptions,
+  type SendOptions,
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
 import { applyCaching } from "./caching.ts";
 import type {
-  AgentOptions,
   Provider,
   Request,
   Response as PromptResponse,
@@ -33,34 +32,43 @@ import type { Message, Part, ToolCall } from "./structs.ts";
 
 const DEFAULT_MAX_TOOL_ITERATIONS = 10;
 
+// AgentSendOptions are the Agent's send options plus its loop control
+// (ADR-098 RQC-002).
+export interface AgentSendOptions extends SendOptions {
+  maxToolIterations?: number;
+}
+
 export class Agent {
   private readonly provider: Provider;
-  private readonly options: AgentOptions;
+  // The Request every turn sends, without its messages: the model, system,
+  // tool definitions and options (ADR-098 RQC-001). The history fills
+  // messages on each turn.
+  private readonly request: Request;
+  // The functions that run the tools, kept beside the Request, which holds
+  // only their definitions (RQC-018).
+  private readonly tools: Tool[];
+  private readonly options: AgentSendOptions;
   // The public Message list (ADR-100). An assistant turn the loop received
   // carries its providerTurn (ADR-085) beside its parts, which stay what the
   // loop reads to run tools; the next request replays the providerTurn.
   private readonly history: Message[] = [];
-  private tools: Tool[] = [];
-  private system = "";
 
-  constructor(provider: Provider, options: AgentOptions = {}) {
+  constructor(
+    provider: Provider,
+    request: Request = {},
+    tools: Tool[] = [],
+    options: AgentSendOptions = {},
+  ) {
     if (!PROVIDERS[provider.name]) {
       throw new ValidationError("provider", `unknown: ${provider.name}`);
     }
     if (!provider.apiKey) {
       throw new ValidationError("apiKey", "required");
     }
-    validateOptions(provider.name, options);
     this.provider = provider;
+    this.request = request;
+    this.tools = tools;
     this.options = options;
-  }
-
-  setSystem(system: string): void {
-    this.system = system;
-  }
-
-  addTool(tool: Tool): void {
-    this.tools.push(tool);
   }
 
   // historyView exposes the agent's conversation history to the typed
@@ -97,10 +105,17 @@ export class Agent {
     // nothing (ADR-081 AVAIL-005).
     let totalUsage: Usage | undefined;
 
-    const model = resolveModel(this.provider, cfg);
     const mw = this.options.middleware;
 
     for (let i = 0; i < maxIters; i++) {
+      // The shared setup step and encoder (ADR-026 PIPE-001, ADR-098 RQC-001,
+      // RQC-017): the history becomes the Request's messages, so validation,
+      // model resolution and every transform run as on the Text/batch path.
+      const request = prepareRequest(this.provider, cfg, {
+        ...this.request,
+        messages: [...this.history],
+      });
+      const model = request.model;
       const llmEvent: Event = {
         op: "llm_request",
         phase: "pre",
@@ -115,27 +130,20 @@ export class Agent {
       let respText = "";
       let decoded: PromptResponse;
       try {
-        const extraHeaders: Record<string, string> = {};
-        const body = buildRequest(
-          this.provider,
-          this.toRequest(),
-          cfg,
-          this.options,
-          this.tools,
-          extraHeaders,
-        );
+        const { body, headers } = encodeBody(this.provider.name, cfg, request);
         // Caching is a shared request-construction step (ADR-026): applied on
         // every send path by construction, like Text/batch. Before this, a
         // .caching() agent silently paid full input price every turn (BUG-004).
         if (this.options.caching) {
-          await applyCaching(body, this.provider, cfg, this.options);
+          await applyCaching(body, this.provider, cfg, model, this.options);
         }
         const resp = await executeRequest(
           this.provider,
           cfg,
+          model,
           body,
           this.options,
-          extraHeaders,
+          headers,
         );
         if (!resp.ok) {
           throw new APIError(
@@ -247,17 +255,6 @@ export class Agent {
     }
 
     throw new Error(`max tool iterations (${maxIters}) reached`);
-  }
-
-  // toRequest hands the history to the shared buildRequest (request.ts), so
-  // caching, options, tool defs, system placement and message/tool transforms
-  // all run once, identically to the Text/batch paths (ADR-026
-  // PIPE-001/004). This is what closed BUG-006: the agent no longer
-  // hand-rolls a partial body that applied only max_tokens.
-  private toRequest(): Request {
-    const request: Request = { messages: [...this.history] };
-    if (this.system) request.system = this.system;
-    return request;
   }
 }
 

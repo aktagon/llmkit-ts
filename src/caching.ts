@@ -12,17 +12,20 @@ import {
 } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { optIntPath, extractIntPath, extractPath } from "./paths.ts";
-import { mergeCallerHeaders, resolveModel } from "./request.ts";
+import { mergeCallerHeaders, type SendOptions } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
-import type { Provider, PromptOptions } from "./types.ts";
+import type { Provider } from "./types.ts";
 import { sendHTTP } from "./http.ts";
 
+// applyCaching applies the provider's caching mode to an encoded body. model is
+// the request's resolved model: a resource cache is created for it.
 export async function applyCaching(
   body: Record<string, unknown>,
   provider: Provider,
   cfg: ProviderSpec,
-  options: PromptOptions = {},
+  model: string,
+  options: SendOptions = {},
 ): Promise<void> {
   const cc = cachingConfig(provider.name);
   if (!cc) {
@@ -35,7 +38,7 @@ export async function applyCaching(
       applyExplicit(body, cc, cfg);
       return;
     case "ResourceCaching":
-      await applyResource(body, provider, cfg, cc, options);
+      await applyResource(body, provider, cfg, cc, model, options);
       return;
   }
 }
@@ -87,7 +90,8 @@ async function applyResource(
   provider: Provider,
   cfg: ProviderSpec,
   cc: CachingDef,
-  options: PromptOptions,
+  model: string,
+  options: SendOptions,
 ): Promise<void> {
   const lc = cc.lifecycle;
   if (!lc) {
@@ -106,14 +110,13 @@ async function applyResource(
     op: "cache_create",
     phase: "pre",
     provider: provider.name,
-    model: resolveModel(provider, cfg),
+    model,
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
   const start = performance.now();
 
   try {
-    const model = resolveModel(provider, cfg);
     const ttlSeconds = options.cacheTTL ?? Number(cc.defaultTtl || "0");
     const createBody: Record<string, unknown> = {
       model: `models/${model}`,
