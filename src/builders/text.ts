@@ -65,6 +65,7 @@ export function buildPromptArgs(
   const messages: Message[] = [...b._history];
   if (turn.length > 0) messages.push({ role: "user", parts: turn });
   if (messages.length > 0) request.messages = messages;
+  if (b._tools.length > 0) request.tools = b._tools;
   if (b._schema) request.schema = b._schema;
   if (b._maxTokens !== undefined) request.maxTokens = b._maxTokens;
   if (b._temperature !== undefined) request.temperature = b._temperature;
@@ -83,6 +84,34 @@ export function buildPromptArgs(
   if (b._safetySettings.length > 0) request.safetySettings = b._safetySettings;
 
   return { provider, request, options: textSendOptions(b) };
+}
+
+/**
+ * The body of the generated Text.request chain method (ADR-098 RQC-005), the
+ * inverse of buildPromptArgs: every request-shaping field takes req's value.
+ * req.messages become the history, and the text, image and file parts are
+ * dropped, because req.messages already holds every turn. The send settings
+ * (textSendOptions) and the protocol are not request fields, so they stay.
+ */
+export function textSetRequest(b: Text, req: Request): void {
+  b._model = req.model ?? "";
+  b._system = req.system ?? "";
+  b._history = [...(req.messages ?? [])];
+  b._parts = [];
+  b._files = [];
+  b._tools = [...(req.tools ?? [])];
+  b._schema = req.schema ?? "";
+  b._maxTokens = req.maxTokens;
+  b._temperature = req.temperature;
+  b._topP = req.topP;
+  b._topK = req.topK;
+  b._stopSequences = [...(req.stop ?? [])];
+  b._seed = req.seed;
+  b._frequencyPenalty = req.frequencyPenalty;
+  b._presencePenalty = req.presencePenalty;
+  b._reasoningEffort = req.reasoningEffort;
+  b._thinkingBudget = req.thinkingBudget;
+  b._safetySettings = [...(req.safetySettings ?? [])];
 }
 
 // textSendOptions are the chain settings that do not shape the request

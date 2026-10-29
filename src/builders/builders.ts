@@ -48,7 +48,7 @@ import { imageGenerate } from "./image.ts";
 import { musicGenerate } from "./music.ts";
 import { speechGenerate } from "./speech.ts";
 import { textStream } from "./stream.ts";
-import { textPrompt } from "./text.ts";
+import { textPrompt, textSetRequest } from "./text.ts";
 import { transcriptionSubmit, transcriptionTranscribe } from "./transcription.ts";
 import { uploadRun } from "./upload.ts";
 import { videoSubmit } from "./video.ts";
@@ -180,6 +180,7 @@ export class Text {
   /** @internal */ _protocol: string = "";
   /** @internal */ _raw: boolean = false;
   /** @internal */ _reasoningEffort?: string;
+  /** @internal */ _tools: ToolDefinition[] = [];
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _schema: string = "";
   /** @internal */ _seed?: number;
@@ -220,6 +221,15 @@ export class Text {
   protocol(name: string): Text { const out = clone(this); out._protocol = name; return out; }
   raw(): Text { const out = clone(this); out._raw = true; return out; }
   reasoningEffort(level: string): Text { const out = clone(this); out._reasoningEffort = level; return out; }
+  /**
+   * Replaces this call's request with req: its model, system prompt,
+   * messages, tools, schema and options. It drops what the chain set
+   * before it, the text, image and file parts included; a chain method
+   * after it changes its own field. The prompt text, when not empty, is
+   * a final user turn after req's messages. The send settings (caching
+   * and its TTL, middleware, raw) and the protocol are kept.
+   */
+  request(req: Request): Text { const out = clone(this); textSetRequest(out, req); return out; }
   safetySettings(s: SafetySetting[]): Text { const out = clone(this); out._safetySettings = s; return out; }
   schema(s: string): Text { const out = clone(this); out._schema = s; return out; }
   seed(n: number): Text { const out = clone(this); out._seed = n; return out; }
