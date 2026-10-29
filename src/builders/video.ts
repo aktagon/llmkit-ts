@@ -8,8 +8,8 @@
 // class here so the async-handle API can offer `.wait()` as a method —
 // matching Go's `VideoHandle.Wait` value-receiver shape, exactly as
 // BatchHandle (ADR-014) does in batch.ts. The class fields (id, provider,
-// raw) preserve the generated value shape, so cross-process callers can
-// reconstruct a handle via `new VideoHandle(id, provider, raw)`.
+// raw, model, keepStored) preserve the generated value shape, so cross-process
+// callers can reconstruct a handle via `new VideoHandle(id, provider, raw)`.
 
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderSpec } from "../providers/providers.ts";
@@ -18,11 +18,13 @@ import {
   type VideoModelDef,
   videoGenConfig,
 } from "../providers/video_gen.ts";
-import { APIError, ValidationError } from "../errors.ts";
+import { APIError, ValidationError, VideoDeleteError } from "../errors.ts";
 import type { CarriedInput, RequestVariant } from "../providers/image_gen.ts";
 import { partsCarry, selectRequestVariant } from "../request_variant.ts";
 import { sendHTTP } from "../http.ts";
 import { buildAuthHeaders } from "../request.ts";
+import { optIntPath } from "../paths.ts";
+import { lastInteractionOutputItem } from "../speech.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
 import type { Part } from "../image.ts";
@@ -61,24 +63,33 @@ export class VideoHandle {
    * sets it from the request; "" for providers whose poll endpoint does not
    * template the model. */
   model: string;
+  /** Keeps the provider's stored job after wait() has the video
+   * (HANDOFF-109). False (the default) makes wait() delete it on providers
+   * that store jobs (Gemini Omni). Submit copies the builder's keepStored()
+   * flag; cross-process resume callers set it here. */
+  keepStored: boolean;
 
   constructor(
     id: string,
     provider: Provider,
     raw: boolean = false,
     model: string = "",
+    keepStored: boolean = false,
   ) {
     this.id = id;
     this.provider = provider;
     this.raw = raw;
     this.model = model;
+    this.keepStored = keepStored;
   }
 
   /**
    * Polls the provider until the video job reaches a terminal state, then
    * resolves with the finished VideoResponse. A failed or expired job
-   * rejects with an Error carrying the provider's error.message. Mirror of
-   * go/video.go VideoHandle.Wait.
+   * rejects with an Error carrying the provider's error.message. On a
+   * provider that stores the job (Gemini Omni) wait() then deletes it unless
+   * keepStored is set; a failed delete rejects with a VideoDeleteError that
+   * carries the video. Mirror of go/video.go VideoHandle.Wait.
    */
   async wait(options: VideoWaitOptions = {}): Promise<VideoResponse> {
     const cfg = PROVIDERS[this.provider.name];
@@ -177,6 +188,21 @@ export class VideoHandle {
           );
         }
         if (wantRaw) finalResult.raw = raw;
+        // A provider that stores the job (Gemini Omni) gets a DELETE once the
+        // video is in hand, unless the handle keeps it. A failed delete still
+        // hands back the video, on the error (owner, 2026-10-29).
+        if (vgCfg.deleteEndpoint !== "" && !this.keepStored) {
+          const deleteUrl = appendVideoAuth(
+            videoPollURL(vgCfg.deleteEndpoint, base, this.id),
+            this.provider,
+            cfg,
+          );
+          try {
+            await deleteText(deleteUrl, headers, this.provider.timeoutMs);
+          } catch (err) {
+            throw new VideoDeleteError(this.id, finalResult, err);
+          }
+        }
         return finalResult;
       }
       await sleep(interval);
@@ -234,6 +260,7 @@ export async function videoSubmit(
       `${b._model} is not a known video-generation model for ${provider.name}`,
     );
   }
+  validateGeminiOmniInputs(vgCfg, parts, b._lastFrame, b._referenceImages, b._duration);
 
   parts.forEach((part, i) => {
     if ("lyrics" in part) {
@@ -321,7 +348,7 @@ export async function videoSubmit(
       ...baseEvent,
       duration: performance.now() - start,
     });
-    return new VideoHandle(requestId, provider, !!b._raw, b._model);
+    return new VideoHandle(requestId, provider, !!b._raw, b._model, b._keepStored);
   } catch (err) {
     firePost(b._middleware as MiddlewareFn[], {
       ...baseEvent,
@@ -434,6 +461,21 @@ async function dispatchVideoSubmit(
       outputDataConfig: {
         s3OutputDataConfig: { s3Uri: outputUri },
       },
+    };
+  } else if (vgCfg.wireShape === "VideoGeminiOmni") {
+    // Gemini Omni (HANDOFF-109): a string input and a video response_format.
+    // background + store make the reply carry the interaction id that the
+    // handle polls; validateGeminiOmniInputs has rejected every non-text input
+    // and a duration.
+    const format: Record<string, unknown> = { type: "video" };
+    if (aspectRatio) format.aspect_ratio = aspectRatio;
+    if (resolution) format.resolution = resolution;
+    body = {
+      model,
+      input: joinPromptText(parts),
+      response_format: format,
+      background: true,
+      store: true,
     };
   } else if (vgCfg.wireShape === "VideoOpenRouter") {
     body = { model, prompt: joinPromptText(parts) };
@@ -569,7 +611,28 @@ function newVideoTraceID(): string {
 //     "PENDING"|"RUNNING"|"UNKNOWN", "video_url"}}.
 //   - VideoOpenRouter: {"status": "completed"|"failed"|"cancelled"|"expired"|
 //     "pending"|"in_progress", "unsigned_urls": [url], "error": "..."}.
+//   - VideoGeminiOmni: {"status": "completed"|"in_progress"|..., "steps": [...],
+//     "error": {"message"}}.
+// On a finished poll the usage is read at the config's video usage paths; an
+// empty path leaves that dimension unreported.
 function parseVideoPoll(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse | null {
+  const resp = parseVideoPollShape(vgCfg, raw);
+  if (resp) {
+    resp.usage = {
+      input: optIntPath(raw, vgCfg.usageInputPath),
+      output: optIntPath(raw, vgCfg.usageOutputPath),
+      reasoning: optIntPath(raw, vgCfg.usageReasoningPath),
+    };
+  }
+  return resp;
+}
+
+// parseVideoPollShape is parseVideoPoll's per-wire-shape status and result
+// transform over the decoded poll body.
+function parseVideoPollShape(
   vgCfg: VideoGenDef,
   raw: unknown,
 ): VideoResponse | null {
@@ -577,6 +640,23 @@ function parseVideoPoll(
   // is a compile error here, not a silent Grok fallthrough that would hang
   // the poll loop on a never-terminal status.
   switch (vgCfg.wireShape) {
+    case "VideoGeminiOmni": {
+      // Interactions status (HANDOFF-109): in_progress is the only running
+      // state; every status other than completed ends the job.
+      const root = raw as { status?: unknown; error?: { message?: unknown } };
+      const status = typeof root.status === "string" ? root.status : "";
+      switch (status) {
+        case "completed":
+          return videoResultFromGeminiOmni(vgCfg, raw);
+        case "in_progress":
+          return null;
+        default: {
+          const m = root.error?.message;
+          const msg = typeof m === "string" && m ? m : status;
+          throw new APIError(0, `video generation ${status}: ${msg}`, false);
+        }
+      }
+    }
     case "VideoTogether": {
       const root = raw as { status?: unknown };
       const status = typeof root.status === "string" ? root.status : "";
@@ -1023,6 +1103,42 @@ function videoResultFromVertexVeo(
   return buildVideoResponse([{ mimeType: mime, bytes: base64ToBytes(b64) }]);
 }
 
+// videoResultFromGeminiOmni extracts the finished video from a completed
+// Gemini Omni interaction (HANDOFF-109). The video arrives inline as base64 in
+// the model_output step's video item, found by type
+// (lastInteractionOutputItem). Download delivery with no fetch hop, like
+// Vertex Veo: bytes is filled and url stays empty. A completed reply with no
+// video item is an error.
+function videoResultFromGeminiOmni(
+  vgCfg: VideoGenDef,
+  raw: unknown,
+): VideoResponse {
+  const item = lastInteractionOutputItem(raw as { steps?: unknown }, "video");
+  const b64 = typeof item?.data === "string" ? item.data : "";
+  if (!b64) {
+    throw new APIError(
+      0,
+      "video generation: completed but carried no video item in steps[model_output].content",
+      false,
+    );
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = base64ToBytes(b64);
+  } catch (err) {
+    throw new APIError(
+      0,
+      `decode gemini omni video bytes: ${err instanceof Error ? err.message : String(err)}`,
+      false,
+    );
+  }
+  const mime =
+    typeof item?.mime_type === "string" && item.mime_type
+      ? item.mime_type
+      : videoFallbackMime(vgCfg);
+  return buildVideoResponse([{ mimeType: mime, bytes }]);
+}
+
 // videoResultFromBedrock extracts the finished video reference from a Bedrock
 // Nova Reel poll response. Bedrock uses output-uri delivery: the provider wrote
 // the mp4 to the caller's own S3 bucket and the finished poll echoes the S3 URI
@@ -1225,8 +1341,40 @@ function videoShapeSendsOptions(shape: VideoGenDef["wireShape"]): boolean {
   return (
     shape === "VideoOpenRouter" ||
     shape === "VideoGrok" ||
-    shape === "VideoVertexVeo"
+    shape === "VideoVertexVeo" ||
+    shape === "VideoGeminiOmni"
   );
+}
+
+// validateGeminiOmniInputs rejects what Gemini Omni slice 1 cannot send,
+// before any HTTP call (owner, 2026-10-29, ADR-097): a duration (Omni has no
+// duration field), a seed frame, a last frame and reference images (llmkit
+// sends text only). It is a config check on the wire shape, so it holds for
+// every model on it (ADR-102 MPT-006). Same rules, order and messages as
+// go/video.go validateGeminiOmniInputs.
+function validateGeminiOmniInputs(
+  vgCfg: VideoGenDef,
+  parts: Part[],
+  lastFrame: MediaRef | undefined,
+  referenceImages: MediaRef[],
+  durationSeconds: number,
+): void {
+  if (vgCfg.wireShape !== "VideoGeminiOmni") return;
+  if (durationSeconds !== 0) {
+    throw new ValidationError("duration", "Gemini Omni video has no duration field");
+  }
+  if (parts.some((p) => "image" in p)) {
+    throw new ValidationError("parts", "Gemini Omni video sends text only, not a seed frame");
+  }
+  if (lastFrame) {
+    throw new ValidationError("last_frame", "Gemini Omni video sends text only, not a last frame");
+  }
+  if (referenceImages.length > 0) {
+    throw new ValidationError(
+      "reference_images",
+      "Gemini Omni video sends text only, not reference images",
+    );
+  }
 }
 
 // validateVideoOptions rejects a duration, aspect ratio or resolution the
@@ -1395,6 +1543,26 @@ async function fetchText(
   timeoutMs: number | undefined,
 ): Promise<string> {
   const resp = await sendHTTP(url, { headers }, timeoutMs);
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new APIError(
+      resp.status,
+      text,
+      resp.status === 429 || resp.status >= 500,
+    );
+  }
+  return text;
+}
+
+// deleteText sends a bodiless DELETE (the Gemini Omni stored-job delete,
+// HANDOFF-109). A 4xx/5xx is an APIError, like fetchText. It goes through
+// sendHTTP, so a transport failure on a ?key= URL is redacted (VULN-001).
+async function deleteText(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs: number | undefined,
+): Promise<string> {
+  const resp = await sendHTTP(url, { method: "DELETE", headers }, timeoutMs);
   const text = await resp.text();
   if (!resp.ok) {
     throw new APIError(

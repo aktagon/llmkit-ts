@@ -420,11 +420,31 @@ function parseSpeechResponse(
   };
 }
 
-interface InteractionItem {
+export interface InteractionItem {
   type?: unknown;
   data?: unknown;
   mime_type?: unknown;
   content?: unknown;
+}
+
+// lastInteractionOutputItem returns the last content item of type itemType
+// across the model_output steps of a Gemini Interactions API reply, or
+// undefined. Steps are matched by type, never by position: a reply may hold
+// user_input and thought steps before the model_output step (speech, BUG-091;
+// Omni video, HANDOFF-109). Mirror of go/speech.go lastInteractionOutputItem.
+export function lastInteractionOutputItem(
+  root: { steps?: unknown },
+  itemType: string,
+): InteractionItem | undefined {
+  let last: InteractionItem | undefined;
+  const steps = Array.isArray(root.steps) ? (root.steps as InteractionItem[]) : [];
+  for (const step of steps) {
+    if (step?.type !== "model_output" || !Array.isArray(step.content)) continue;
+    for (const item of step.content as InteractionItem[]) {
+      if (item?.type === itemType) last = item;
+    }
+  }
+  return last;
 }
 
 // parseInteractionStepsAudio decodes a Gemini TTS Interactions API reply
@@ -448,14 +468,7 @@ function parseInteractionStepsAudio(
       false,
     );
   }
-  let last: InteractionItem | undefined;
-  const steps = Array.isArray(root.steps) ? (root.steps as InteractionItem[]) : [];
-  for (const step of steps) {
-    if (step?.type !== "model_output" || !Array.isArray(step.content)) continue;
-    for (const item of step.content as InteractionItem[]) {
-      if (item?.type === "audio") last = item;
-    }
-  }
+  const last = lastInteractionOutputItem(root, "audio");
   if (typeof last?.data !== "string" || !last.data) {
     throw new APIError(
       200,
