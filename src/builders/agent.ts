@@ -76,6 +76,7 @@ function initAgent(b: Agent): AgentState {
   if (b._maxToolIterations !== undefined)
     options.maxToolIterations = b._maxToolIterations;
   if (b._caching) options.caching = true;
+  if (b._cacheTTL !== undefined) options.cacheTTL = b._cacheTTL;
   if (b._middleware.length > 0) options.middleware = b._middleware;
   if (b._raw) options.raw = true;
 

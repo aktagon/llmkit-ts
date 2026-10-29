@@ -436,6 +436,7 @@ export class Agent {
   /** @internal */ client: Client;
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _tools: Tool[] = [];
+  /** @internal */ _cacheTTL?: number;
   /** @internal */ _caching: boolean = false;
   /** @internal */ _frequencyPenalty?: number;
   /** @internal */ _history: Message[] = [];
@@ -459,6 +460,12 @@ export class Agent {
 
   addMiddleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
   addTool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
+  /**
+   * Sets how long the cache that Caching creates for this call lives.
+   * Only resource caching (Google) creates a cache and reads it; without it
+   * the provider's default TTL applies. Other providers ignore it.
+   */
+  cacheTTL(seconds: number): Agent { const out = clone(this); out._cacheTTL = seconds; out._state = undefined; return out; }
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
   frequencyPenalty(v: number): Agent { const out = clone(this); out._frequencyPenalty = v; out._state = undefined; return out; }
   /**
