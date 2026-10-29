@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An integer option past `Number.MAX_SAFE_INTEGER` is rejected rather than
   rounded. Other wire shapes throw on field `chatWireShape`.
 
+### Fixed
+
+- `text.caching().stream(...)` applies prompt caching, as `prompt` does. A
+  stream used to send its body without caching: no `cache_control` for
+  Anthropic and no cache for Google.
+
 ## [3.0.0] — 2026-10-27
 
 ### Added

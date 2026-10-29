@@ -25,6 +25,7 @@ import {
   wireShapeStreamFinishReasonPath,
 } from "../providers/stream.ts";
 import { APIError, ValidationError } from "../errors.ts";
+import { applyCaching } from "../caching.ts";
 import { extractPath, extractIntPath, optIntPath } from "../paths.ts";
 import {
   buildAuthHeaders,
@@ -120,6 +121,11 @@ async function runStream(
 
   try {
     const { body, headers: content } = encodeBody(provider.name, cfg, prepared);
+    // The stream body carries the same caching as the one-shot body (Go's
+    // promptStream; HANDOFF-105 R3b).
+    if (options.caching) {
+      await applyCaching(body, provider, cfg, prepared.model, options);
+    }
     if (streamCfg.param) {
       body[streamCfg.param] =
         streamCfg.paramValue === "true" ? true : streamCfg.paramValue;
