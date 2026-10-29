@@ -63,6 +63,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model filled in, the content headers, and the JSON body. It needs no key
   and makes no network call. An empty `chatWireShape` selects the provider's
   default.
+- `decodeRequest(provider, chatWireShape, wire)` decodes an OpenAI Chat
+  Completions request into a `Request`, the inverse of `encodeRequest`. It
+  reads the model, a leading system turn, user and assistant turns with text
+  content, and every option the provider takes. `max_tokens` and
+  `max_completion_tokens` both set `maxTokens`. Any other field, such as
+  `stream`, `tools`, `response_format` or a content list, throws a
+  `ValidationError` that names it, for example `messages[1].tool_calls`.
+  An integer option past `Number.MAX_SAFE_INTEGER` is rejected rather than
+  rounded. Other wire shapes throw on field `chatWireShape`.
 
 ## [3.0.0] — 2026-10-27
 

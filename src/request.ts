@@ -112,7 +112,7 @@ export function resolveChatProtocol(
 
 // withWireShape returns cfg with the endpoint and wire shape of one of the
 // provider's chat protocols. The default shape is cfg itself.
-function withWireShape(
+export function withWireShape(
   cfg: ProviderSpec,
   shape: string,
 ): ProviderSpec | undefined {
