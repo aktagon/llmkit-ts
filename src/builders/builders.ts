@@ -168,6 +168,7 @@ export function zhipu(apiKey: string): Client { return new Client("zhipu", apiKe
 export class Text {
   /** @internal */ client: Client;
   /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _cacheTTL?: number;
   /** @internal */ _caching: boolean = false;
   /** @internal */ _files: File[] = [];
   /** @internal */ _frequencyPenalty?: number;
@@ -192,6 +193,12 @@ export class Text {
   constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  /**
+   * Sets how long the cache that Caching creates for this call lives.
+   * Only resource caching (Google) creates a cache and reads it; without it
+   * the provider's default TTL applies. Other providers ignore it.
+   */
+  cacheTTL(seconds: number): Text { const out = clone(this); out._cacheTTL = seconds; return out; }
   caching(): Text { const out = clone(this); out._caching = true; return out; }
   file(id: string): Text { const out = clone(this); out._files = [...out._files, { id, uri: "", name: "", mimeType: "" }]; return out; }  // ordered
   frequencyPenalty(v: number): Text { const out = clone(this); out._frequencyPenalty = v; return out; }
