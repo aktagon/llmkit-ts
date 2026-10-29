@@ -38,7 +38,7 @@ export interface BatchHandle {
 }
 
 /**
- * File is a reference to an uploaded file. Returned by UploadFile and attached to subsequent text-generation requests via Request.Files.
+ * File is a reference to an uploaded file. Returned by UploadFile and attached to a later text-generation request as a file Part.
  */
 export interface File {
   /**
@@ -143,31 +143,21 @@ export interface MediaRef {
 }
 
 /**
- * Message is a single turn in a multi-turn conversation. Discriminated by role: text turns set content; assistant-with-tools turns set tool_calls; tool turns set tool_result. Consumers MUST inspect role before reading the optional tool-turn fields. ADR-020 extends Message with tool_calls and tool_result so *Agent history round-trips fully across process boundaries.
+ * Message is a single turn in a multi-turn conversation: a role plus an ordered list of parts (ADR-100 MSG-001). The role decides which part kinds the turn may carry: a user turn text, images and files; an assistant turn text and tool calls; a tool turn tool results (MSG-002). The encoder rejects any other kind with a ValidationError.
  */
 export interface Message {
   /**
-   * role is the speaker identifier. Conventionally "user", "assistant", or "tool"; provider transforms may map to other roles (Bedrock's "USER"/"ASSISTANT", Google's "user"/"model").
+   * role is the speaker: "user", "assistant" or "tool". Provider transforms may map it to other roles (Bedrock's "USER"/"ASSISTANT", Google's "user"/"model").
    */
   role: string;
 
   /**
-   * content is the turn's text content. Empty on assistant-with-tools turns and on tool turns (the carrier field switches to tool_calls or tool_result respectively).
+   * parts are the turn's content, in order. The encoder keeps this order where the provider's wire keeps it (Anthropic, Google, Bedrock, Responses); OpenAI Chat Completions joins the text parts into content and moves the tool calls into tool_calls (ADR-100 MSG-003).
    */
-  content: string;
+  parts: Part[];
 
   /**
-   * toolCalls are the tool invocations the model produced on an assistant turn. Defaults to an empty list (never null) so consumers can iterate without a None-guard regardless of role. Empty on text turns and tool turns.
-   */
-  toolCalls: ToolCall[];
-
-  /**
-   * toolResult is the tool execution result on a role=tool turn. Null on text turns and assistant turns. Singular (not plural) because one tool turn carries exactly one result.
-   */
-  toolResult: ToolResult | null;
-
-  /**
-   * providerTurn is the provider's own serialization of this turn, when the SDK received it from a provider (ADR-085). Null on user turns, tool turns, and any assistant turn the caller authored via History(...) or a compaction hook — those are reconstructed from the fields above, as every turn was before ADR-085. Consumers never need to read it: it exists so the next request can replay the turn verbatim instead of rebuilding a lossy copy.
+   * providerTurn is the provider's own serialization of this turn, when the SDK received it from a provider (ADR-085). Null on user turns, tool turns, and any assistant turn the caller authored via History(...) or a compaction hook — those are reconstructed from the parts, as every turn was before ADR-085. Consumers never need to read it: it exists so the next request can replay the turn verbatim instead of rebuilding a lossy copy.
    */
   providerTurn?: ProviderTurn;
 }
@@ -273,7 +263,7 @@ export interface ProviderError {
 }
 
 /**
- * ProviderTurn is one assistant turn exactly as the provider serialized it, captured at assistantTurnPath and replayed unchanged on every subsequent request in the run (ADR-085). It sits BESIDE the canonical projection, not instead of it: Message.role/.content/.tool_calls stay the consumer's view of the turn, and this is what goes back on the wire. Present only on a turn the SDK received from a provider; a caller-authored turn (History(...), a compaction hook) has none and is reconstructed as before.
+ * ProviderTurn is one assistant turn exactly as the provider serialized it, captured at assistantTurnPath and replayed unchanged on every subsequent request in the run (ADR-085). It sits BESIDE the canonical projection, not instead of it: Message.role and Message.parts stay the consumer's view of the turn, and this is what goes back on the wire. Present only on a turn the SDK received from a provider; a caller-authored turn (History(...), a compaction hook) has none and is reconstructed as before.
  */
 export interface ProviderTurn {
   /**

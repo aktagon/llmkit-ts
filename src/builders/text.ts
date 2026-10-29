@@ -9,11 +9,10 @@
 // reuse the existing buildRequest/executeRequest/applyCaching layer
 // without duplicating ~150 LOC of provider-specific request shaping.
 //
-// `_parts` handling: text parts are concatenated (then `finalText` is
-// appended as the last text segment if non-empty); image parts lower into
-// `request.images` as base64 `data:` URIs and reach the wire as native image
-// blocks (ADR-060, resolving ADR-008 OQ-2). `_files` threads to the wire
-// document block (BUG-014).
+// The final user turn (ADR-100 MSG-004): the `_files` as file parts, then
+// the image parts, then one text part joining the text parts and
+// `finalText` with newlines. The text part is left out when there is no
+// text. Image parts reach the wire as native image blocks (ADR-060).
 
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -28,14 +27,8 @@ import {
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event } from "../providers/middleware.ts";
-import type {
-  InputImage,
-  PromptOptions,
-  Provider,
-  Request,
-  Response,
-} from "../types.ts";
-import { bytesToBase64 } from "../image.ts";
+import type { PromptOptions, Provider, Request, Response } from "../types.ts";
+import type { Message, Part } from "../structs.ts";
 import type { Text } from "./builders.ts";
 
 /**
@@ -58,34 +51,27 @@ export function buildPromptArgs(
   if (b._model) provider.model = b._model;
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;
 
-  // Join accumulated text parts, then finalText, with newlines (the
-  // text-parts-openai request-wire golden holds every SDK to it). Image parts
-  // lower into InputImage entries as base64 `data:` URIs, in caller order
-  // (ADR-060, mirroring Go's splitTextAndImages).
+  // The final user turn, ordered so every request golden keeps its bytes:
+  // files, then images, then the text parts and finalText joined with
+  // newlines (the text-parts-openai request-wire golden holds every SDK to
+  // the join). It follows the history (BUG-108).
+  const turn: Part[] = b._files.map((file) => ({ file }));
   const textSegments: string[] = [];
-  const images: InputImage[] = [];
   for (const p of b._parts) {
     if ("text" in p) {
       if (p.text) textSegments.push(p.text);
     } else if ("image" in p) {
-      images.push({
-        url: `data:${p.image.mimeType};base64,${bytesToBase64(p.image.bytes)}`,
-        mimeType: p.image.mimeType,
-        detail: "",
-      });
+      turn.push(p);
     }
   }
   if (finalText) textSegments.push(finalText);
-  const user = textSegments.join("\n");
+  if (textSegments.length > 0) turn.push({ text: textSegments.join("\n") });
 
-  // History and the final prompt travel separately; requestMsgs (request.ts)
-  // appends the prompt, with its files and images, after the history (BUG-108).
   const request: Request = {};
   if (b._system) request.system = b._system;
-  if (b._history.length > 0) request.messages = [...b._history];
-  if (user) request.user = user;
-  if (b._files.length > 0) request.files = b._files;
-  if (images.length > 0) request.images = images;
+  const messages: Message[] = [...b._history];
+  if (turn.length > 0) messages.push({ role: "user", parts: turn });
+  if (messages.length > 0) request.messages = messages;
   if (b._schema) request.schema = b._schema;
 
   const options: PromptOptions = {};
