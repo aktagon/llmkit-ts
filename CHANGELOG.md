@@ -53,6 +53,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `text.request(req)` sets the whole `Request` on the text builder: its model, system
+  prompt, messages, tools, schema and options. It replaces what the chain set
+  before it, the text, image and file parts included; a chain method after it
+  changes its own field. A request from `decodeRequest` is sent unchanged by
+  `.prompt("")`. Caching, its TTL, middleware, `raw` and
+  `protocol` are kept.
 - `text.cacheTTL(seconds)` and `agent.cacheTTL(seconds)` set how long the
   cache that `.caching()` creates lives. Google resource caching sends it on the cache-create request;
   without it, Google's default TTL (3600 s) applies. Other providers ignore
