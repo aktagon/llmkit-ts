@@ -1118,3 +1118,14 @@ export function modelOptionOverrides(provider: ProviderName): readonly ModelOpti
 export function wireShapeOptionOverrides(chatWireShape: string): Partial<Record<OptionKey, string>> {
   return WIRE_SHAPE_OPTION_OVERRIDES[chatWireShape] ?? {};
 }
+
+const WIRE_SHAPE_REQUIRED_PARAMS: Record<string, readonly OptionKey[]> = {
+  ChatAnthropic: [OptionKeys.MAX_TOKENS],
+};
+
+// wireShapeRequiredParams returns the generation params a chat wire shape's
+// API rejects a request without (ADR-098 RQC-014). An unset param that is
+// not listed is not sent.
+export function wireShapeRequiredParams(chatWireShape: string): readonly OptionKey[] {
+  return WIRE_SHAPE_REQUIRED_PARAMS[chatWireShape] ?? [];
+}
