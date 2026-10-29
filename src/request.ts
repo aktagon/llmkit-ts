@@ -15,6 +15,7 @@ import {
   optionOverrides,
   supportedOptions,
   wireShapeOptionOverrides,
+  wireShapeRequiredParams,
 } from "./providers/options.ts";
 import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
@@ -229,8 +230,14 @@ export function encodeBody(
     OptionKeys.MAX_TOKENS,
     supportedMap,
   );
-  const maxTokensValue = request.maxTokens ?? cfg.defaultMaxTokens;
-  if (maxTokensKey !== undefined) {
+  // The caller's value, else the provider's default where the wire shape
+  // requires the param, else none (ADR-098 RQC-015).
+  const maxTokensValue =
+    request.maxTokens ??
+    (wireShapeRequiredParams(cfg.chatWireShape).includes(OptionKeys.MAX_TOKENS)
+      ? cfg.defaultMaxTokens
+      : undefined);
+  if (maxTokensKey !== undefined && maxTokensValue !== undefined) {
     setNestedField(body, maxTokensKey, maxTokensValue);
   }
 
@@ -278,7 +285,7 @@ export function encodeBody(
       supportedMap,
       overridesMap,
     );
-    if (maxTokensKey !== undefined) {
+    if (maxTokensKey !== undefined && maxTokensValue !== undefined) {
       setNestedField(optBody, maxTokensKey, maxTokensValue);
       delete body[maxTokensKey.split(".")[0]!];
     }
