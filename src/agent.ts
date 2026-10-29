@@ -29,30 +29,17 @@ import type {
   Tool,
   Usage,
 } from "./types.ts";
-import type {
-  Message,
-  ProviderTurn,
-  ToolCall,
-  ToolResult,
-} from "./structs.ts";
-
-interface InternalMessage {
-  role: "user" | "assistant" | "tool_result";
-  content?: string;
-  toolCalls?: ToolCall[];
-  toolResult?: ToolResult;
-  // The turn as the provider serialized it, when this turn came from a provider
-  // (ADR-085). Replayed verbatim on every subsequent request in the run instead of
-  // being rebuilt from the projection above.
-  providerTurn?: ProviderTurn;
-}
+import type { Message, Part, ToolCall } from "./structs.ts";
 
 const DEFAULT_MAX_TOOL_ITERATIONS = 10;
 
 export class Agent {
   private readonly provider: Provider;
   private readonly options: AgentOptions;
-  private readonly history: InternalMessage[] = [];
+  // The public Message list (ADR-100). An assistant turn the loop received
+  // carries its providerTurn (ADR-085) beside its parts, which stay what the
+  // loop reads to run tools; the next request replays the providerTurn.
+  private readonly history: Message[] = [];
   private tools: Tool[] = [];
   private system = "";
 
@@ -76,42 +63,28 @@ export class Agent {
     this.tools.push(tool);
   }
 
-  // historyView exposes the agent's internal conversation history to
-  // the typed builder's `bot.messages` reader (ADR-020 HIST-004). The
-  // returned array is a fresh shallow copy so callers can iterate
-  // without invalidation when the agent appends mid-loop; each
-  // InternalMessage's inner arrays are shared with runtime state by
-  // the shallow-immutability rule documented on `bot.messages`.
-  historyView(): readonly InternalMessage[] {
-    return [...this.history];
+  // historyView exposes the agent's conversation history to the typed
+  // builder's `bot.messages` reader (ADR-020 HIST-004). The returned array
+  // and each parts array are fresh copies so callers can iterate without
+  // invalidation when the agent appends mid-loop; the part payloads are
+  // shared with runtime state by the shallow-immutability rule documented
+  // on `bot.messages`.
+  historyView(): readonly Message[] {
+    return copyMessages(this.history);
   }
 
-  // seedHistory replaces the internal history with a translation of
-  // the public Message list passed via the typed builder's
-  // `bot.history(...)` chain (ADR-020 HIST-007). Mechanical field
-  // copy; the wire `tool` role is restored to the internal
-  // `tool_result` discriminator.
-  seedHistory(messages: readonly import("./structs.ts").Message[]): void {
+  // seedHistory replaces the history with the public Message list passed
+  // via the typed builder's `bot.history(...)` chain (ADR-020 HIST-007). A
+  // turn restored from loadHistory carries its providerTurn back into the
+  // loop, which is what makes cross-process resume (ADR-023) replay rather
+  // than reconstruct.
+  seedHistory(messages: readonly Message[]): void {
     this.history.length = 0;
-    for (const m of messages) {
-      const role =
-        m.role === "tool"
-          ? "tool_result"
-          : (m.role as "user" | "assistant" | "tool_result");
-      const entry: InternalMessage = { role };
-      if (m.content) entry.content = m.content;
-      if (m.toolCalls && m.toolCalls.length > 0) entry.toolCalls = m.toolCalls;
-      if (m.toolResult) entry.toolResult = m.toolResult;
-      // The return leg of toRequest/historyView. A turn restored from loadHistory
-      // carries its payload back into the loop, which is what makes cross-process
-      // resume (ADR-023) replay rather than reconstruct.
-      if (m.providerTurn) entry.providerTurn = m.providerTurn;
-      this.history.push(entry);
-    }
+    this.history.push(...copyMessages(messages));
   }
 
   async chat(message: string): Promise<PromptResponse> {
-    this.history.push({ role: "user", content: message });
+    this.history.push({ role: "user", parts: textParts(message) });
     return this.runToolLoop();
   }
 
@@ -205,9 +178,9 @@ export class Agent {
         // chat() replays it like any other, and Response carries it so a caller
         // running their own loop can thread the turn forward without parsing raw
         // per provider (ADR-085 § 6).
-        const terminal: InternalMessage = {
+        const terminal: Message = {
           role: "assistant",
-          content: decoded.text,
+          parts: textParts(decoded.text),
         };
         if (decoded.providerTurn) terminal.providerTurn = decoded.providerTurn;
         this.history.push(terminal);
@@ -221,12 +194,15 @@ export class Agent {
         return attachRaw(result, respText, !!this.options.raw);
       }
 
-      // Record the assistant turn. toolCalls is the projection the loop runs
-      // tools from; providerTurn is the same turn as the provider wrote it, and is
-      // what the NEXT request sends (ADR-085). Before this, the turn was rebuilt
-      // from toolCalls alone, which silently dropped any prose the model emitted
-      // alongside the call.
-      const assistantTurn: InternalMessage = { role: "assistant", toolCalls: calls };
+      // Record the assistant turn. Its tool call parts are the projection the
+      // loop runs tools from; providerTurn is the same turn as the provider wrote
+      // it, and is what the NEXT request sends (ADR-085). Before this, the turn
+      // was rebuilt from the calls alone, which silently dropped any prose the
+      // model emitted alongside the call.
+      const assistantTurn: Message = {
+        role: "assistant",
+        parts: calls.map((toolCall) => ({ toolCall })),
+      };
       if (decoded.providerTurn) assistantTurn.providerTurn = decoded.providerTurn;
       this.history.push(assistantTurn);
       for (const call of calls) {
@@ -262,9 +238,10 @@ export class Agent {
           err: runErr,
           duration: performance.now() - toolStart,
         });
+        // One tool turn per result (ADR-100 MSG-009).
         this.history.push({
-          role: "tool_result",
-          toolResult: { toolUseId: call.id, content },
+          role: "tool",
+          parts: [{ toolResult: { toolUseId: call.id, content } }],
         });
       }
     }
@@ -272,31 +249,27 @@ export class Agent {
     throw new Error(`max tool iterations (${maxIters}) reached`);
   }
 
-  // toRequest projects the agent's internal history onto the public
-  // ADR-020 Message shape so the shared buildRequest (request.ts) constructs
-  // the body — caching, options, tool defs, system placement and message/tool
-  // transforms all run once, identically to the Text/batch paths (ADR-026
-  // PIPE-001/004). This is what closed BUG-006: the agent no longer hand-rolls
-  // a partial body that applied only max_tokens.
+  // toRequest hands the history to the shared buildRequest (request.ts), so
+  // caching, options, tool defs, system placement and message/tool transforms
+  // all run once, identically to the Text/batch paths (ADR-026
+  // PIPE-001/004). This is what closed BUG-006: the agent no longer
+  // hand-rolls a partial body that applied only max_tokens.
   private toRequest(): Request {
-    const messages: Message[] = this.history.map((m) => {
-      const out: Message = {
-        role: m.role,
-        content: m.content ?? "",
-        toolCalls: m.toolCalls ?? [],
-        toolResult: m.toolResult ?? null,
-      };
-      // ADR-085: the captured turn crosses to the public shape too. Without this,
-      // the turn the SDK holds internally never reaches buildRequest, and
-      // bot.messages/save() serialize a blind copy — retention would work only
-      // for the lifetime of one live Agent.
-      if (m.providerTurn) out.providerTurn = m.providerTurn;
-      return out;
-    });
-    const request: Request = { messages };
+    const request: Request = { messages: [...this.history] };
     if (this.system) request.system = this.system;
     return request;
   }
+}
+
+// textParts is one text part, or none for empty text: a turn with no parts
+// sends "" as before ADR-100, and matches the other SDKs' agent history.
+function textParts(text: string): Part[] {
+  return text ? [{ text }] : [];
+}
+
+// copyMessages copies the outer array and each parts array.
+export function copyMessages(messages: readonly Message[]): Message[] {
+  return messages.map((m) => ({ ...m, parts: [...m.parts] }));
 }
 
 function extractToolCalls(raw: unknown, cfg: ProviderSpec): ToolCall[] {

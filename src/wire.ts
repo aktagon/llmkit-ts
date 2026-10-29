@@ -5,15 +5,23 @@
 // produces valid JSON but lacks the `_v` envelope and loadHistory
 // rejects it with MissingWireVersionError (STAB-011).
 
-import type { Message, ToolCall, ToolResult } from "./structs.ts";
+import type { MediaRef, Message, Part } from "./structs.ts";
+import { base64ToBytes, bytesToBase64 } from "./image.ts";
+import { PART_KINDS } from "./structs.ts";
 import { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
 
+/**
+ * UnsupportedWireVersionError is thrown when a document's `_v` is not the
+ * SDK's WIRE_SCHEMA_VERSION. A newer document needs a newer SDK. An older
+ * one, such as version 1 before ADR-100, has no migrator (ADR-100 MSG-014,
+ * an exception to ADR-023 STAB-006): the caller must rebuild it.
+ */
 export class UnsupportedWireVersionError extends Error {
   readonly got: number;
   readonly want: number;
   constructor(got: number, want: number) {
     super(
-      `llmkit: unsupported wire schema version: got ${got}, want <= ${want}`,
+      `llmkit: unsupported wire schema version: got ${got}, want ${want}`,
     );
     this.name = "UnsupportedWireVersionError";
     this.got = got;
@@ -60,14 +68,13 @@ interface WireDoc {
 
 interface WireMessage {
   role: string;
-  content: string;
-  tool_calls: WireToolCall[];
-  tool_result: WireToolResult | null;
-  // ADR-085. Optional, unlike tool_result: STAB-004's emit-null rule is scoped to
-  // the role discriminator, and provider_turn is not one — a turn that never had a
-  // payload and a turn whose payload was dropped are the same thing to a reader.
-  // Omitting also keeps the canonical messages.json golden byte-identical, since
-  // the wire.ttl fixture declares no payload.
+  // A part is an object with exactly one key, its variant name (ADR-100
+  // MSG-012).
+  parts: Record<string, unknown>[];
+  // ADR-085. Optional: a turn that never had a payload and a turn whose
+  // payload was dropped are the same thing to a reader. Omitting also keeps the
+  // canonical messages.json golden byte-identical, since the wire.ttl fixture
+  // declares no payload.
   provider_turn?: WireProviderTurn;
 }
 
@@ -76,23 +83,12 @@ interface WireProviderTurn {
   wire: string;
 }
 
-interface WireToolCall {
-  id: string;
-  name: string;
-  input?: unknown;
-}
-
-interface WireToolResult {
-  tool_use_id: string;
-  content: string;
-}
-
 /**
  * saveHistory serializes a Message list into the canonical versioned
- * wire format (ADR-023 STAB-002). The output carries a `_v` integer
- * and a `messages` array. tool_calls is always an array (possibly
- * empty); tool_result is always either an object or JSON null
- * (STAB-004 — never omitted).
+ * wire format (ADR-023 STAB-002, version 2 per ADR-100 MSG-012). The
+ * output carries a `_v` integer and a `messages` array of {role, parts}.
+ * Each part is an object with one key, its variant name; media bytes are
+ * inline standard base64 (MSG-013).
  */
 export function saveHistory(messages: readonly Message[]): string {
   const wire: WireMessage[] = messages.map(toWireMessage);
@@ -103,11 +99,13 @@ export function saveHistory(messages: readonly Message[]): string {
 /**
  * loadHistory parses a wire document and returns the in-memory
  * Message array. Throws MissingWireVersionError when `_v` is absent,
- * UnsupportedWireVersionError when `_v` exceeds the SDK's
- * WIRE_SCHEMA_VERSION, and UnknownWireKeyError on a top-level key
- * outside (`_v`, `messages`, `_meta`). Unknown keys nested inside
- * Message/ToolCall/ToolResult are tolerated for additive forward
- * compatibility (STAB-003).
+ * UnsupportedWireVersionError when `_v` is not the SDK's
+ * WIRE_SCHEMA_VERSION (a version 1 document included, ADR-100 MSG-014),
+ * UnknownWireKeyError on a top-level key outside (`_v`, `messages`,
+ * `_meta`), and MalformedWireDocumentError on a part with zero keys, two
+ * keys or an unknown key (MSG-012). Unknown keys nested inside a Message
+ * or a part's payload are tolerated for additive forward compatibility
+ * (STAB-003).
  */
 export function loadHistory(data: string): Message[] {
   const parsed = JSON.parse(data);
@@ -122,7 +120,7 @@ export function loadHistory(data: string): Message[] {
       `_v is not a non-negative integer: ${String(version)}`,
     );
   }
-  if (version > WIRE_SCHEMA_VERSION) {
+  if (version !== WIRE_SCHEMA_VERSION) {
     throw new UnsupportedWireVersionError(version, WIRE_SCHEMA_VERSION);
   }
   for (const key of Object.keys(obj)) {
@@ -141,15 +139,7 @@ export function loadHistory(data: string): Message[] {
 }
 
 function toWireMessage(m: Message): WireMessage {
-  const out: WireMessage = {
-    role: m.role,
-    content: m.content,
-    tool_calls: m.toolCalls.map(toWireToolCall),
-    tool_result:
-      m.toolResult === null || m.toolResult === undefined
-        ? null
-        : toWireToolResult(m.toolResult),
-  };
+  const out: WireMessage = { role: m.role, parts: m.parts.map(toWirePart) };
   if (m.providerTurn) {
     out.provider_turn = {
       wire_shape: m.providerTurn.wireShape,
@@ -159,63 +149,120 @@ function toWireMessage(m: Message): WireMessage {
   return out;
 }
 
-function toWireToolCall(tc: ToolCall): WireToolCall {
-  const out: WireToolCall = { id: tc.id, name: tc.name };
-  if (tc.input !== undefined && tc.input !== null) out.input = tc.input;
-  return out;
+function toWireMedia(m: MediaRef): Record<string, unknown> {
+  return { mime_type: m.mimeType, bytes: bytesToBase64(m.bytes) };
 }
 
-function toWireToolResult(tr: ToolResult): WireToolResult {
-  return { tool_use_id: tr.toolUseId, content: tr.content };
+function toWirePart(p: Part): Record<string, unknown> {
+  if ("text" in p) return { text: p.text };
+  if ("image" in p) return { image: toWireMedia(p.image) };
+  if ("file" in p) {
+    const f = p.file;
+    return { file: { id: f.id, uri: f.uri, mime_type: f.mimeType, name: f.name } };
+  }
+  if ("toolCall" in p) {
+    const tc = p.toolCall;
+    const call: Record<string, unknown> = { id: tc.id, name: tc.name };
+    if (tc.input !== undefined && tc.input !== null) call.input = tc.input;
+    return { tool_call: call };
+  }
+  if ("toolResult" in p) {
+    const tr = p.toolResult;
+    return { tool_result: { tool_use_id: tr.toolUseId, content: tr.content } };
+  }
+  if ("lyrics" in p) return { lyrics: p.lyrics };
+  if ("audioUrl" in p) return { audio_url: p.audioUrl };
+  return { audio: toWireMedia(p.audio) };
+}
+
+function objectOf(raw: unknown, what: string): Record<string, unknown> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new MalformedWireDocumentError(`${what} is not an object: ${JSON.stringify(raw)}`);
+  }
+  return raw as Record<string, unknown>;
+}
+
+function fromWireMedia(raw: unknown): MediaRef {
+  const m = objectOf(raw, "media");
+  return {
+    mimeType: String(m.mime_type ?? ""),
+    bytes: base64ToBytes(String(m.bytes ?? "")),
+  };
+}
+
+// fromWirePart reads one part: an object with exactly one key, a known
+// variant name (ADR-100 MSG-012).
+function fromWirePart(raw: unknown): Part {
+  const obj = objectOf(raw, "part");
+  const keys = Object.keys(obj);
+  if (keys.length !== 1) {
+    throw new MalformedWireDocumentError(`a part has exactly one key, got ${keys.length}`);
+  }
+  const key = keys[0]!;
+  const value = obj[key];
+  switch (key) {
+    case "text":
+      return { text: String(value ?? "") };
+    case "lyrics":
+      return { lyrics: String(value ?? "") };
+    case "audio_url":
+      return { audioUrl: String(value ?? "") };
+    case "image":
+      return { image: fromWireMedia(value) };
+    case "audio":
+      return { audio: fromWireMedia(value) };
+    case "file": {
+      const f = objectOf(value, "file");
+      return {
+        file: {
+          id: String(f.id ?? ""),
+          uri: String(f.uri ?? ""),
+          mimeType: String(f.mime_type ?? ""),
+          name: String(f.name ?? ""),
+        },
+      };
+    }
+    case "tool_call": {
+      const tc = objectOf(value, "tool_call");
+      return {
+        toolCall: { id: String(tc.id ?? ""), name: String(tc.name ?? ""), input: tc.input },
+      };
+    }
+    case "tool_result": {
+      const tr = objectOf(value, "tool_result");
+      return {
+        toolResult: {
+          toolUseId: String(tr.tool_use_id ?? ""),
+          content: String(tr.content ?? ""),
+        },
+      };
+    }
+  }
+  throw new MalformedWireDocumentError(
+    `unknown part key ${JSON.stringify(key)}; want one of ${Object.values(PART_KINDS).join(", ")}`,
+  );
 }
 
 function fromWireMessage(raw: unknown): Message {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new MalformedWireDocumentError(
-      `message entry is not an object: ${JSON.stringify(raw)}`,
-    );
-  }
-  const obj = raw as Record<string, unknown>;
-  let tcRaw: unknown[] = [];
-  if (obj.tool_calls !== undefined && obj.tool_calls !== null) {
-    if (!Array.isArray(obj.tool_calls)) {
+  const obj = objectOf(raw, "message entry");
+  let rawParts: unknown[] = [];
+  if (obj.parts !== undefined && obj.parts !== null) {
+    if (!Array.isArray(obj.parts)) {
       throw new MalformedWireDocumentError(
-        `tool_calls is not an array: ${JSON.stringify(obj.tool_calls)}`,
+        `parts is not an array: ${JSON.stringify(obj.parts)}`,
       );
     }
-    tcRaw = obj.tool_calls;
-  }
-  const toolCalls: ToolCall[] = [];
-  for (const tc of tcRaw) {
-    if (tc === null || typeof tc !== "object" || Array.isArray(tc)) continue;
-    const tcObj = tc as Record<string, unknown>;
-    toolCalls.push({
-      id: String(tcObj.id ?? ""),
-      name: String(tcObj.name ?? ""),
-      input: tcObj.input,
-    });
-  }
-  let toolResult: ToolResult | null = null;
-  const trRaw = obj.tool_result;
-  if (trRaw !== null && typeof trRaw === "object" && !Array.isArray(trRaw)) {
-    const trObj = trRaw as Record<string, unknown>;
-    toolResult = {
-      toolUseId: String(trObj.tool_use_id ?? ""),
-      content: String(trObj.content ?? ""),
-    };
+    rawParts = obj.parts;
   }
   // ADR-085 RSN-009, the unknown-field hazard. An OLD reader — one built before
   // provider_turn existed — silently drops this key, and on Anthropic a dropped
   // payload is a REJECTED request once the provider enforces the echo, not a
   // degraded one. Unknown-field tolerance is benign in general and is not benign
-  // here. Nothing in the format can fix that (the key is additive under the same
-  // `_v` by ADR-085 §9); it is documented so a consumer reading a document written
-  // by a newer SDK knows what a silent reconstruction means.
+  // here; it is documented so a consumer reading a document written by a newer
+  // SDK knows what a silent reconstruction means.
   const out: Message = {
     role: String(obj.role ?? ""),
-    content: String(obj.content ?? ""),
-    toolCalls,
-    toolResult,
+    parts: rawParts.map(fromWirePart),
   };
   const ptRaw = obj.provider_turn;
   if (ptRaw !== null && typeof ptRaw === "object" && !Array.isArray(ptRaw)) {

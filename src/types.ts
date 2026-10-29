@@ -2,7 +2,7 @@
 
 import type { ProviderName } from "./providers/providers.ts";
 import type { MiddlewareFn } from "./providers/middleware.ts";
-import type { File, Message } from "./structs.ts";
+import type { Message } from "./structs.ts";
 
 //
 // Canonical declarations live at ./structs.ts; these lines keep every
@@ -61,25 +61,16 @@ export const Capabilities = {
   Catalogue: "catalogue",
 } as const satisfies Record<string, Capability>;
 
+/**
+ * Request is a chat call: the system prompt, every turn and the schema.
+ * Media are parts of a user turn (ADR-100 MSG-015). `user` is a final user
+ * turn of one text part, appended after `messages`.
+ */
 export interface Request {
   system?: string;
   user?: string;
   messages?: Message[];
-  files?: File[];
-  images?: InputImage[];
   schema?: string;
-}
-
-/**
- * InputImage references an image attached to a text-generation request
- * (vision input, ADR-060). `url` is a base64 `data:` URI or a plain URL;
- * `detail` is the OpenAI `image_url.detail` hint ("auto" when empty).
- * Distinct from Part's `image(...)` constructor used for image generation.
- */
-export interface InputImage {
-  url: string;
-  mimeType: string;
-  detail: string;
 }
 
 // Usage is GENERATED from the TokenDimension instances (plus the ADR-027

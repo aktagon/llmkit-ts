@@ -394,6 +394,23 @@ Across every `*Text` / `*Agent` builder:
 | Reasoning effort  | `.reasoningEffort(l)`    | OpenAI o-series, Gemini 2.5+                                                                                                                    |
 | Thinking budget   | `.thinkingBudget(n)`     | Anthropic, Gemini                                                                                                                               |
 
+A `Message` is a role plus an ordered list of parts. A user turn takes text, image and file parts; an assistant turn takes text and tool call parts; a tool turn takes tool result parts. Any turn can carry an image:
+
+```typescript
+const resp = await c.text
+  .history(
+    {
+      role: "user",
+      parts: [
+        { text: "What is in this image?" },
+        { image: { mimeType: "image/png", bytes: png } },
+      ],
+    },
+    { role: "assistant", parts: [{ text: "A single white pixel." }] },
+  )
+  .prompt("What color is that pixel?");
+```
+
 Sampling hyperparameters (`.topP`, `.topK`, `.seed`, `.frequencyPenalty`, `.presencePenalty`, `.stopSequences`) are validated per provider; unsupported options throw `ValidationError` rather than silently dropping.
 
 The Image builder has a narrower set: `.model`, `.aspectRatio`, `.imageSize`, `.includeText`, `.text`, `.image`, `.middleware`. Upload: `.path`, `.bytes`, `.filename`, `.mimeType`, `.middleware`.
@@ -498,11 +515,13 @@ const msgs = loadHistory(data);
 ```
 
 The output is a JSON document with a `_v` integer envelope plus a
-`messages` array. The version is tracked through
-`WIRE_SCHEMA_VERSION`; the in-memory `Message` schema may evolve
-additively under one version (new optional fields work on older
-readers), but a renamed, removed, or retyped field requires a `_v`
-bump and a migrator.
+`messages` array. Each message is a role plus its parts, and image
+bytes are inline base64. The version is tracked through
+`WIRE_SCHEMA_VERSION`, currently 2. New optional fields may arrive
+under one version and still load on older readers. A renamed, removed,
+or retyped field requires a `_v` bump. `loadHistory` rejects a version
+1 document with `UnsupportedWireVersionError`. There is no migrator, so
+rebuild such a history from your own records.
 
 `saveHistory` / `loadHistory` are the ONLY guaranteed-stable
 serialization path. Direct `JSON.stringify` on a `Message` produces
