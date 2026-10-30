@@ -14,13 +14,17 @@
  * The constructor rejects text that is not one JSON value, so a body cannot
  * carry broken JSON. JSON.stringify cannot write it and throws, so a send path
  * that skips writeJson fails at once instead of sending {"text": ...}.
+ *
+ * The constructor also compacts the text, once: the tokens (key order, number
+ * spelling, escapes) stay, the whitespace between them goes, as Go's encoder
+ * writes an embedded value (HANDOFF-105 F8, owner decision 1).
  */
 export class JsonText {
   readonly text: string;
 
   constructor(text: string) {
     JSON.parse(text);
-    this.text = text;
+    this.text = compactJson(text);
   }
 
   toJSON(): never {
@@ -52,4 +56,27 @@ function write(value: unknown): string | undefined {
     return `{${members.join(",")}}`;
   }
   return JSON.stringify(value) as string | undefined;
+}
+
+const JSON_WHITESPACE = new Set([" ", "\t", "\n", "\r"]);
+
+// compactJson drops the whitespace between the tokens of valid JSON text and
+// keeps every token as written, as Go's json.Compact does.
+function compactJson(text: string): string {
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (inString) {
+      out += c;
+      if (c === "\\") out += text[++i] ?? "";
+      else if (c === '"') inString = false;
+    } else if (c === '"') {
+      inString = true;
+      out += c;
+    } else if (!JSON_WHITESPACE.has(c)) {
+      out += c;
+    }
+  }
+  return out;
 }

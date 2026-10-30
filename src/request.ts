@@ -20,7 +20,7 @@ import {
 } from "./providers/options.ts";
 import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
-import { resolveTurns } from "./provider_turn.ts";
+import { rawJsonElements, resolveTurns } from "./provider_turn.ts";
 import type { MiddlewareFn } from "./providers/middleware.ts";
 import type { Provider } from "./types.ts";
 import type {
@@ -37,7 +37,7 @@ import { checkPartKinds, partKind } from "./part_kinds.ts";
 import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
 import { toolCallInput, writeToolCall } from "./response_parts.ts";
-import { writeJson } from "./json_text.ts";
+import { JsonText, writeJson } from "./json_text.ts";
 
 // SendOptions are the settings of a chat call that do not shape the request
 // (ADR-098 RQC-002): transport, send policy (caching) and response handling.
@@ -841,13 +841,13 @@ function bedrockContent(parts: Part[], cfg: ProviderSpec): Array<Record<string, 
 function buildGoogleContents(
   msgs: Msg[],
   cfg: ProviderSpec,
-): Array<Record<string, unknown>> {
+): Array<Record<string, unknown> | JsonText> {
   // Google's wire identifies a tool result by the function NAME, but the
   // universal ToolResult carries only toolUseId. Recover id->name from the
   // tool call parts, which always precede their result in a valid history.
   // An unmatched id passes through unchanged.
   const idToName = new Map<string, string>();
-  return msgs.map((m): Record<string, unknown> => {
+  return msgs.map((m): Record<string, unknown> | JsonText => {
     const turn = unwrap(m);
     for (const c of toolCallsOf(turn.parts)) idToName.set(c.id, c.name);
     // A replayed Google turn is candidates[0].content verbatim — the same
@@ -855,14 +855,8 @@ function buildGoogleContents(
     // Its calls still fed idToName above, because a LATER tool result is
     // matched by name against them.
     if (m.kind === "turn" && m.shape === "ChatGoogle") {
-      try {
-        const payload: unknown = JSON.parse(m.wire);
-        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
-          return payload as Record<string, unknown>;
-        }
-      } catch {
-        // fall through to the reconstruction
-      }
+      const payload = replayedObject(m.wire);
+      if (payload) return payload;
     }
     const role =
       turn.role === "tool" ? "user" : (cfg.roleMappings[turn.role] ?? turn.role);
@@ -912,8 +906,8 @@ function buildMessages(
   msgs: Msg[],
   system: string,
   cfg: ProviderSpec,
-): Array<Record<string, unknown>> {
-  const out: Array<Record<string, unknown>> = [];
+): Array<Record<string, unknown> | JsonText> {
+  const out: Array<Record<string, unknown> | JsonText> = [];
 
   if (cfg.systemPlacement === "MessageInArray" && system) {
     out.push({
@@ -1030,36 +1024,49 @@ function anthropicContent(parts: Part[], cfg: ProviderSpec): unknown {
 //     provider's
 //   - ChatResponses  "output"              -> an ITEM LIST that spreads across N
 //     input entries rather than becoming one (ADR-085 OQ-1)
+//
+// The provider's turn goes into the body as its text, a JsonText, never as a
+// parse of it: JSON.parse rounds an integer past 2^53 in a tool call's
+// arguments, and every agent-loop tool-call turn is replayed (HANDOFF-105 F8).
 function appendFlatReplayedTurn(
-  out: Array<Record<string, unknown>>,
+  out: Array<Record<string, unknown> | JsonText>,
   turn: Extract<Msg, { kind: "turn" }>,
   cfg: ProviderSpec,
 ): boolean {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(turn.wire);
-  } catch {
-    return false;
-  }
   if (turn.shape === "ChatAnthropic") {
-    out.push({
-      role: cfg.roleMappings.assistant ?? "assistant",
-      content: payload,
-    });
+    const content = replayedJson(turn.wire);
+    if (!content) return false;
+    out.push({ role: cfg.roleMappings.assistant ?? "assistant", content });
     return true;
   }
   if (turn.shape === "ChatResponsesOpenAI") {
-    if (!Array.isArray(payload)) return false;
-    for (const item of payload) {
-      out.push(item as Record<string, unknown>);
-    }
+    if (!replayedJson(turn.wire)) return false;
+    const items = rawJsonElements(turn.wire);
+    if (!items) return false;
+    for (const item of items) out.push(new JsonText(item));
     return true;
   }
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
-    return false;
-  }
-  out.push(payload as Record<string, unknown>);
+  const payload = replayedObject(turn.wire);
+  if (!payload) return false;
+  out.push(payload);
   return true;
+}
+
+// replayedJson is a captured turn's text as a JsonText, or undefined when it is
+// not one JSON value, so the caller reconstructs the turn instead.
+function replayedJson(wire: string): JsonText | undefined {
+  try {
+    return new JsonText(wire);
+  } catch {
+    return undefined;
+  }
+}
+
+// replayedObject is replayedJson for a turn whose container is one object
+// (ChatOpenAI's message, Google's content).
+function replayedObject(wire: string): JsonText | undefined {
+  const payload = replayedJson(wire);
+  return payload?.text.startsWith("{") ? payload : undefined;
 }
 
 // attachToolDefs writes the provider-shaped tool definitions onto the body.

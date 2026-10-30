@@ -208,7 +208,15 @@ export function extractRawJsonPath(
  */
 export function extractRawJsonElements(text: string, path: string): string[] | undefined {
   const array = extractRawJsonPath(text, path);
-  if (array === undefined) return undefined;
+  return array === undefined ? undefined : rawJsonElements(array);
+}
+
+/**
+ * rawJsonElements returns the VERBATIM JSON text of each element of the array
+ * `array` is, or undefined when it is not an array. A replayed Responses turn
+ * spreads its item list across the input array through it (HANDOFF-105 F8).
+ */
+export function rawJsonElements(array: string): string[] | undefined {
   let i = skipWs(array, 0);
   if (array[i] !== "[") return undefined;
   i++;
