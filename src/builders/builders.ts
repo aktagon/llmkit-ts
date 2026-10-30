@@ -42,7 +42,7 @@ function clone<T extends object>(b: T): T {
 export const DEFAULT_TIMEOUT_MS = 600000;
 
 import { saveHistory, loadHistory } from "../wire.ts";
-import { agentMessages, agentPrompt, agentReset } from "./agent.ts";
+import { agentMessages, agentPrompt, agentReset, agentUnsavedTurns } from "./agent.ts";
 import { textBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
 import { musicGenerate } from "./music.ts";
@@ -508,6 +508,7 @@ export class Agent {
   topK(n: number): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
   topP(v: number): Agent { const out = clone(this); out._topP = v; out._state = undefined; return out; }
   get messages(): readonly Message[] { return agentMessages(this); }
+  get unsavedTurns(): readonly Message[] { return agentUnsavedTurns(this); }
 
   save(): string { return saveHistory(this.messages); }
 

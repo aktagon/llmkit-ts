@@ -3,14 +3,15 @@
 // @invariant history is mutated only inside chat(), once, when the call
 //   succeeds. chat() is all-or-nothing (owner decision 4, HANDOFF-105 F4): on
 //   any throw after the call starts — a non-2xx response, a middleware veto,
-//   max iterations — the history is what it was before the call, and the
-//   AgentError carries the turns the call made, tool results included.
+//   max iterations — the history is what it was before the call. The error
+//   thrown is the one that stopped the call, and unsavedView() returns the
+//   turns the call made, tool results included (owner decision 2, F5).
 // @invariant tool execution failures never propagate out of the loop —
 //   they are surfaced as `"error: ..."` tool-result content so the LLM
 //   can recover (matches Go behaviour at go/agent.go:189).
 
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
-import { AgentError, APIError, ValidationError } from "./errors.ts";
+import { APIError, ValidationError } from "./errors.ts";
 import { accumulateUsage, attachRaw, decodeResponse } from "./response.ts";
 import { responseToolCalls } from "./response_parts.ts";
 import {
@@ -55,6 +56,9 @@ export class Agent {
   // carries its providerTurn (ADR-085) beside its parts, which stay what the
   // loop reads to run tools; the next request replays the providerTurn.
   private readonly history: Message[] = [];
+  // The turns of the last call, when it failed; empty after a call that
+  // succeeded (HANDOFF-105 F5, owner decision 2).
+  private unsaved: Message[] = [];
 
   constructor(
     provider: Provider,
@@ -84,6 +88,12 @@ export class Agent {
     return copyMessages(this.history);
   }
 
+  // unsavedView exposes the turns of the last failed call to the typed
+  // builder's `bot.unsavedTurns` reader, copied as historyView copies.
+  unsavedView(): readonly Message[] {
+    return copyMessages(this.unsaved);
+  }
+
   // seedHistory replaces the history with the public Message list passed
   // via the typed builder's `bot.history(...)` chain (ADR-020 HIST-007). A
   // turn restored from loadHistory carries its providerTurn back into the
@@ -103,6 +113,7 @@ export class Agent {
   // when it succeeds (HANDOFF-105 F5), so bot.messages never shows a running
   // call's turns, and overlapping calls each add their own turns together.
   async chat(message: string): Promise<PromptResponse> {
+    this.unsaved = [];
     const cfg = PROVIDERS[this.provider.name]!;
     const history = [...this.history];
     const turn: Message = { role: "user", parts: textParts(message) };
@@ -115,7 +126,8 @@ export class Agent {
     try {
       response = await this.runToolLoop(cfg, prepared, history, turns);
     } catch (err) {
-      throw new AgentError(err, turns);
+      this.unsaved = turns;
+      throw err;
     }
     this.history.push(...turns);
     return response;
