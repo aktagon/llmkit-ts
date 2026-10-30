@@ -23,6 +23,7 @@ import type { Provider, SpeechLine, SpeechSpeaker } from "./types.ts";
 export type { AudioData, SpeechResponse } from "./structs.ts";
 import type { AudioData, SpeechResponse } from "./structs.ts";
 import { sendHTTP } from "./http.ts";
+import { fallbackMime, lookupModel } from "./model_lookup.ts";
 
 /**
  * SpeechRequest carries a single text utterance to speak (single-turn, no
@@ -73,13 +74,8 @@ export async function generateSpeech(
       `${provider.name} does not support speech generation`,
     );
   }
-  const model = findSpeechModel(sgCfg, request.model);
-  if (!model) {
-    throw new ValidationError(
-      "model",
-      `${request.model} is not a known speech-generation model for ${provider.name}`,
-    );
-  }
+  // ADR-102 MPT-001: an unlisted model (undefined) is sent as given.
+  const { model } = lookupModel(sgCfg.models, request.model);
   validateSpeechModel(request, sgCfg, model);
 
   const baseEvent: Event = {
@@ -120,7 +116,7 @@ export async function generateSpeech(
     const result = parseSpeechResponse(
       provider.name,
       sgCfg.audioEncoding,
-      model.outputMime,
+      fallbackMime(sgCfg.models, model),
       respBytes,
     );
     firePost(options.middleware, {
@@ -224,31 +220,34 @@ function validateSpeechInputs(request: SpeechRequest): void {
 // validateSpeechModel checks the request against what the config's body can
 // carry and the model's stated speaker and style facts (BUG-091). An unknown
 // model fact sends the request; only a stated false or a stated speaker count
-// that does not match blocks it (decision 009, HANDOFF-099). Exported for
-// tests only; the package barrel does not re-export it.
+// that does not match blocks it (decision 009, HANDOFF-099). An unlisted
+// model (undefined) has no facts, so only the config checks run (ADR-102
+// MPT-001). Exported for tests only; the package barrel does not re-export it.
 export function validateSpeechModel(
   request: SpeechRequest,
   cfg: SpeechGenDef,
-  model: SpeechModelDef,
+  model: SpeechModelDef | undefined,
 ): void {
+  const name = model?.modelId ?? request.model;
+  const maxSpeakers = model?.maxSpeakers;
   const speakers = request.speakers ?? [];
   if (speakers.length > 0) {
-    if (!cfg.multiSpeaker || model.maxSpeakers === 1) {
+    if (!cfg.multiSpeaker || maxSpeakers === 1) {
       throw new ValidationError(
         "speakers",
-        `${model.modelId} does not support multiple speakers`,
+        `${name} does not support multiple speakers`,
       );
     }
-    if (model.maxSpeakers !== undefined && speakers.length !== model.maxSpeakers) {
+    if (maxSpeakers !== undefined && speakers.length !== maxSpeakers) {
       throw new ValidationError(
         "speakers",
-        `exactly ${model.maxSpeakers} speakers are required, got ${speakers.length}`,
+        `exactly ${maxSpeakers} speakers are required, got ${speakers.length}`,
       );
     }
   }
   const styled = !!request.style || (request.lines ?? []).some((l) => !!l.style);
-  if (styled && (!cfg.carriesSpeechStyle || model.supportsSpeechStyle === false)) {
-    throw new ValidationError("style", `${model.modelId} does not support a speech style`);
+  if (styled && (!cfg.carriesSpeechStyle || model?.supportsSpeechStyle === false)) {
+    throw new ValidationError("style", `${name} does not support a speech style`);
   }
 }
 
@@ -350,13 +349,6 @@ function buildXAISpeechBody(
     language: "auto",
     output_format: { codec: outputFormat },
   };
-}
-
-function findSpeechModel(
-  cfg: SpeechGenDef,
-  modelId: string,
-): SpeechModelDef | undefined {
-  return cfg.models.find((m) => m.modelId === modelId);
 }
 
 // parseSpeechResponse decodes the synthesized audio per the wire shape's audio
