@@ -36,7 +36,7 @@ import type {
 import { checkPartKinds, partKind } from "./part_kinds.ts";
 import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
-import { writeToolCall } from "./response_parts.ts";
+import { toolCallText, toolCallValue, writeToolCall } from "./response_parts.ts";
 
 // SendOptions are the settings of a chat call that do not shape the request
 // (ADR-098 RQC-002): transport, send policy (caching) and response handling.
@@ -645,18 +645,24 @@ export function validateOptions(
 // (history with tool turns) and the Text/batch path route through the same
 // builder.
 
-// toolCallInput normalises ToolCall.input (widened to `unknown` in ADR-020)
-// back to a plain object for the wire, mirroring the Tool.run({...}) contract.
-// Exported so the agent loop reuses the one definition (no duplicate).
+// toolCallInput is the call's argument value as the plain object
+// Tool.run({...}) takes: {} when the input is absent or not an object. The
+// agent loop uses it.
 export function toolCallInput(call: ToolCall): Record<string, unknown> {
-  if (
-    call.input &&
-    typeof call.input === "object" &&
-    !Array.isArray(call.input)
-  ) {
-    return call.input as Record<string, unknown>;
+  const value = toolCallValue(call);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
   }
   return {};
+}
+
+// requestToolInput is the argument text a request sends for a tool call, on
+// every chat shape, Responses included (HANDOFF-105 F6): the caller's or the
+// provider's text as it is, or "{}" when there is no input or the input is
+// null, because the providers take an object.
+function requestToolInput(call: ToolCall): string {
+  const text = toolCallText(call);
+  return text === undefined || text.trim() === "null" ? "{}" : text;
 }
 
 // A validated turn: a role and its parts, each part one kind the role may
@@ -696,7 +702,19 @@ export function checkTurnParts(role: string, parts: Part[], field: string): void
     if (!allowed.includes(kind)) {
       throw new ValidationError(`${field}[${j}]`, `${role} turn does not accept ${kind} parts`);
     }
+    if ("toolCall" in p && p.toolCall.inputJson !== undefined && !isJSON(p.toolCall.inputJson)) {
+      throw new ValidationError(`${field}[${j}]`, `tool call "${p.toolCall.name}" input is not JSON`);
+    }
   });
+}
+
+function isJSON(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // toInternal converts the public, untrusted Message[] into the internal sum
@@ -1107,8 +1125,8 @@ function attachToolDefs(
 // (checkRequestToolCalls). A call with no input goes out as an empty object:
 // the providers take an object, not null.
 function requestToolCall(call: ToolCall, cfg: ProviderSpec): Record<string, unknown> {
-  const input = call.input === undefined || call.input === null ? {} : call.input;
-  return writeToolCall({ ...call, input }, TOOL_CALL_RESPONSE_CONFIGS[cfg.chatWireShape]!, cfg);
+  const inputJson = requestToolInput(call);
+  return writeToolCall({ ...call, inputJson }, TOOL_CALL_RESPONSE_CONFIGS[cfg.chatWireShape]!, cfg);
 }
 
 // checkRequestToolCalls rejects a request whose turns carry a tool call the
@@ -1142,7 +1160,7 @@ function responsesFunctionCall(c: ToolCall): Record<string, unknown> {
     type: "function_call",
     call_id: c.id,
     name: c.name,
-    arguments: JSON.stringify(toolCallInput(c)),
+    arguments: requestToolInput(c),
   };
 }
 
