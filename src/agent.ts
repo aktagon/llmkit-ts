@@ -1,10 +1,10 @@
 // Agent — multi-turn conversations with optional tool calling.
 //
-// @invariant history is mutated only inside chat(). chat() is all-or-nothing
-//   (owner decision 4, HANDOFF-105 F4): on any throw after the call starts —
-//   a non-2xx response, a middleware veto, max iterations — the history is
-//   restored to what it was before the call, and the AgentError carries the
-//   turns the call made, tool results included.
+// @invariant history is mutated only inside chat(), once, when the call
+//   succeeds. chat() is all-or-nothing (owner decision 4, HANDOFF-105 F4): on
+//   any throw after the call starts — a non-2xx response, a middleware veto,
+//   max iterations — the history is what it was before the call, and the
+//   AgentError carries the turns the call made, tool results included.
 // @invariant tool execution failures never propagate out of the loop —
 //   they are surfaced as `"error: ..."` tool-result content so the LLM
 //   can recover (matches Go behaviour at go/agent.go:189).
@@ -98,24 +98,37 @@ export class Agent {
   // before the turn joins the history, so a rejected request leaves the
   // history as it was (HANDOFF-105 F3). Every turn of the loop sends the same
   // Request with a longer history, so one preparation holds for all of them.
-  // Once the call starts it is all-or-nothing (owner decision 4, F4).
+  // Once the call starts it is all-or-nothing (owner decision 4, F4). The call
+  // builds its turns in a list of its own and adds them to the history only
+  // when it succeeds (HANDOFF-105 F5), so bot.messages never shows a running
+  // call's turns, and overlapping calls each add their own turns together.
   async chat(message: string): Promise<PromptResponse> {
     const cfg = PROVIDERS[this.provider.name]!;
+    const history = [...this.history];
     const turn: Message = { role: "user", parts: textParts(message) };
     const prepared = prepareRequest(this.provider, cfg, {
       ...this.request,
-      messages: [...this.history, turn],
+      messages: [...history, turn],
     });
-    const before = this.history.length;
-    this.history.push(turn);
+    const turns: Message[] = [turn];
+    let response: PromptResponse;
     try {
-      return await this.runToolLoop(cfg, prepared);
+      response = await this.runToolLoop(cfg, prepared, history, turns);
     } catch (err) {
-      throw new AgentError(err, this.history.splice(before));
+      throw new AgentError(err, turns);
     }
+    this.history.push(...turns);
+    return response;
   }
 
-  private async runToolLoop(cfg: ProviderSpec, prepared: PreparedRequest): Promise<PromptResponse> {
+  // runToolLoop sends the history and the call's turns so far on each request,
+  // and appends each new turn to turns.
+  private async runToolLoop(
+    cfg: ProviderSpec,
+    prepared: PreparedRequest,
+    history: readonly Message[],
+    turns: Message[],
+  ): Promise<PromptResponse> {
     const maxIters =
       this.options.maxToolIterations ?? DEFAULT_MAX_TOOL_ITERATIONS;
     // Seeded from the first turn, not from zeros: absorbing addition's identity
@@ -130,7 +143,7 @@ export class Agent {
       // RQC-017): the history becomes the Request's messages; chat ran the
       // shared setup, so validation, model resolution and every transform run
       // as on the Text/batch path.
-      const request: PreparedRequest = { ...prepared, messages: [...this.history] };
+      const request: PreparedRequest = { ...prepared, messages: [...history, ...turns] };
       const model = request.model;
       const llmEvent: Event = {
         op: "llm_request",
@@ -202,7 +215,7 @@ export class Agent {
       // text beside them.
       const assistantTurn: Message = { role: "assistant", parts: [...decoded.parts] };
       if (decoded.providerTurn) assistantTurn.providerTurn = decoded.providerTurn;
-      this.history.push(assistantTurn);
+      turns.push(assistantTurn);
       const calls = responseToolCalls(decoded);
       if (calls.length === 0) {
         // The terminal Response is the decoder's, with the loop's usage
@@ -244,7 +257,7 @@ export class Agent {
           duration: performance.now() - toolStart,
         });
         // One tool turn per result (ADR-100 MSG-009).
-        this.history.push({
+        turns.push({
           role: "tool",
           parts: [{ toolResult: { toolUseId: call.id, content } }],
         });
