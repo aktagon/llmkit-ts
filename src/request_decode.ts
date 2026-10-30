@@ -31,7 +31,8 @@ function isObject(v: unknown): v is JSONObject {
  * option the provider takes, under any key the encoder may write for it. So
  * max_tokens and max_completion_tokens both decode to maxTokens (RQC-010).
  * A bare-string stop decodes as a one-item list, stream false as no stream,
- * and a developer turn as the system turn. The model comes from the body, or
+ * and a developer turn as the system turn where the provider declares that
+ * role (OpenAI, OpenRouter). The model comes from the body, or
  * from wire.path where the provider puts it in the URL. Any field the Request does not model, such as stream, tools or
  * a content list, throws a ValidationError that names it (RQC-007).
  */
@@ -158,12 +159,21 @@ function decodeOptions(req: Request, provider: ProviderName, cfg: ProviderSpec, 
   }
 }
 
-function integer(v: unknown): number | undefined {
-  return typeof v === "number" && Number.isSafeInteger(v) ? v : undefined;
+// integerProblem is what is wrong with an integer option's value, if
+// anything. JSON has one number type, so an integral number in any notation
+// (4096, 4096.0, 4.096e3) is an integer, and a fraction is not (owner decision
+// 3, HANDOFF-105 F3). JSON.parse reads 1e999 as Infinity, which is out of
+// range, as is an integer past the safe range.
+function integerProblem(v: unknown): string | undefined {
+  if (typeof v !== "number" || (!Number.isInteger(v) && Number.isFinite(v))) return "must be an integer";
+  if (!Number.isSafeInteger(v)) return "is out of range";
+  return undefined;
 }
 
-function number(v: unknown): number | undefined {
-  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+function numberProblem(v: unknown): string | undefined {
+  if (typeof v !== "number") return "must be a number";
+  if (!Number.isFinite(v)) return "is out of range";
+  return undefined;
 }
 
 // setOption stores one decoded option value in its Request field, the
@@ -174,8 +184,9 @@ function setOption(req: Request, param: OptionKey, v: unknown): string | undefin
     case OptionKeys.TOP_K:
     case OptionKeys.THINKING_BUDGET:
     case OptionKeys.SEED: {
-      const n = integer(v);
-      if (n === undefined) return "must be an integer";
+      const problem = integerProblem(v);
+      if (problem) return problem;
+      const n = v as number;
       if (param === OptionKeys.MAX_TOKENS) req.maxTokens = n;
       else if (param === OptionKeys.TOP_K) req.topK = n;
       else if (param === OptionKeys.THINKING_BUDGET) req.thinkingBudget = n;
@@ -186,8 +197,9 @@ function setOption(req: Request, param: OptionKey, v: unknown): string | undefin
     case OptionKeys.TOP_P:
     case OptionKeys.FREQUENCY_PENALTY:
     case OptionKeys.PRESENCE_PENALTY: {
-      const n = number(v);
-      if (n === undefined) return "must be a number";
+      const problem = numberProblem(v);
+      if (problem) return problem;
+      const n = v as number;
       if (param === OptionKeys.TEMPERATURE) req.temperature = n;
       else if (param === OptionKeys.TOP_P) req.topP = n;
       else if (param === OptionKeys.FREQUENCY_PENALTY) req.frequencyPenalty = n;
@@ -247,11 +259,16 @@ function decodeTurns(req: Request, cfg: ProviderSpec, v: unknown): void {
   if (!Array.isArray(v)) {
     throw new ValidationError("messages", "must be a list");
   }
-  // OpenAI's developer role is its system role for newer models
-  // (HANDOFF-105 R3b); the provider's role mappings come after it.
-  const roles = new Map<string, string>([["developer", "system"]]);
+  // A wire role decodes through the provider's role mappings, then through
+  // its decode-only ones (decodeOnly, HANDOFF-105 F3): OpenAI and
+  // OpenRouter take developer as the system role. The role mappings win, in
+  // every SDK; extract.py rejects a wire role that is in both.
+  const roles = new Map<string, string>();
   for (const [canonical, onWire] of Object.entries(cfg.roleMappings)) {
     roles.set(onWire, canonical);
+  }
+  for (const [onWire, canonical] of Object.entries(cfg.decodeRoleMappings)) {
+    if (!roles.has(onWire)) roles.set(onWire, canonical);
   }
   const messages: Message[] = [];
   v.forEach((item, i) => {

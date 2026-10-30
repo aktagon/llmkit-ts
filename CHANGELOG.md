@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `completed` for Responses; `"tool_calls"` is `STOP` for Google and
   `completed` for Responses; `"content_filter"` is `end_turn` for Bedrock.
 - **BREAKING — `encodeResponse` rejects a format the provider does not
-  serve.** It throws a `ValidationError` with `field` `"shape"`, for example
+  serve.** It throws a `ValidationError` with `field` `"chatWireShape"`, for example
   for `encodeResponse("vertex", ...)`, since Vertex serves no chat format.
   `encodeResponse("openai", "ChatOpenAI", resp)` is unchanged.
 - **BREAKING — `parseMusicResponse` takes the provider spec.** The
@@ -134,7 +134,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cache that `.caching()` creates lives. Google resource caching sends it on the cache-create request;
   without it, Google's default TTL (3600 s) applies. Other providers ignore
   it. Since the removal of `PromptOptions.cacheTTL`, no chat call could set a
-  TTL.
+  TTL. The TTL is positive whole seconds: `0`, `-5`, `1.5`, `NaN` and
+  `Infinity` fail the call with a `ValidationError` on field `cacheTTL`.
 - `encodeRequest(provider, chatWireShape, request)` encodes a chat request
   for a provider's wire shape and returns a `WireRequest`: the path with the
   model filled in, the content headers, and the JSON body. It needs no key
@@ -146,13 +147,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content, and every option the provider takes. `max_tokens` and
   `max_completion_tokens` both set `maxTokens`. A bare-string `stop` is a
   one-item list, `"stream": false` is ignored, and a `developer` turn is the
-  system turn. Any other field, such as `"stream": true`, `tools`, `response_format` or a content list, throws a
+  system turn for OpenAI and OpenRouter, whose APIs define that role; other
+  providers reject it on the turn's role. An integer option takes an
+  integral number in any notation, such as `4096.0`, and rejects a fraction.
+  A number out of range, such as `1e999`, fails on its own field. Any other field, such as `"stream": true`, `tools`, `response_format` or a content list, throws a
   `ValidationError` that names it, for example `messages[1].tool_calls`.
   An integer option past `Number.MAX_SAFE_INTEGER` is rejected rather than
   rounded. Other wire shapes throw on field `chatWireShape`.
 
 ### Fixed
 
+- `agent.prompt(...)` leaves the history unchanged when it rejects the
+  request, for example an option the provider does not take. The rejected
+  user turn used to stay in the history, so the next prompt sent two user
+  turns.
+- A provider name such as `toString` or `constructor` is an unknown
+  provider: `encodeRequest`, `decodeRequest`, `encodeResponse` and the agent
+  throw a `ValidationError` on field `provider`. The provider table was a
+  plain object, so these names found `Object.prototype`'s members and failed
+  later with a `TypeError`, or not at all.
 - `text.caching().stream(...)` applies prompt caching, as `prompt` does. A
   stream used to send its body without caching: no `cache_control` for
   Anthropic and no cache for Google.

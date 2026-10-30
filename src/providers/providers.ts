@@ -257,6 +257,8 @@ export interface ProviderSpec {
   chatWireShape: string;
   chatProtocols: ChatProtocol[];
   roleMappings: Record<string, string>;
+  /** Wire role -> canonical role, read by decodeRequest only (decodeOnly). */
+  decodeRoleMappings: Record<string, string>;
   usageInputPath: string;
   usageOutputPath: string;
   usageCostPath: string;
@@ -284,7 +286,9 @@ export interface ProviderSpec {
   toolParamsWireField: string;
 }
 
-export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
+export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
+  Object.create(null) as Record<ProviderName, ProviderSpec>,
+  {
   ai21: {
     name: "ai21",
     baseUrl: "https://api.ai21.com",
@@ -309,6 +313,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       tool: "tool",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
@@ -359,6 +365,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       assistant: "assistant",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.input_tokens",
     usageOutputPath: "usage.output_tokens",
     usageCostPath: "",
@@ -404,6 +412,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     chatProtocols: [],
     roleMappings: {
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "",
     usageOutputPath: "",
@@ -456,6 +466,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -504,6 +516,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       assistant: "assistant",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.inputTokens",
     usageOutputPath: "usage.outputTokens",
@@ -556,6 +570,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -606,6 +622,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       tool: "tool",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
@@ -658,6 +676,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -708,6 +728,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       tool: "tool",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
@@ -760,6 +782,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -811,6 +835,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -859,6 +885,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       assistant: "model",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usageMetadata.promptTokenCount",
     usageOutputPath: "usageMetadata.candidatesTokenCount",
@@ -911,6 +939,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "usage.cost_in_usd_ticks",
@@ -962,6 +992,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1007,6 +1039,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     chatProtocols: [],
     roleMappings: {
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "",
     usageOutputPath: "",
@@ -1059,6 +1093,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1109,6 +1145,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       tool: "tool",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
@@ -1161,6 +1199,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1211,6 +1251,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       tool: "tool",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
@@ -1263,6 +1305,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1314,6 +1358,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1364,6 +1410,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       tool: "tool",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
@@ -1417,6 +1465,9 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+      developer: "system",
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1468,6 +1519,9 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+      developer: "system",
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "usage.cost",
@@ -1518,6 +1572,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1563,6 +1619,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     chatProtocols: [],
     roleMappings: {
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "",
     usageOutputPath: "",
@@ -1615,6 +1673,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1660,6 +1720,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     chatProtocols: [],
     roleMappings: {
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "",
     usageOutputPath: "",
@@ -1712,6 +1774,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1763,6 +1827,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1809,6 +1875,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "",
     usageOutputPath: "",
     usageCostPath: "",
@@ -1854,6 +1922,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     chatProtocols: [],
     roleMappings: {
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "",
     usageOutputPath: "",
@@ -1906,6 +1976,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1957,6 +2029,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -2006,6 +2080,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       assistant: "assistant",
       system: "system",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
@@ -2058,6 +2134,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -2084,7 +2162,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     serviceName: "",
     toolParamsWireField: "parameters",
   },
-};
+  } satisfies Record<ProviderName, ProviderSpec>,
+);
 
 export interface StructuredOutputDef {
   formatField: string;

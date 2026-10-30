@@ -190,3 +190,17 @@ export function parseCacheUsage(
     read: optIntPath(raw, cc.readTokensPath),
   };
 }
+
+/**
+ * checkCacheTTL is the one cacheTTL rule, read by text and the agent when they
+ * build their send options: a TTL is positive whole seconds, because the cache
+ * create call sends seconds (owner decision 2, HANDOFF-105 F3). Before, -5 and
+ * 1.5 were sent as "-5s" and "1.5s". undefined is no TTL: the provider default
+ * applies.
+ */
+export function checkCacheTTL(seconds: number | undefined): void {
+  if (seconds === undefined) return;
+  if (!Number.isSafeInteger(seconds) || seconds <= 0) {
+    throw new ValidationError("cacheTTL", `must be a positive whole number of seconds, not ${seconds}`);
+  }
+}

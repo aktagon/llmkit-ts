@@ -18,6 +18,7 @@
 // would silently share their parent's accumulated history.
 
 import { Agent as LegacyAgent, type AgentSendOptions } from "../agent.ts";
+import { checkCacheTTL } from "../caching.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Message, ToolDefinition } from "../structs.ts";
 import type { Provider, Request, Response, Tool } from "../types.ts";
@@ -42,8 +43,10 @@ function toolDefinitions(tools: Tool[]): ToolDefinition[] {
 
 // initAgent constructs the underlying agent from the chained config: the
 // Request each turn sends, the tools, and the send options. The builder's
-// model goes into Request.model, so the provider carries none.
+// model goes into Request.model, so the provider carries none. A TTL that is
+// not positive whole seconds throws (checkCacheTTL) and leaves no state.
 function initAgent(b: Agent): AgentState {
+  checkCacheTTL(b._cacheTTL);
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
