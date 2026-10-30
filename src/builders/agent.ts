@@ -121,3 +121,14 @@ export function agentMessages(b: Agent): readonly Message[] {
   if (!b._state) return [];
   return b._state.agent.historyView();
 }
+
+// HANDOFF-105 F5, owner decision 2: bot.unsavedTurns returns the turns of the
+// last .prompt() call when it failed, in order: the user turn, then each
+// assistant turn and tool result the call made. A failed call leaves the
+// history as it was, so these turns are in no history. Empty after a call that
+// succeeded, after a call rejected before it started, and before the first
+// .prompt() call. Copied as bot.messages is.
+export function agentUnsavedTurns(b: Agent): readonly Message[] {
+  if (!b._state) return [];
+  return b._state.agent.unsavedView();
+}
