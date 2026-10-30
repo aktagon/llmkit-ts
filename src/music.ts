@@ -24,6 +24,7 @@ import type { Part } from "./image.ts";
 export type { AudioData, MusicResponse } from "./structs.ts";
 import type { AudioData, MusicResponse } from "./structs.ts";
 import { sendHTTP } from "./http.ts";
+import { extractPath } from "./paths.ts";
 
 /**
  * MusicRequest accepts input in one of two mutually-exclusive forms:
@@ -140,6 +141,7 @@ export async function generateMusic(
     const result = parseMusicResponse(
       mgCfg.wireShape,
       model.outputMime,
+      PROVIDERS[provider.name],
       raw,
     );
     if (options.raw) result.raw = raw;
@@ -315,19 +317,22 @@ function findMusicModel(
 
 // parseMusicResponse decodes the audio payloads per wire shape. Each shape's
 // response diverges enough (predictions[] vs candidates[] vs data.audio,
-// base64 vs hex) that a switch is clearer than a generic walker.
+// base64 vs hex) that a switch is clearer than a generic walker. The stop
+// signal is read at the provider's declared hasFinishReasonPath and
+// hasFinishMessagePath (ADR-099 CRF-003), not at a key named here.
 export function parseMusicResponse(
   wireShape: MusicWireShape,
   fallbackMime: string,
+  cfg: ProviderSpec,
   raw: unknown,
 ): MusicResponse {
   switch (wireShape) {
     case "MusicPredict":
-      return parseVertexMusicResponse(raw, fallbackMime);
+      return parseVertexMusicResponse(raw, fallbackMime, cfg);
     case "MusicMinimax":
       return parseMinimaxMusicResponse(raw, fallbackMime);
     case "MusicGenerateContent":
-      return parseGeminiMusicResponse(raw, fallbackMime);
+      return parseGeminiMusicResponse(raw, fallbackMime, cfg);
     default: {
       const _exhaustive: never = wireShape;
       throw new APIError(0, `music: unsupported wire shape ${String(_exhaustive)}`, false);
@@ -337,28 +342,23 @@ export function parseMusicResponse(
 
 // parseVertexMusicResponse decodes Vertex Lyria :predict responses.
 // Shape: {"predictions": [{"audioContent": "<base64>", "mimeType": "audio/wav"}]}.
+// A filtered prediction carries raiFilteredReason instead of audio; the reason
+//
+// sends sampleCount 1, so the reply has one prediction.
 function parseVertexMusicResponse(
   raw: unknown,
   fallbackMime: string,
+  cfg: ProviderSpec,
 ): MusicResponse {
   const preds = (raw as { predictions?: unknown[] }).predictions;
   const audio: AudioData[] = [];
-  let finishReason: string | undefined;
   for (const item of Array.isArray(preds) ? preds : []) {
     if (!item || typeof item !== "object") continue;
     const entry = item as {
       audioContent?: unknown;
       bytesBase64Encoded?: unknown;
       mimeType?: unknown;
-      raiFilteredReason?: unknown;
     };
-    if (
-      !finishReason &&
-      typeof entry.raiFilteredReason === "string" &&
-      entry.raiFilteredReason
-    ) {
-      finishReason = entry.raiFilteredReason;
-    }
     let b64 =
       typeof entry.audioContent === "string" ? entry.audioContent : "";
     if (!b64) {
@@ -378,7 +378,7 @@ function parseVertexMusicResponse(
       // skip malformed entries
     }
   }
-  return buildMusicResponse(audio, "", finishReason, undefined);
+  return buildMusicResponse(audio, "", extractPath(raw, cfg.finishReasonPath), undefined);
 }
 
 // parseGeminiMusicResponse walks candidates[0].content.parts, decoding each
@@ -386,12 +386,11 @@ function parseVertexMusicResponse(
 function parseGeminiMusicResponse(
   raw: unknown,
   fallbackMime: string,
+  cfg: ProviderSpec,
 ): MusicResponse {
   const root = raw as {
     candidates?: Array<{
       content?: { parts?: unknown[] };
-      finishReason?: string;
-      finishMessage?: string;
     }>;
   };
   const candidates = root.candidates;
@@ -423,14 +422,13 @@ function parseGeminiMusicResponse(
       textParts.push(pm.text);
     }
   }
-  const finishReason =
-    typeof first.finishReason === "string" ? first.finishReason : undefined;
-  // A filtered call has no content; finishMessage is the only explanation.
-  const finishMessage =
-    typeof first.finishMessage === "string" && first.finishMessage
-      ? first.finishMessage
-      : undefined;
-  return buildMusicResponse(audio, textParts.join(""), finishReason, finishMessage);
+  // A filtered call has no content; the finish message is the only explanation.
+  return buildMusicResponse(
+    audio,
+    textParts.join(""),
+    extractPath(raw, cfg.finishReasonPath),
+    extractPath(raw, cfg.finishMessagePath),
+  );
 }
 
 // parseMinimaxMusicResponse decodes MiniMax /v1/music_generation responses.
