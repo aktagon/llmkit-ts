@@ -1,3 +1,5 @@
+import type { Message } from "./structs.ts";
+
 export class APIError extends Error {
   constructor(
     public readonly statusCode: number,
@@ -6,6 +8,21 @@ export class APIError extends Error {
   ) {
     super(message);
     this.name = "APIError";
+  }
+}
+
+// AgentError is the error an Agent call throws once the call has started
+// (owner decision 4, HANDOFF-105 F4). Agent chat is all-or-nothing: on any
+// error the history is what it was before the call, and unsavedTurns holds the
+// turns the call made and did not save, in order: the user turn, then each
+// assistant turn and tool result. cause is the error that stopped the call.
+export class AgentError extends Error {
+  constructor(
+    public override readonly cause: unknown,
+    public readonly unsavedTurns: Message[],
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = "AgentError";
   }
 }
 

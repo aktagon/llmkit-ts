@@ -69,7 +69,7 @@ export type {
 // Client.supports query).
 export { Capabilities } from "./types.ts";
 export type { Capability } from "./types.ts";
-export { APIError, ValidationError, PollTimeoutError } from "./errors.ts";
+export { AgentError, APIError, ValidationError, PollTimeoutError } from "./errors.ts";
 // Symmetric response codec (ADR-076): the keyless, IO-free pair that translates
 // a provider response body to the canonical Response and back. decodeResponse
 // is the same reader the send paths call (SYM-004); encodeResponse is its
