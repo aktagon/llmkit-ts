@@ -28,8 +28,10 @@ function isObject(v: unknown): v is JSONObject {
  *
  * It decodes the ChatOpenAI wire shape only (RQC-011): the model, the turns
  * (a leading system turn becomes request.system) with text content, and every
- * option the provider takes, under any key the encoder may write for it. So
- * max_tokens and max_completion_tokens both decode to maxTokens (RQC-010).
+ * option some provider of the wire shape writes, under any key the encoder may
+ * write for it (owner decision 5, HANDOFF-105 F4). So max_tokens and
+ * max_completion_tokens both decode to maxTokens (RQC-010), and top_k decodes
+ * for OpenAI, which does not take it: encodeRequest checks support (RQC-017).
  * A bare-string stop decodes as a one-item list, stream false as no stream,
  * and a developer turn as the system turn where the provider declares that
  * role (OpenAI, OpenRouter). The model comes from the body, or
@@ -71,7 +73,7 @@ export function decodeRequest(
 
   const req: Request = {};
   decodeModel(req, cfg, body, wire.path);
-  decodeOptions(req, provider as ProviderName, cfg, body);
+  decodeOptions(req, cfg, body);
   const hasTurns = "messages" in body;
   const turns = body.messages;
   delete body.messages;
@@ -105,12 +107,27 @@ function decodeModel(req: Request, cfg: ProviderSpec, body: JSONObject, path: st
   req.model = model;
 }
 
-// decodeOptionKeys maps every wire key the encoder may write for an option of
-// (provider, wire shape) to that option (RQC-008): the wire shape's key, which
-// replaces the others for every model (BUG-075), else the provider's key and
-// each per-model override key (ADR-024). CQ-OPT-011 checks that no key maps to
-// two options.
-function decodeOptionKeys(provider: ProviderName, chatWireShape: string): Map<string, OptionKey> {
+// decodeOptionKeys maps every wire key some provider of the wire shape may
+// write for an option to that option (owner decision 5, HANDOFF-105 F4).
+// decodeRequest reads what the client sent, which need not be what the named
+// provider takes; the target's encoder checks support (RQC-017). CQ-OPT-011
+// checks that no key maps to two options on one shape.
+function decodeOptionKeys(chatWireShape: string): Map<string, OptionKey> {
+  const keys = new Map<string, OptionKey>();
+  for (const [name, cfg] of Object.entries(PROVIDERS)) {
+    if (!withWireShape(cfg, chatWireShape)) continue;
+    for (const [key, param] of providerOptionKeys(name as ProviderName, chatWireShape)) {
+      keys.set(key, param);
+    }
+  }
+  return keys;
+}
+
+// providerOptionKeys maps every wire key the encoder may write for an option
+// of (provider, wire shape) to that option (RQC-008): the wire shape's key,
+// which replaces the others for every model (BUG-075), else the provider's key
+// and each per-model override key (ADR-024).
+function providerOptionKeys(provider: ProviderName, chatWireShape: string): Map<string, OptionKey> {
   const shapeKeys = wireShapeOptionOverrides(chatWireShape);
   const supported = new Set<OptionKey>();
   const keys = new Map<string, OptionKey>();
@@ -128,7 +145,7 @@ function decodeOptionKeys(provider: ProviderName, chatWireShape: string): Map<st
 
 // decodeOptions takes each option out of the body, or out of the provider's
 // options container (wrapsOptionsIn), into its Request field (RQC-010).
-function decodeOptions(req: Request, provider: ProviderName, cfg: ProviderSpec, body: JSONObject): void {
+function decodeOptions(req: Request, cfg: ProviderSpec, body: JSONObject): void {
   let container = body;
   let prefix = "";
   if (cfg.wrapsOptionsIn) {
@@ -140,7 +157,7 @@ function decodeOptions(req: Request, provider: ProviderName, cfg: ProviderSpec, 
     container = wrapped;
     prefix = `${cfg.wrapsOptionsIn}.`;
   }
-  const byKey = decodeOptionKeys(provider, cfg.chatWireShape);
+  const byKey = decodeOptionKeys(cfg.chatWireShape);
   const seen = new Set<OptionKey>();
   for (const key of [...byKey.keys()].sort()) {
     const taken = takeNested(container, key);
