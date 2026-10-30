@@ -156,7 +156,7 @@ console.log(responseText(resp));
 
 `*Agent` is **stateful** — repeated `bot.prompt(...)` calls accumulate history. Chain methods (`.system(...)`, `.addTool(...)`) clone and reset state, so a forked builder gets a fresh conversation. `bot.reset()` clears state without dropping chained config.
 
-A `bot.prompt(...)` call that fails leaves the history as it was and throws the error that stopped it, such as an `APIError`. `bot.unsavedTurns` returns the turns that call made, tool results included. It is empty after a call that succeeds.
+A `bot.prompt(...)` call that fails leaves the history as it was and throws the error that stopped it, such as an `APIError`. `bot.unsavedTurns` returns the turns that call made, tool results included. The next `bot.prompt(...)` call clears them when it starts, and so do `bot.reset()` and a chain method, whose clone starts with none.
 
 Tool dispatch covers Anthropic `tool_use`, OpenAI `tool_calls`, Google `functionCall`, and Bedrock Converse `toolUse`. Tool errors surface to the model as the result string verbatim — sanitise tool inputs at the source.
 
