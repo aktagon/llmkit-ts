@@ -23,6 +23,7 @@ import type { Part } from "./image.ts";
 export type { AudioData, MusicResponse } from "./structs.ts";
 import type { AudioData, MusicResponse } from "./structs.ts";
 import { sendHTTP } from "./http.ts";
+import { fallbackMime, lookupModel } from "./model_lookup.ts";
 
 /**
  * MusicRequest accepts input in one of two mutually-exclusive forms:
@@ -95,13 +96,8 @@ export async function generateMusic(
       `${provider.name} does not support music generation`,
     );
   }
-  const model = findMusicModel(mgCfg, request.model);
-  if (!model) {
-    throw new ValidationError(
-      "model",
-      `${request.model} is not a known music-generation model for ${provider.name}`,
-    );
-  }
+  // ADR-102 MPT-001: an unlisted model (undefined) is sent as given.
+  const { model } = lookupModel(mgCfg.models, request.model);
   // ADR-037 (MUS-008): supportsLyrics is advisory metadata, not a gate.
   // Lyrics on an instrumental-only model fold into the prompt (for the
   // single-prompt Predict shape) and the model ignores or honors them.
@@ -151,7 +147,7 @@ export async function generateMusic(
     const raw = JSON.parse(respText) as unknown;
     const result = parseMusicResponse(
       mgCfg.wireShape,
-      model.outputMime,
+      fallbackMime(mgCfg.models, model),
       raw,
     );
     if (options.raw) result.raw = raw;
@@ -316,13 +312,6 @@ function normalizeMusicParts(request: MusicRequest): Part[] {
     throw new ValidationError("prompt", "set either prompt or parts");
   }
   return hasPrompt ? [{ text: request.prompt! }] : (request.parts as Part[]);
-}
-
-function findMusicModel(
-  cfg: MusicGenDef,
-  modelId: string,
-): MusicModelDef | undefined {
-  return cfg.models.find((m) => m.modelId === modelId);
 }
 
 // parseMusicResponse decodes the audio payloads per wire shape. Each shape's
