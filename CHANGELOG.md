@@ -52,6 +52,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `providerFinishReason` are read from `stopReason`, and `encodeResponse`
   writes it.
 
+- **BREAKING — `ToolCall.input` is the arguments' JSON text.** `input` is a
+  `string`, the text the provider sent: key order, number spelling and
+  escapes are kept, so an integer past `Number.MAX_SAFE_INTEGER` is not
+  rounded. `toolCallInput(call)` returns the parsed value. `inputJson` is
+  removed. A tool call you build sets `input` to JSON text, for example
+  `input: '{"city":"Oslo"}'`.
+- **BREAKING — a finished `agent.prompt(...)` replaces the history** with
+  its own turns, as in Go and Rust; it no longer appends to it. When two calls
+  overlap, the one that finishes last sets `agent.messages`.
+- A tool call's arguments go out as their text in Anthropic, Google and
+  Bedrock request bodies, in `encodeResponse` and in `saveHistory`, without
+  the spaces between tokens: `{"city": "Oslo"}` is sent as `{"city":"Oslo"}`.
+  The next agent request replays the provider's own turn with its arguments
+  as the provider wrote them; it used to round an integer past
+  `Number.MAX_SAFE_INTEGER`. OpenAI's string arguments keep their spaces.
+- A tool call with no input, input `"null"` or input `""` sends `{}` in every
+  request. `""` used to throw a `ValidationError`. A provider's
+  `"input": ""` reads as no input, as `null` does.
+
 ### Added
 
 - **`Response.created`.** The Unix time the provider reports, read from
@@ -175,6 +194,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `text.caching().stream(...)` applies prompt caching, as `prompt` does. A
   stream used to send its body without caching: no `cache_control` for
   Anthropic and no cache for Google.
+- `saveHistory` throws a `ValidationError` that names the part, for example
+  `messages[1].parts[0]`, when a tool call's input is not JSON. It threw
+  JSON.parse's `SyntaxError`.
 
 ## [3.0.0] — 2026-10-27
 
