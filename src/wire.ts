@@ -9,6 +9,7 @@ import type { MediaRef, Message, Part, ToolCall } from "./structs.ts";
 import { base64ToBytes, bytesToBase64 } from "./image.ts";
 import { compactJson, JsonText, writeJson } from "./json_text.ts";
 import { extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
+import { ValidationError } from "./errors.ts";
 import { PART_KINDS } from "./structs.ts";
 import { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
 
@@ -93,7 +94,7 @@ interface WireProviderTurn {
  * inline standard base64 (MSG-013).
  */
 export function saveHistory(messages: readonly Message[]): string {
-  const wire: WireMessage[] = messages.map(toWireMessage);
+  const wire: WireMessage[] = messages.map((m, i) => toWireMessage(m, i));
   const doc: WireDoc = { _v: WIRE_SCHEMA_VERSION, messages: wire };
   return writeJson(doc);
 }
@@ -144,8 +145,11 @@ export function loadHistory(data: string): Message[] {
   return rawMsgs.map((m, i) => fromWireMessage(m, rawMsgTexts[i]));
 }
 
-function toWireMessage(m: Message): WireMessage {
-  const out: WireMessage = { role: m.role, parts: m.parts.map(toWirePart) };
+function toWireMessage(m: Message, i: number): WireMessage {
+  const out: WireMessage = {
+    role: m.role,
+    parts: m.parts.map((p, j) => toWirePart(p, `messages[${i}].parts[${j}]`)),
+  };
   if (m.providerTurn) {
     out.provider_turn = {
       wire_shape: m.providerTurn.wireShape,
@@ -155,11 +159,19 @@ function toWireMessage(m: Message): WireMessage {
   return out;
 }
 
+function wireInput(tc: ToolCall, field: string): JsonText {
+  try {
+    return new JsonText(tc.input as string);
+  } catch {
+    throw new ValidationError(field, `tool call "${tc.name}" input is not JSON`);
+  }
+}
+
 function toWireMedia(m: MediaRef): Record<string, unknown> {
   return { mime_type: m.mimeType, bytes: bytesToBase64(m.bytes) };
 }
 
-function toWirePart(p: Part): Record<string, unknown> {
+function toWirePart(p: Part, field: string): Record<string, unknown> {
   if ("text" in p) return { text: p.text };
   if ("image" in p) return { image: toWireMedia(p.image) };
   if ("file" in p) {
@@ -170,9 +182,10 @@ function toWirePart(p: Part): Record<string, unknown> {
     const tc = p.toolCall;
     const call: Record<string, unknown> = { id: tc.id, name: tc.name };
     // The wire document holds the input as a JSON value, written from its
-    // text (HANDOFF-105 F7, owner decision 1). JsonText throws on text that
-    // is not JSON, so a saved document is never broken.
-    if (tc.input !== undefined) call.input = new JsonText(tc.input);
+    // text (HANDOFF-105 F7, owner decision 1). Text that is not JSON is the
+    // caller's error, named by part, so a saved document is never broken
+    // (F8): JsonText would throw JSON.parse's SyntaxError.
+    if (tc.input !== undefined) call.input = wireInput(tc, field);
     return { tool_call: call };
   }
   if ("toolResult" in p) {
