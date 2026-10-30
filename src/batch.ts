@@ -532,7 +532,7 @@ export function parseBatchResults(
   const out: PromptResponse[] = slots.map(
     (slot) =>
       slot?.resp ?? {
-        text: "",
+        parts: [],
         usage: {},
         state: "failed",
         cause: { code: BATCH_SLOT_MISSING, status: "", message: "" },
@@ -588,7 +588,7 @@ function parseBatchResultLine(
 
   const status = firstPath(wrapper, bc.resultReasonPaths);
   const failed: PromptResponse = {
-    text: "",
+    parts: [],
     usage: {},
     state: "failed",
     cause: {

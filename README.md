@@ -36,6 +36,7 @@ The package ships compiled ESM in `dist/` (works in plain Node ESM, Workers, Den
 ## Quick Start
 
 ```ts
+import { responseText } from "@aktagon/llmkit-ts";
 import { anthropic } from "@aktagon/llmkit-ts/builders";
 
 const c = anthropic(process.env.ANTHROPIC_API_KEY!);
@@ -43,7 +44,7 @@ const resp = await c.text
   .system("You are concise.")
   .prompt("Why is the sky blue?");
 
-console.log(resp.text);
+console.log(responseText(resp));
 console.log(resp.usage.input, resp.usage.output);
 ```
 
@@ -84,7 +85,7 @@ const resp = await c.text
   .maxTokens(200)
   .prompt("What is 2+2?");
 
-console.log(resp.text); // "4"
+console.log(responseText(resp)); // "4"
 
 // Every Usage dimension is optional. undefined means the provider did not
 // report the value, which is NOT the same as reporting zero: a provider that
@@ -129,7 +130,7 @@ if (final !== null) {
 ### Agent — tool loop
 
 ```ts
-import type { Tool } from "@aktagon/llmkit-ts";
+import { responseText, type Tool } from "@aktagon/llmkit-ts";
 
 const add: Tool = {
   name: "add",
@@ -150,7 +151,7 @@ const bot = c.agent
   .maxToolIterations(5);
 
 const resp = await bot.prompt("What is 2+3?");
-console.log(resp.text);
+console.log(responseText(resp));
 ```
 
 `*Agent` is **stateful** — repeated `bot.prompt(...)` calls accumulate history. Chain methods (`.system(...)`, `.addTool(...)`) clone and reset state, so a forked builder gets a fresh conversation. `bot.reset()` clears state without dropping chained config.
@@ -329,7 +330,7 @@ const handle = await client.text
     "Translate hello to German",
   );
 const results = await handle.wait();
-results.forEach((r) => console.log(r.text));
+results.forEach((r) => console.log(responseText(r)));
 ```
 
 `c.text.<config>.batch(...prompts)` queues the batch and returns a `BatchHandle` you can persist. Call `handle.wait()` to block until completion, or `handle.poll()` to drive the loop yourself. The blocking one-liner is `(await c.text.batch(...prompts)).wait()`. Both inline (Anthropic) and file-reference (OpenAI two-hop) flows are handled internally.
