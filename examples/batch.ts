@@ -8,6 +8,7 @@
  * in prompt order.
  */
 import { anthropic, Client } from "../src/builders/index.ts";
+import { responseText } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");
@@ -20,7 +21,7 @@ export async function main(c?: Client): Promise<void> {
       "Translate hello to German",
     );
   const results = await handle.wait();
-  results.forEach((r) => console.log(r.text));
+  results.forEach((r) => console.log(responseText(r)));
   // #endregion
 }
 

@@ -10,7 +10,6 @@
 
 import {
   PROVIDERS,
-  RESPONSE_TEXT_CONFIGS,
   wireShapeFinishReasonFallback,
   wireShapeFinishReasons,
   wireShapeFixedValues,
@@ -27,7 +26,6 @@ import type {
 import { cachingConfig } from "./providers/caching.ts";
 import {
   extractPath,
-  matchingBlocks,
   optIntPath,
   optFloatPath,
   setWirePath,
@@ -35,69 +33,15 @@ import {
 import { parseCacheUsage } from "./caching.ts";
 import { captureProviderTurn } from "./provider_turn.ts";
 import { ValidationError } from "./errors.ts";
-import { withWireShape } from "./request.ts";
-import { extractToolCalls } from "./tool_calls.ts";
+import { checkTurnParts, withWireShape } from "./request.ts";
+import {
+  decodeChatParts,
+  encodeChatParts,
+  noToolCallConfigError,
+  responseText,
+  responseToolCalls,
+} from "./response_parts.ts";
 import type { Response, Usage } from "./types.ts";
-
-/**
- * extractResponseText reads the assistant's text out of a parsed provider body.
- *
- * Two readers, selected by the WIRE SHAPE, never by provider name:
- *
- * - block-array families declare a RESPONSE_TEXT_CONFIGS entry and are read by
- *   DISCRIMINATOR, because array position is not stable — Opus 5 and Sonnet 5
- *   think by default, so content[0] is a thinking block (BUG-053);
- * - scalar families declare none, and absence SELECTS the fixed-path reader.
- *
- * An empty result is a real answer, not a failure: every tool-use turn carries
- * no text block at all. finishReason is what says why, which is why
- * Response.text stays a plain string rather than becoming optional across seven
- * SDKs to mark something routine.
- */
-function extractResponseText(
-  raw: unknown,
-  cfg: ProviderSpec,
-  chatWireShape: string,
-): string {
-  const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
-  if (!textCfg) return extractPath(raw, cfg.responseTextPath);
-  const blocks = matchingBlocks(
-    raw,
-    textCfg.blocksPath,
-    textCfg.markerPath,
-    textCfg.markerValue,
-  );
-  if (blocks.length === 0) return "";
-  return extractPath(blocks[0], textCfg.valuePath);
-}
-
-/**
- * encodeResponseText is extractResponseText's inverse, driven by the SAME
- * config so the two cannot drift apart.
- *
- * The marker is WRITTEN, not just tested. Emitting only the value path would
- * produce {"content":[{"text":"pong"}]} — a body with no type discriminator,
- * which the reader above then finds no matching block in. That is the ADR-076
- * fixed point breaking, and it is why textMarkerValue is documented as a
- * write instruction rather than a read predicate.
- */
-function encodeResponseText(
-  raw: Record<string, unknown>,
-  cfg: ProviderSpec,
-  chatWireShape: string,
-  text: string,
-): void {
-  const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
-  if (!textCfg) {
-    setWirePath(raw, cfg.responseTextPath, text);
-    return;
-  }
-  const block = `${textCfg.blocksPath}[0]`;
-  if (textCfg.markerValue !== "") {
-    setWirePath(raw, `${block}.${textCfg.markerPath}`, textCfg.markerValue);
-  }
-  setWirePath(raw, `${block}.${textCfg.valuePath}`, text);
-}
 
 /**
  * decodeResponse extracts text and usage from a provider response body into the
@@ -149,7 +93,7 @@ export function decodeResponse(
 
   const cache = parseCacheUsage(raw, provider);
   const result: Response = {
-    text: extractResponseText(raw, cfg, chatWireShape),
+    parts: decodeChatParts(raw, cfg, chatWireShape),
     usage: {
       input: optIntPath(raw, cfg.usageInputPath),
       output: optIntPath(raw, cfg.usageOutputPath),
@@ -171,8 +115,6 @@ export function decodeResponse(
   }
   setResponseIdentity(result, raw, cfg.responseIdPath, cfg.responseModelPath);
   setCreated(result, raw, chatWireShape);
-  const toolCalls = extractToolCalls(raw, chatWireShape);
-  if (toolCalls.length > 0) result.toolCalls = toolCalls;
   if (providerTurn) result.providerTurn = providerTurn;
   if (chatWireShape) result.chatWireShape = chatWireShape;
   return result;
@@ -357,13 +299,14 @@ export function encodeResponse(
 ): string {
   chatWireShape = servedChatWireShape(provider, chatWireShape);
   guardOneWayFields(provider, response);
+  checkTurnParts("assistant", response.parts, "parts");
   if (chatWireShape === "ChatResponsesOpenAI") {
-    return JSON.stringify(encodeResponsesEnvelope(chatWireShape, response));
+    return JSON.stringify(encodeResponsesEnvelope(provider, chatWireShape, response));
   }
 
   const cfg = PROVIDERS[provider];
   const raw: Record<string, unknown> = {};
-  encodeResponseText(raw, cfg, chatWireShape, response.text);
+  encodeChatParts(raw, provider, cfg, chatWireShape, response.parts);
   setWirePath(raw, cfg.usageInputPath, response.usage.input);
   setWirePath(raw, cfg.usageOutputPath, response.usage.output);
   const cc = cachingConfig(provider);
@@ -412,8 +355,9 @@ function guardOneWayFields(_provider: ProviderName, _response: Response): void {
 // with the ChatResponsesOpenAI request arm (ADR-028: behavior held by tests,
 // not by declared response paths).
 function parseResponsesEnvelope(raw: unknown): Response {
+  const text = extractResponsesText(raw);
   const result: Response = {
-    text: extractResponsesText(raw),
+    parts: text ? [{ text }] : [],
     usage: {
       input: optIntPath(raw, "usage.input_tokens"),
       output: optIntPath(raw, "usage.output_tokens"),
@@ -442,17 +386,24 @@ function parseResponsesEnvelope(raw: unknown): Response {
 // Responses reply (ADR-055) — an output[] array whose message item carries
 // content[] blocks of type "output_text", with input_tokens/output_tokens usage
 // and cached + reasoning sub-details. Hand-coded per wire shape on both legs,
-// symmetric with the reader, for the same reason the reader is.
+// symmetric with the reader, for the same reason the reader is. The shape
+// declares no ToolCallResponseConfig, so a response with tool calls is a
+// ValidationError on field "toolCalls" (HANDOFF-105 F4 decision 2).
 function encodeResponsesEnvelope(
+  provider: ProviderName,
   chatWireShape: string,
   response: Response,
 ): Record<string, unknown> {
+  if (responseToolCalls(response).length > 0) {
+    throw noToolCallConfigError(provider, chatWireShape);
+  }
   const raw: Record<string, unknown> = {};
-  if (response.text) {
+  const text = responseText(response);
+  if (text) {
     raw.output = [
       {
         type: "message",
-        content: [{ type: "output_text", text: response.text }],
+        content: [{ type: "output_text", text }],
       },
     ];
   }

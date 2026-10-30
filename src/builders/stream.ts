@@ -203,8 +203,9 @@ async function runStream(
       },
     );
 
+    const text = chunks.join("");
     const result: PromptResponse = {
-      text: chunks.join(""),
+      parts: text ? [{ text }] : [],
       // Only the two dimensions a stream frame can carry. The other four are
       // not reported on this path — padding them with zeroes claimed four
       // measurements that were never made (ADR-081).
