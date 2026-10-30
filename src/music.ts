@@ -471,7 +471,7 @@ function buildMusicResponse(
     text,
     usage: {},
   };
-  if (finishReason) out.finishReason = finishReason;
+  if (finishReason) out.providerFinishReason = finishReason;
   if (finishMessage) out.finishMessage = finishMessage;
   return out;
 }

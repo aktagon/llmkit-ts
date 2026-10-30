@@ -198,6 +198,9 @@ export class Agent {
         };
         if (decoded.providerTurn) result.providerTurn = decoded.providerTurn;
         if (decoded.finishReason) result.finishReason = decoded.finishReason;
+        if (decoded.providerFinishReason) {
+          result.providerFinishReason = decoded.providerFinishReason;
+        }
         if (decoded.finishMessage) result.finishMessage = decoded.finishMessage;
         if (decoded.id) result.id = decoded.id;
         if (decoded.model) result.model = decoded.model;

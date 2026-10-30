@@ -1,6 +1,7 @@
 // Code generated — DO NOT EDIT.
 
 import type { JobFailure, JobState } from "./job.ts";
+import type { FinishReason } from "./providers/providers.ts";
 import type { Capability, Provider, Usage } from "./types.ts";
 
 /**
@@ -98,9 +99,9 @@ export interface ImageResponse {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal. Examples per provider: Google STOP/IMAGE_OTHER/SAFETY/MAX_TOKENS; OpenAI Images API has no equivalent field (always absent); xAI Grok has no equivalent field (always absent).
+   * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-003). Examples per provider: Google STOP/IMAGE_OTHER/SAFETY/MAX_TOKENS; OpenAI Images API has no equivalent field (always absent); xAI Grok has no equivalent field (always absent).
    */
-  finishReason?: string;
+  providerFinishReason?: string;
 
   /**
    * finishMessage is the free-text provider explanation of the stop signal. Gemini populates this for non-success FinishReason values; other providers leave it empty. Use as the user-facing message when len(Images) == 0.
@@ -233,9 +234,9 @@ export interface MusicResponse {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal. Gemini surfaces STOP/SAFETY etc.; Vertex Imagen-style providers surface a RAI filter reason when content is blocked; MiniMax carries a base_resp status. Optional.
+   * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-003). Gemini surfaces STOP/SAFETY etc.; Vertex Imagen-style providers surface a RAI filter reason when content is blocked; MiniMax carries a base_resp status. Optional.
    */
-  finishReason?: string;
+  providerFinishReason?: string;
 
   /**
    * finishMessage is the free-text provider explanation of the stop signal. Use as the user-facing message when len(Audio) == 0.
@@ -378,9 +379,9 @@ export interface Response {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal, passed through verbatim. ABSENT (not empty) when the provider response carries no signal or the provider declares no path for it — the two are the same observation, and neither is an empty string (ADR-081). Examples per provider: Google STOP/MAX_TOKENS/SAFETY/RECITATION; OpenAI stop/length/content_filter/tool_calls; Anthropic end_turn/max_tokens/stop_sequence/tool_use; xAI stop/length/content_filter.
+   * finishReason is why the response stopped, as one of five canonical values shared by every provider: stop, length, tool_calls, content_filter, other (ADR-099 CRF-001). The provider's own value maps through the finish-reason table of the response's chat wire shape (Anthropic end_turn is stop, Google SAFETY is content_filter); a value with no entry is other (CRF-011). The provider's string is in provider_finish_reason. Absent when the response reports no finish reason; Go leaves the empty value there.
    */
-  finishReason?: string;
+  finishReason?: FinishReason;
 
   /**
    * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI carry no equivalent field, so it is ABSENT for them rather than empty (ADR-081). A failed batch item carries its error message in cause, not here (ADR-099 CRF-015).
@@ -416,6 +417,11 @@ export interface Response {
    * cause is why a batch item failed, set only when its state is failed (ADR-099 CRF-015): the typed code, the provider's failure status verbatim, and the provider's error message. A failed item carries no finish reason and no finish message.
    */
   cause?: JobFailure;
+
+  /**
+   * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-002). ABSENT (not empty) when the provider response carries no signal or the provider declares no path for it — the two are the same observation, and neither is an empty string (ADR-081). Examples per provider: Google STOP/MAX_TOKENS/SAFETY/RECITATION; OpenAI stop/length/content_filter/tool_calls; Anthropic end_turn/max_tokens/stop_sequence/tool_use; OpenAI Responses completed/incomplete.
+   */
+  providerFinishReason?: string;
 }
 
 /**
@@ -448,9 +454,9 @@ export interface SpeechResponse {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal, when present. Optional.
+   * providerFinishReason is the provider stop signal, passed through verbatim, when present (ADR-099 CRF-003). Optional.
    */
-  finishReason?: string;
+  providerFinishReason?: string;
 }
 
 /**
@@ -633,9 +639,9 @@ export interface VideoResponse {
   usage: Usage;
 
   /**
-   * finishReason is the provider terminal status / stop signal (grok: a non-done status such as expired or failed). Empty on success. Optional.
+   * providerFinishReason is the provider terminal status / stop signal, passed through verbatim (ADR-099 CRF-003) (grok: a non-done status such as expired or failed). Empty on success. Optional.
    */
-  finishReason?: string;
+  providerFinishReason?: string;
 
   /**
    * finishMessage is the free-text provider explanation of a non-success status (grok: error.message on a failed job). Use as the user-facing message when len(Videos) == 0.
