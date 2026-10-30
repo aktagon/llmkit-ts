@@ -75,6 +75,29 @@ export const RESPONSE_TEXT_CONFIGS: Record<string, ResponseTextConfig> = {
   ChatGoogle: { blocksPath: "candidates[0].content.parts", markerPath: "text", markerValue: "", valuePath: "text" },
 };
 
+// ToolCallResponseConfig locates the tool calls inside a chat response of one
+// wire family; decodeResponse reads and encodeResponse writes through it. The
+// marker semantics are ResponseTextConfig's. idPath is empty where the family
+// carries no id on the wire (Google): the id is derived from the tool name on
+// read, and nothing is written.
+export interface ToolCallResponseConfig {
+  blocksPath: string;
+  markerPath: string;
+  markerValue: string;
+  idPath: string;
+  namePath: string;
+  argsPath: string;
+}
+
+// Keyed by chat wire shape. A shape ABSENT from this map has no modelled
+// tool-call response shape (ChatResponsesOpenAI).
+export const TOOL_CALL_RESPONSE_CONFIGS: Readonly<Record<string, ToolCallResponseConfig>> = {
+  ChatAnthropic: { blocksPath: "content", markerPath: "type", markerValue: "tool_use", idPath: "id", namePath: "name", argsPath: "input" },
+  ChatBedrock: { blocksPath: "output.message.content", markerPath: "toolUse", markerValue: "", idPath: "toolUse.toolUseId", namePath: "toolUse.name", argsPath: "toolUse.input" },
+  ChatGoogle: { blocksPath: "candidates[0].content.parts", markerPath: "functionCall", markerValue: "", idPath: "", namePath: "functionCall.name", argsPath: "functionCall.args" },
+  ChatOpenAI: { blocksPath: "choices[0].message.tool_calls", markerPath: "", markerValue: "", idPath: "id", namePath: "function.name", argsPath: "function.arguments" },
+};
+
 const WIRE_SHAPE_RESPONSE_ID_PATHS: Record<string, string> = {
   ChatAnthropic: "id",
   ChatBedrock: "",
@@ -284,6 +307,8 @@ export interface ProviderSpec {
   regionEnvVar: string;
   serviceName: string;
   toolParamsWireField: string;
+  toolArgsFormat: string;
+  toolIdSource: string;
 }
 
 export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
@@ -341,6 +366,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   anthropic: {
     name: "anthropic",
@@ -392,6 +419,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "map",
+    toolIdSource: "id_field",
   },
   assemblyai: {
     name: "assemblyai",
@@ -440,6 +469,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   azure: {
     name: "azure",
@@ -493,6 +524,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   bedrock: {
     name: "bedrock",
@@ -544,6 +577,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "AWS_REGION",
     serviceName: "bedrock",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "map",
+    toolIdSource: "id_field",
   },
   cerebras: {
     name: "cerebras",
@@ -597,6 +632,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   cohere: {
     name: "cohere",
@@ -650,6 +687,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   deepseek: {
     name: "deepseek",
@@ -703,6 +742,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   doubao: {
     name: "doubao",
@@ -756,6 +797,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   ernie: {
     name: "ernie",
@@ -809,6 +852,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   fireworks: {
     name: "fireworks",
@@ -862,6 +907,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   google: {
     name: "google",
@@ -913,6 +960,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parametersJsonSchema",
+    toolArgsFormat: "map",
+    toolIdSource: "function_name",
   },
   grok: {
     name: "grok",
@@ -966,6 +1015,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   groq: {
     name: "groq",
@@ -1019,6 +1070,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   inworld: {
     name: "inworld",
@@ -1067,6 +1120,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   jan: {
     name: "jan",
@@ -1120,6 +1175,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   llamacpp: {
     name: "llamacpp",
@@ -1173,6 +1230,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   lmstudio: {
     name: "lmstudio",
@@ -1226,6 +1285,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   minimax: {
     name: "minimax",
@@ -1279,6 +1340,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   mistral: {
     name: "mistral",
@@ -1332,6 +1395,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   moonshot: {
     name: "moonshot",
@@ -1385,6 +1450,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   ollama: {
     name: "ollama",
@@ -1438,6 +1505,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   openai: {
     name: "openai",
@@ -1493,6 +1562,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   openrouter: {
     name: "openrouter",
@@ -1547,6 +1618,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   perplexity: {
     name: "perplexity",
@@ -1599,6 +1672,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   pixverse: {
     name: "pixverse",
@@ -1647,6 +1722,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   qwen: {
     name: "qwen",
@@ -1700,6 +1777,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   recraft: {
     name: "recraft",
@@ -1748,6 +1827,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   sambanova: {
     name: "sambanova",
@@ -1801,6 +1882,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   together: {
     name: "together",
@@ -1854,6 +1937,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   vertex: {
     name: "vertex",
@@ -1902,6 +1987,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   vidu: {
     name: "vidu",
@@ -1950,6 +2037,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   vllm: {
     name: "vllm",
@@ -2003,6 +2092,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   workersai: {
     name: "workersai",
@@ -2056,6 +2147,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   yi: {
     name: "yi",
@@ -2108,6 +2201,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   zhipu: {
     name: "zhipu",
@@ -2161,6 +2256,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   } satisfies Record<ProviderName, ProviderSpec>,
 );

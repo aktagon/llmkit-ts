@@ -10,7 +10,7 @@
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { accumulateUsage, attachRaw, decodeResponse } from "./response.ts";
-import { extractToolCalls } from "./tool_calls.ts";
+import { responseToolCalls } from "./response_parts.ts";
 import {
   encodeBody,
   executeRequest,
@@ -134,7 +134,6 @@ export class Agent {
       if (veto) throw veto;
       const llmStart = performance.now();
 
-      let raw: unknown;
       let respText = "";
       let decoded: PromptResponse;
       try {
@@ -161,7 +160,6 @@ export class Agent {
           );
         }
         respText = resp.text;
-        raw = JSON.parse(respText);
         // ADR-076 SYM-004: the tool loop reads through the public codec, so a
         // turn sees the same projection Text.prompt does. Before this it read
         // usage inline and never populated cache or reasoning tokens.
@@ -188,37 +186,22 @@ export class Agent {
         duration: performance.now() - llmStart,
       });
 
-      const calls = extractToolCalls(raw, cfg.chatWireShape);
+      // Record the assistant turn as the response's parts: its text and its
+      // tool calls, in the order the provider sent them (owner decision 1,
+      // HANDOFF-105 F4). providerTurn is the same turn as the provider wrote
+      // it, and is what the NEXT request sends (ADR-085). Before F4 the loop
+      // kept only the tool calls of a tool turn, which dropped the model's
+      // text beside them.
+      const assistantTurn: Message = { role: "assistant", parts: [...decoded.parts] };
+      if (decoded.providerTurn) assistantTurn.providerTurn = decoded.providerTurn;
+      this.history.push(assistantTurn);
+      const calls = responseToolCalls(decoded);
       if (calls.length === 0) {
-        // The terminal turn is captured too: an agent kept alive for another
-        // chat() replays it like any other, and Response carries it so a caller
-        // running their own loop can thread the turn forward without parsing raw
-        // per provider (ADR-085 § 6).
-        const terminal: Message = {
-          role: "assistant",
-          parts: textParts(decoded.text),
-        };
-        if (decoded.providerTurn) terminal.providerTurn = decoded.providerTurn;
-        this.history.push(terminal);
         // The terminal Response is the decoder's, with the loop's usage
-        // total. Before HANDOFF-105 F2 the loop copied the decoder's fields
-        // one by one, so a field added to the decoder (created) was missing
-        // here (ADR-076 SYM-004: one reader).
+        // total (ADR-076 SYM-004: one reader).
         const result: PromptResponse = { ...decoded, usage: totalUsage ?? {} };
         return attachRaw(result, respText, !!this.options.raw);
       }
-
-      // Record the assistant turn. Its tool call parts are the projection the
-      // loop runs tools from; providerTurn is the same turn as the provider wrote
-      // it, and is what the NEXT request sends (ADR-085). Before this, the turn
-      // was rebuilt from the calls alone, which silently dropped any prose the
-      // model emitted alongside the call.
-      const assistantTurn: Message = {
-        role: "assistant",
-        parts: calls.map((toolCall) => ({ toolCall })),
-      };
-      if (decoded.providerTurn) assistantTurn.providerTurn = decoded.providerTurn;
-      this.history.push(assistantTurn);
       for (const call of calls) {
         const callArgs = toolCallInput(call);
         const tool = this.tools.find((t) => t.name === call.name);

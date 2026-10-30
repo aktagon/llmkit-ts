@@ -677,6 +677,24 @@ const ROLE_PARTS: Readonly<Record<string, readonly string[]>> = {
   tool: ["tool_result"],
 };
 
+/**
+ * checkTurnParts throws a ValidationError for a part that sets no kind or two,
+ * a kind chat does not accept (MSG-011), or a kind the role cannot carry
+ * (MSG-002). `field` names the parts list, e.g. "messages[2].parts". The
+ * request encoder runs it on every turn, and encodeResponse on the response's
+ * assistant turn.
+ */
+export function checkTurnParts(role: string, parts: Part[], field: string): void {
+  checkPartKinds("chat", parts, field);
+  const allowed = ROLE_PARTS[role] ?? [];
+  parts.forEach((p, j) => {
+    const kind = partKind(p);
+    if (!allowed.includes(kind)) {
+      throw new ValidationError(`${field}[${j}]`, `${role} turn does not accept ${kind} parts`);
+    }
+  });
+}
+
 // toInternal converts the public, untrusted Message[] into the internal sum
 // (ADR-026 PIPE-008). This is the single validation boundary: a part that
 // sets no kind or two, a kind chat does not accept (MSG-011), or a kind the
@@ -684,17 +702,7 @@ const ROLE_PARTS: Readonly<Record<string, readonly string[]>> = {
 // mis-serialized downstream.
 function toInternal(messages: Message[]): Msg[] {
   return messages.map((m, i): Msg => {
-    checkPartKinds("chat", m.parts, `messages[${i}].parts`);
-    const allowed = ROLE_PARTS[m.role] ?? [];
-    m.parts.forEach((p, j) => {
-      const kind = partKind(p);
-      if (!allowed.includes(kind)) {
-        throw new ValidationError(
-          `messages[${i}].parts[${j}]`,
-          `${m.role} turn does not accept ${kind} parts`,
-        );
-      }
-    });
+    checkTurnParts(m.role, m.parts, `messages[${i}].parts`);
     const projected: PartsMsg = { kind: "parts", role: m.role, parts: m.parts };
     // providerTurn is the same turn in the provider's own serialization. When
     // present it supersedes the parts on the wire while the parts stay what

@@ -75,6 +75,9 @@ export { APIError, ValidationError, PollTimeoutError } from "./errors.ts";
 // is the same reader the send paths call (SYM-004); encodeResponse is its
 // inverse, refusing to fabricate a field whose mapping is one-way (SYM-007).
 export { decodeResponse, encodeResponse } from "./response.ts";
+// A Response is its assistant turn as ordered parts (HANDOFF-105 F4); these
+// read its text and its tool calls from them.
+export { responseText, responseToolCalls } from "./response_parts.ts";
 // Request codec (ADR-098): the keyless, IO-free encoder the chat send paths
 // share. It returns the path, the content headers and the body; the send path
 // adds the base URL, the key and the caller's headers (RQC-006).
