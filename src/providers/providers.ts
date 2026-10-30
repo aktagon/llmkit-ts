@@ -104,6 +104,76 @@ export function wireShapeResponseModelPath(chatWireShape: string): string {
   return WIRE_SHAPE_RESPONSE_MODEL_PATHS[chatWireShape] ?? "";
 }
 
+/**
+ * FinishReason is why a chat response stopped, in one vocabulary shared by
+ * every provider (ADR-099 CRF-001). Response.finishReason holds one; the
+ * provider's own string is in Response.providerFinishReason.
+ *
+ * - content_filter: The provider withheld or cut the output because its content filter flagged it.
+ * - length: The response reached the output-token limit set in the request.
+ * - other: Any wire value with no entry in the table (CRF-011). The provider's string is kept verbatim.
+ * - stop: The model reached a natural stop point or a caller-provided stop sequence.
+ * - tool_calls: The model stopped to call one or more tools.
+ */
+export type FinishReason = "content_filter" | "length" | "other" | "stop" | "tool_calls";
+
+/**
+ * FinishReasonEntry is one row of a chat wire shape's finish-reason table
+ * (ADR-099 CRF-004): a provider wire value and the canonical value it means.
+ * detailPath and detailValue are set only when the wire value fuses two
+ * canonical values; the entry then matches only when the field at detailPath
+ * holds detailValue (CRF-007). preferred marks the one entry per canonical
+ * value that encoding writes (CRF-005).
+ */
+export interface FinishReasonEntry {
+  readonly wireValue: string;
+  readonly detailPath: string;
+  readonly detailValue: string;
+  readonly canonical: FinishReason;
+  readonly preferred: boolean;
+}
+
+const WIRE_SHAPE_FINISH_REASONS: Readonly<Partial<Record<string, readonly FinishReasonEntry[]>>> = {
+  ChatAnthropic: [
+    { wireValue: "end_turn", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+    { wireValue: "max_tokens", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "stop_sequence", detailPath: "", detailValue: "", canonical: "stop", preferred: false },
+    { wireValue: "tool_use", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: true },
+  ],
+  ChatBedrock: [
+    { wireValue: "end_turn", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+    { wireValue: "max_tokens", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "stop_sequence", detailPath: "", detailValue: "", canonical: "stop", preferred: false },
+    { wireValue: "tool_use", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: true },
+  ],
+  ChatGoogle: [
+    { wireValue: "MAX_TOKENS", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "RECITATION", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
+    { wireValue: "SAFETY", detailPath: "", detailValue: "", canonical: "content_filter", preferred: true },
+    { wireValue: "STOP", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+  ],
+  ChatOpenAI: [
+    { wireValue: "content_filter", detailPath: "", detailValue: "", canonical: "content_filter", preferred: true },
+    { wireValue: "function_call", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: false },
+    { wireValue: "length", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "stop", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+    { wireValue: "tool_calls", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: true },
+  ],
+  ChatResponsesOpenAI: [
+    { wireValue: "completed", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+    { wireValue: "incomplete", detailPath: "incomplete_details.reason", detailValue: "content_filter", canonical: "content_filter", preferred: true },
+    { wireValue: "incomplete", detailPath: "incomplete_details.reason", detailValue: "max_output_tokens", canonical: "length", preferred: true },
+  ],
+};
+
+/**
+ * The finish-reason table of a chat wire shape, empty when the shape declares
+ * none. A wire value with no entry is "other" (CRF-011).
+ */
+export function wireShapeFinishReasons(chatWireShape: string): readonly FinishReasonEntry[] {
+  return WIRE_SHAPE_FINISH_REASONS[chatWireShape] ?? [];
+}
+
 // ProviderSpec is HOW the library talks to a provider [PRIVATE]: the
 // internal wire/transform spec consumed only by the runtime. Volatile;
 // not exported from the package barrel.

@@ -86,6 +86,8 @@ export { decodeRequest } from "./request_decode.ts";
 // failure cause. Public because they are what poll() returns (POLL-004).
 export type { JobState, JobStatus, JobFailure } from "./job.ts";
 export type { JobFailureCode } from "./providers/batch.ts";
+// The canonical finish reason (ADR-099 CRF-001): Response.finishReason.
+export type { FinishReason } from "./providers/providers.ts";
 export type { Tool } from "./types.ts";
 export type {
   ImageRequest,
