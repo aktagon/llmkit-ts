@@ -1,5 +1,6 @@
 // Code generated — DO NOT EDIT.
 
+import type { JobFailure, JobState } from "./job.ts";
 import type { Capability, Provider, Usage } from "./types.ts";
 
 /**
@@ -382,7 +383,7 @@ export interface Response {
   finishReason?: string;
 
   /**
-   * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI carry no equivalent field, so it is ABSENT for them rather than empty (ADR-081). A failed batch request carries the provider's error message here (BUG-072).
+   * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI carry no equivalent field, so it is ABSENT for them rather than empty (ADR-081). A failed batch item carries its error message in cause, not here (ADR-099 CRF-015).
    */
   finishMessage?: string;
 
@@ -405,6 +406,16 @@ export interface Response {
    * model is the model the provider reports for this response, passed through verbatim. It can differ from the requested model: OpenAI returns the dated snapshot, and Google reports the served version (modelVersion). ABSENT (not empty) when the response carries none: Bedrock Converse reports no model (ADR-081).
    */
   model?: string;
+
+  /**
+   * state is the outcome of one batch item: succeeded or failed (ADR-099 CRF-015). Set on every batch item, and on no other response; Go leaves the zero value there.
+   */
+  state?: JobState;
+
+  /**
+   * cause is why a batch item failed, set only when its state is failed (ADR-099 CRF-015): the typed code, the provider's failure status verbatim, and the provider's error message. A failed item carries no finish reason and no finish message.
+   */
+  cause?: JobFailure;
 }
 
 /**

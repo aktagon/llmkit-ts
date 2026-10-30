@@ -170,6 +170,7 @@ function newTranscriptionAdapter(
     statusPath: tcCfg.statusPath,
     doneValues: nonEmptyValues(tcCfg.doneStatus),
     errorValues: nonEmptyValues(tcCfg.errorStatus),
+    failureCodes: tcCfg.failureCodes,
     errorMessagePath: cfg.errorMessagePath,
     pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
     pollTimeoutMs: options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
