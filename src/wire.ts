@@ -7,6 +7,7 @@
 
 import type { MediaRef, Message, Part } from "./structs.ts";
 import { base64ToBytes, bytesToBase64 } from "./image.ts";
+import { toolCallValue } from "./response_parts.ts";
 import { PART_KINDS } from "./structs.ts";
 import { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
 
@@ -163,7 +164,9 @@ function toWirePart(p: Part): Record<string, unknown> {
   if ("toolCall" in p) {
     const tc = p.toolCall;
     const call: Record<string, unknown> = { id: tc.id, name: tc.name };
-    if (tc.input !== undefined && tc.input !== null) call.input = tc.input;
+    // The wire document holds the input as a JSON value (HANDOFF-105 F6).
+    const input = toolCallValue(tc);
+    if (input !== undefined && input !== null) call.input = input;
     return { tool_call: call };
   }
   if ("toolResult" in p) {

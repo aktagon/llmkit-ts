@@ -12,6 +12,7 @@ import {
 } from "./providers/providers.ts";
 import { ValidationError } from "./errors.ts";
 import { extractPath, extractRaw, setWirePath } from "./paths.ts";
+import { extractRawJsonPath } from "./provider_turn.ts";
 import type { Part, Response, ToolCall } from "./structs.ts";
 
 /**
@@ -65,8 +66,12 @@ function blockMatches(
  * names, ChatOpenAI), an element that fails the marker, such as an OpenAI
  * call of type "custom". In an array shared with text the marker selects, so
  * a block that matches neither config (a thinking block) is not a part.
+ *
+ * body is the text raw was parsed from: a map-format argument value is read
+ * from it, so inputJson keeps the provider's tokens (readToolCall).
  */
 export function decodeChatParts(
+  body: string,
   raw: unknown,
   provider: string,
   cfg: ProviderSpec,
@@ -103,7 +108,8 @@ export function decodeChatParts(
         blockMatches(block, toolCfg.markerPath, toolCfg.markerValue)
       ) {
         if (!cfg.toolArgsFormat) throw noToolCallConfigError(provider, chatWireShape);
-        parts.push({ toolCall: readToolCall(block, toolCfg, cfg) });
+        const rawArgs = extractRawJsonPath(body, `${path}[${i}].${toolCfg.argsPath}`);
+        parts.push({ toolCall: readToolCall(block, rawArgs, toolCfg, cfg) });
       }
     });
   }
@@ -145,19 +151,24 @@ function blockArrayPaths(
 /**
  * readToolCall reads one tool-call block. An empty idPath means the family
  * carries no id on the wire; the id is the tool name when the provider's
- * toolCallIDSource says so (Google). The arguments are decoded per the
- * provider's args format: a JSON string (json_string) or a JSON value (map).
- * Absent arguments, and an empty JSON string, leave input unset: an empty
- * argument set is no input. A block with no tool name, or arguments that do
- * not decode, is a ValidationError on field "toolCalls": it is not a call the
- * caller can run.
+ * toolCallIDSource says so (Google). The arguments are read per the
+ * provider's args format: a JSON string (json_string) or a JSON value (map),
+ * whose text in the body is rawArgs. Absent or null arguments, and an empty
+ * JSON string, leave input unset: an empty argument set is no input. A block
+ * with no tool name, or arguments that do not decode, is a ValidationError on
+ * field "toolCalls": it is not a call the caller can run.
  *
- * input is a parsed value, so it cannot keep the provider's bytes as Go does
- * (HANDOFF-105 F5): JSON.parse turns an integer past 2^53 into the nearest
- * double. Key order and string contents are kept.
+ * inputJson is the provider's text and input its parse (HANDOFF-105 F6, owner
+ * decision 1): JSON.parse turns an integer past 2^53 into the nearest double,
+ * so the parse cannot carry the text. A json_string argument is kept exactly,
+ * spaces included: the string is the text, and "null" is the text null. A
+ * map-format argument is a value inside the body, so its text is its tokens:
+ * compactJson drops only the whitespace between them, the body's layout, as
+ * Go's json.Compact does.
  */
 function readToolCall(
   block: Record<string, unknown>,
+  rawArgs: string | undefined,
   toolCfg: ToolCallResponseConfig,
   cfg: ProviderSpec,
 ): ToolCall {
@@ -169,20 +180,63 @@ function readToolCall(
   const call: ToolCall = { id, name };
   const args = extractRaw(block, toolCfg.argsPath);
   if (args === undefined || args === null) return call;
-  if (cfg.toolArgsFormat === "json_string") {
-    if (typeof args !== "string") {
-      throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath} are not a JSON string`);
-    }
-    if (args === "") return call;
-    try {
-      call.input = JSON.parse(args) as unknown;
-    } catch (err) {
-      throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath}: ${String(err)}`);
-    }
-  } else {
+  if (cfg.toolArgsFormat !== "json_string") {
     call.input = args;
+    if (rawArgs !== undefined) call.inputJson = compactJson(rawArgs);
+    return call;
   }
+  if (typeof args !== "string") {
+    throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath} are not a JSON string`);
+  }
+  if (args === "") return call;
+  try {
+    call.input = JSON.parse(args) as unknown;
+  } catch (err) {
+    throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath}: ${String(err)}`);
+  }
+  call.inputJson = args;
   return call;
+}
+
+/**
+ * compactJson is text, valid JSON, with the whitespace between tokens removed
+ * and every token kept as written (key order, number spelling, string
+ * escapes).
+ */
+function compactJson(text: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (const c of text) {
+    if (inString) {
+      out += c;
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+    } else if (c !== " " && c !== "\t" && c !== "\n" && c !== "\r") {
+      inString = c === '"';
+      out += c;
+    }
+  }
+  return out;
+}
+
+/**
+ * toolCallText is the argument JSON text of a call (HANDOFF-105 F6):
+ * inputJson when it is set, else input as JSON, else undefined when the call
+ * has no input.
+ */
+export function toolCallText(call: ToolCall): string | undefined {
+  if (call.inputJson !== undefined) return call.inputJson;
+  return call.input === undefined ? undefined : JSON.stringify(call.input);
+}
+
+/**
+ * toolCallValue is the argument value of a call: the parse of inputJson when
+ * it is set, else input.
+ */
+export function toolCallValue(call: ToolCall): unknown {
+  return call.inputJson !== undefined ? (JSON.parse(call.inputJson) as unknown) : call.input;
 }
 
 /**
@@ -252,12 +306,14 @@ export function writeToolCall(
   if (toolCfg.markerValue !== "") setWirePath(block, toolCfg.markerPath, toolCfg.markerValue);
   setWirePath(block, toolCfg.idPath, call.id);
   setWirePath(block, toolCfg.namePath, call.name);
-  if (call.input === undefined || call.input === null) return block;
-  setWirePath(
-    block,
-    toolCfg.argsPath,
-    cfg.toolArgsFormat === "json_string" ? JSON.stringify(call.input) : call.input,
-  );
+  const text = toolCallText(call);
+  if (text === undefined) return block;
+  // The text goes out as it is in json_string (HANDOFF-105 F6). A map
+  // argument is embedded as its parse, which changes an integer past 2^53
+  // (HANDOFF-105 F6 deviations). checkTurnParts has already rejected text
+  // that is not JSON.
+  const args = cfg.toolArgsFormat === "json_string" ? text : (JSON.parse(text) as unknown);
+  setWirePath(block, toolCfg.argsPath, args);
   return block;
 }
 
