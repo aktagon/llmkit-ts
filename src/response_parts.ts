@@ -147,9 +147,10 @@ function blockArrayPaths(
  * carries no id on the wire; the id is the tool name when the provider's
  * toolCallIDSource says so (Google). The arguments are decoded per the
  * provider's args format: a JSON string (json_string) or a JSON value (map).
- * Absent arguments leave input unset. A block with no tool name, or arguments
- * that do not decode, is a ValidationError on field "toolCalls": it is not a
- * call the caller can run.
+ * Absent arguments, and an empty JSON string, leave input unset: an empty
+ * argument set is no input. A block with no tool name, or arguments that do
+ * not decode, is a ValidationError on field "toolCalls": it is not a call the
+ * caller can run.
  */
 function readToolCall(
   block: Record<string, unknown>,
@@ -168,6 +169,7 @@ function readToolCall(
     if (typeof args !== "string") {
       throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath} are not a JSON string`);
     }
+    if (args === "") return call;
     try {
       call.input = JSON.parse(args) as unknown;
     } catch (err) {
