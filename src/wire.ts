@@ -5,9 +5,11 @@
 // produces valid JSON but lacks the `_v` envelope and loadHistory
 // rejects it with MissingWireVersionError (STAB-011).
 
-import type { MediaRef, Message, Part } from "./structs.ts";
+import type { MediaRef, Message, Part, ToolCall } from "./structs.ts";
 import { base64ToBytes, bytesToBase64 } from "./image.ts";
-import { toolCallValue } from "./response_parts.ts";
+import { JsonText, writeJson } from "./json_text.ts";
+import { extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
+import { compactJson } from "./response_parts.ts";
 import { PART_KINDS } from "./structs.ts";
 import { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
 
@@ -94,7 +96,7 @@ interface WireProviderTurn {
 export function saveHistory(messages: readonly Message[]): string {
   const wire: WireMessage[] = messages.map(toWireMessage);
   const doc: WireDoc = { _v: WIRE_SCHEMA_VERSION, messages: wire };
-  return JSON.stringify(doc);
+  return writeJson(doc);
 }
 
 /**
@@ -136,7 +138,11 @@ export function loadHistory(data: string): Message[] {
       "messages is not an array of message objects",
     );
   }
-  return rawMsgs.map(fromWireMessage);
+  // A tool call's input is JSON text (HANDOFF-105 F7, owner decision 1): it is
+  // read from the document's text, not from the parse, which would round an
+  // integer past 2^53 and reorder integer-like keys.
+  const rawMsgTexts = extractRawJsonElements(data, "messages") ?? [];
+  return rawMsgs.map((m, i) => fromWireMessage(m, rawMsgTexts[i]));
 }
 
 function toWireMessage(m: Message): WireMessage {
@@ -164,9 +170,10 @@ function toWirePart(p: Part): Record<string, unknown> {
   if ("toolCall" in p) {
     const tc = p.toolCall;
     const call: Record<string, unknown> = { id: tc.id, name: tc.name };
-    // The wire document holds the input as a JSON value (HANDOFF-105 F6).
-    const input = toolCallValue(tc);
-    if (input !== undefined && input !== null) call.input = input;
+    // The wire document holds the input as a JSON value, written from its
+    // text (HANDOFF-105 F7, owner decision 1). JsonText throws on text that
+    // is not JSON, so a saved document is never broken.
+    if (tc.input !== undefined) call.input = new JsonText(tc.input);
     return { tool_call: call };
   }
   if ("toolResult" in p) {
@@ -194,8 +201,9 @@ function fromWireMedia(raw: unknown): MediaRef {
 }
 
 // fromWirePart reads one part: an object with exactly one key, a known
-// variant name (ADR-100 MSG-012).
-function fromWirePart(raw: unknown): Part {
+// variant name (ADR-100 MSG-012). rawText is the part's text in the document,
+// where a tool call's input text is read.
+function fromWirePart(raw: unknown, rawText: string | undefined): Part {
   const obj = objectOf(raw, "part");
   const keys = Object.keys(obj);
   if (keys.length !== 1) {
@@ -227,9 +235,15 @@ function fromWirePart(raw: unknown): Part {
     }
     case "tool_call": {
       const tc = objectOf(value, "tool_call");
-      return {
-        toolCall: { id: String(tc.id ?? ""), name: String(tc.name ?? ""), input: tc.input },
-      };
+      const toolCall: ToolCall = { id: String(tc.id ?? ""), name: String(tc.name ?? "") };
+      if (tc.input !== undefined) {
+        const input = rawText === undefined ? undefined : extractRawJsonPath(rawText, "tool_call.input");
+        if (input === undefined) {
+          throw new MalformedWireDocumentError("tool_call input is not in the document text");
+        }
+        toolCall.input = compactJson(input);
+      }
+      return { toolCall };
     }
     case "tool_result": {
       const tr = objectOf(value, "tool_result");
@@ -246,7 +260,7 @@ function fromWirePart(raw: unknown): Part {
   );
 }
 
-function fromWireMessage(raw: unknown): Message {
+function fromWireMessage(raw: unknown, rawText: string | undefined): Message {
   const obj = objectOf(raw, "message entry");
   let rawParts: unknown[] = [];
   if (obj.parts !== undefined && obj.parts !== null) {
@@ -257,6 +271,7 @@ function fromWireMessage(raw: unknown): Message {
     }
     rawParts = obj.parts;
   }
+  const rawPartTexts = rawText === undefined ? undefined : extractRawJsonElements(rawText, "parts");
   // ADR-085 RSN-009, the unknown-field hazard. An OLD reader — one built before
   // provider_turn existed — silently drops this key, and on Anthropic a dropped
   // payload is a REJECTED request once the provider enforces the echo, not a
@@ -265,7 +280,7 @@ function fromWireMessage(raw: unknown): Message {
   // SDK knows what a silent reconstruction means.
   const out: Message = {
     role: String(obj.role ?? ""),
-    parts: rawParts.map(fromWirePart),
+    parts: rawParts.map((p, j) => fromWirePart(p, rawPartTexts?.[j])),
   };
   const ptRaw = obj.provider_turn;
   if (ptRaw !== null && typeof ptRaw === "object" && !Array.isArray(ptRaw)) {

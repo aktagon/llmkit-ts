@@ -33,6 +33,7 @@ import {
 import { parseCacheUsage } from "./caching.ts";
 import { captureProviderTurn } from "./provider_turn.ts";
 import { ValidationError } from "./errors.ts";
+import { writeJson } from "./json_text.ts";
 import { checkTurnParts, withWireShape } from "./request.ts";
 import {
   decodeChatParts,
@@ -306,7 +307,7 @@ export function encodeResponse(
   guardOneWayFields(provider, response);
   checkTurnParts("assistant", response.parts, "parts");
   if (chatWireShape === "ChatResponsesOpenAI") {
-    return JSON.stringify(encodeResponsesEnvelope(provider, chatWireShape, response));
+    return writeJson(encodeResponsesEnvelope(provider, chatWireShape, response));
   }
 
   const cfg = PROVIDERS[provider];
@@ -333,7 +334,7 @@ export function encodeResponse(
   setWirePath(raw, cfg.responseModelPath, response.model);
   setWirePath(raw, wireShapeResponseCreatedPath(chatWireShape), response.created);
   encodeFixedValues(raw, chatWireShape);
-  return JSON.stringify(raw);
+  return writeJson(raw);
 }
 
 // guardOneWayFields refuses to encode a canonical field whose mapping is

@@ -1,0 +1,55 @@
+// The one JSON writer for every body llmkit sends or encodes: the chat request
+// on every send path, encodeRequest, encodeResponse and saveHistory
+// (HANDOFF-105 F7, owner decision 1).
+//
+// A tool call's arguments are JSON text (ToolCall.input). A map-format
+// argument (Anthropic, Google, Bedrock) is a value inside the body, and
+// JSON.parse cannot carry its text: it turns an integer past 2^53 into the
+// nearest double and moves integer-like keys first. So the body holds the text
+// in a JsonText, and writeJson writes that text where the value goes. This is
+// the splice; there is no other place a body is turned into bytes.
+
+/**
+ * JsonText is a JSON value held as its text, which writeJson writes as it is.
+ * The constructor rejects text that is not one JSON value, so a body cannot
+ * carry broken JSON. JSON.stringify cannot write it and throws, so a send path
+ * that skips writeJson fails at once instead of sending {"text": ...}.
+ */
+export class JsonText {
+  readonly text: string;
+
+  constructor(text: string) {
+    JSON.parse(text);
+    this.text = text;
+  }
+
+  toJSON(): never {
+    throw new TypeError("llmkit: a JsonText is written by writeJson, not JSON.stringify");
+  }
+}
+
+/**
+ * writeJson is JSON.stringify(value) with each JsonText written as its text.
+ * Everything else is written as JSON.stringify writes it: an undefined member
+ * is left out, an undefined array element is null, and a value with toJSON is
+ * written through it.
+ */
+export function writeJson(value: unknown): string {
+  const text = write(value);
+  if (text === undefined) throw new TypeError("llmkit: writeJson has no JSON for the value");
+  return text;
+}
+
+function write(value: unknown): string | undefined {
+  if (value instanceof JsonText) return value.text;
+  if (Array.isArray(value)) return `[${value.map((v) => write(v) ?? "null").join(",")}]`;
+  if (value !== null && typeof value === "object" && !("toJSON" in value)) {
+    const members: string[] = [];
+    for (const [key, member] of Object.entries(value)) {
+      const text = write(member);
+      if (text !== undefined) members.push(`${JSON.stringify(key)}:${text}`);
+    }
+    return `{${members.join(",")}}`;
+  }
+  return JSON.stringify(value) as string | undefined;
+}

@@ -76,8 +76,9 @@ export { APIError, ValidationError, PollTimeoutError } from "./errors.ts";
 // inverse, refusing to fabricate a field whose mapping is one-way (SYM-007).
 export { decodeResponse, encodeResponse } from "./response.ts";
 // A Response is its assistant turn as ordered parts (HANDOFF-105 F4); these
-// read its text and its tool calls from them.
-export { responseText, responseToolCalls } from "./response_parts.ts";
+// read its text and its tool calls from them. toolCallInput parses a tool
+// call's argument text, ToolCall.input (HANDOFF-105 F7).
+export { responseText, responseToolCalls, toolCallInput } from "./response_parts.ts";
 // Request codec (ADR-098): the keyless, IO-free encoder the chat send paths
 // share. It returns the path, the content headers and the body; the send path
 // adds the base URL, the key and the caller's headers (RQC-006).

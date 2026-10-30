@@ -414,7 +414,7 @@ const resp = await c.text
   .prompt("What color is that pixel?");
 ```
 
-A tool call part carries `input`, the parsed arguments, and `inputJson`, the JSON text the provider sent. The request and `encodeResponse` send `inputJson` when it is set, so an integer past 2^53 is not changed.
+A tool call part carries `input`, the arguments as the JSON text the provider sent; `toolCallInput(call)` parses it. The request, `encodeResponse` and `saveHistory` write that text as it is, so key order, escapes and an integer past 2^53 are not changed.
 
 Sampling hyperparameters (`.topP`, `.topK`, `.seed`, `.frequencyPenalty`, `.presencePenalty`, `.stopSequences`) are validated per provider; unsupported options throw `ValidationError` rather than silently dropping.
 

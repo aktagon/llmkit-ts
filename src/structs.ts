@@ -484,14 +484,9 @@ export interface ToolCall {
   name: string;
 
   /**
-   * input is the argument JSON the model passed, as the text the provider sent: key order, number spelling and string escapes are kept, and the encoders write it back as it is (HANDOFF-105 F6). A JSON-string argument (OpenAI) keeps its spaces too; an argument embedded as a JSON value (Anthropic, Google, Bedrock) is its tokens without the body's layout. Absent when the provider sent no arguments or an empty argument string; JSON null when it sent null. A caller-built input is written as the caller gave it. Typically an object, but type-erased because schemas vary per tool.
+   * input is the argument JSON the model passed, as the text the provider sent: key order, number spelling and string escapes are kept, and the encoders write it back as it is (HANDOFF-105 F6). A JSON-string argument (OpenAI) keeps its spaces too; an argument embedded as a JSON value (Anthropic, Google, Bedrock) is its tokens without the body's layout. Absent when the provider sent no arguments, null embedded as a JSON value, or an empty argument string; the text null when a JSON-string argument holds null. A caller-built input is written as the caller gave it. Typically an object, but type-erased because schemas vary per tool.
    */
-  input?: unknown;
-
-  /**
-   * inputJson is input as the exact JSON text the provider sent or the caller gave. Decoding sets both; when it is set, the encoders write it and not input.
-   */
-  inputJson?: string;
+  input?: string;
 }
 
 /**
