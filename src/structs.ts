@@ -432,6 +432,11 @@ export interface Response {
    * toolCalls is the tool calls the model asked for in this response, in the order the provider sent them, not run (owner decision 3, HANDOFF-105 section 3b). Empty when the model called no tool. The Agent runs the calls it reads; Text.Request returns them to the caller.
    */
   toolCalls?: ToolCall[];
+
+  /**
+   * chatWireShape is the chat wire shape this response was decoded from (ChatOpenAI, ChatResponsesOpenAI, ChatAnthropic, ChatGoogle, ChatBedrock). Every decode path sets it: one-shot, stream, batch item and agent. ABSENT when the response was not decoded from a wire body, such as one the caller built. EncodeResponse writes provider_finish_reason verbatim only when this equals the target shape (owner decision 1, HANDOFF-105 F3).
+   */
+  chatWireShape?: string;
 }
 
 /**

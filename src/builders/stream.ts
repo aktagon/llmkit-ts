@@ -221,6 +221,7 @@ async function runStream(
     }
     if (outcome.id) result.id = outcome.id;
     if (outcome.model) result.model = outcome.model;
+    result.chatWireShape = cfg.chatWireShape;
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.usage,
