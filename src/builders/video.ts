@@ -28,6 +28,7 @@ import { lastInteractionOutputItem } from "../speech.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
 import type { Part } from "../image.ts";
+import { lookupModel } from "../model_lookup.ts";
 import type { MediaRef } from "../structs.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
@@ -253,13 +254,9 @@ export async function videoSubmit(
       `${provider.name} does not support video generation`,
     );
   }
-  const model = findVideoModel(vgCfg, b._model);
-  if (!model) {
-    throw new ValidationError(
-      "model",
-      `${b._model} is not a known video-generation model for ${provider.name}`,
-    );
-  }
+  // ADR-102 MPT-001: an unlisted model (undefined) skips the per-model
+  // checks; the config checks below still run.
+  const { model } = lookupModel(vgCfg.models, b._model);
   validateGeminiOmniInputs(vgCfg, parts, b._lastFrame, b._referenceImages, b._duration);
 
   parts.forEach((part, i) => {
@@ -273,7 +270,7 @@ export async function videoSubmit(
       // Image-to-video seed frame (BUG-010): accepted only by models whose
       // VideoModelDef sets supportsImageToVideo; text-to-video-only models
       // reject it pre-flight rather than silently dropping it at wire time.
-      if (!model.supportsImageToVideo) {
+      if (model !== undefined && !model.supportsImageToVideo) {
         throw new ValidationError(
           `parts[${i}]`,
           `${b._model} is a text-to-video-only model and does not accept image parts`,
@@ -1283,18 +1280,19 @@ const MAX_VIDEO_REFERENCE_IMAGES = 3;
 
 // validateVideoFrames rejects a last frame or reference images the model or
 // the request cannot carry, before any HTTP call (BUG-089). Same rules, order
-// and messages as go/video.go validateVideoFrames.
+// and messages as go/video.go validateVideoFrames. An unlisted model
+// (undefined) skips the two per-model rules (ADR-102 MPT-001).
 function validateVideoFrames(
-  model: VideoModelDef,
+  model: VideoModelDef | undefined,
   imageCount: number,
   lastFrame: MediaRef | undefined,
   referenceImages: MediaRef[],
 ): void {
   const refs = referenceImages.length;
-  if (lastFrame && !model.supportsLastFrame) {
+  if (lastFrame && model !== undefined && !model.supportsLastFrame) {
     throw new ValidationError("last_frame", `${model.modelId} does not accept a last frame`);
   }
-  if (refs > 0 && !model.supportsReferenceImages) {
+  if (refs > 0 && model !== undefined && !model.supportsReferenceImages) {
     throw new ValidationError(
       "reference_images",
       `${model.modelId} does not accept reference images`,
@@ -1390,10 +1388,12 @@ function validateGeminiOmniInputs(
 //     (ai.google.dev/gemini-api/docs/veo, read 2026-10-19; HANDOFF-100).
 //  5. A resolution the model does not list (empty list = no fixed set).
 //  6. An aspect ratio the model does not list (empty list = no fixed set).
+//
+// An unlisted model (undefined) skips rules 3, 5 and 6 (ADR-102 MPT-001).
 function validateVideoOptions(
   providerName: string,
   vgCfg: VideoGenDef,
-  model: VideoModelDef,
+  model: VideoModelDef | undefined,
   durationSeconds: number,
   aspectRatio: string,
   resolution: string,
@@ -1417,6 +1417,7 @@ function validateVideoOptions(
   }
   if (
     durationSeconds > 0 &&
+    model !== undefined &&
     model.maxDurationSeconds > 0 &&
     durationSeconds > model.maxDurationSeconds
   ) {
@@ -1428,10 +1429,10 @@ function validateVideoOptions(
   if (durationSeconds > 0 && referenceImageCount > 0 && durationSeconds !== 8) {
     throw new ValidationError("duration", `reference images take 8 seconds, got ${durationSeconds}`);
   }
-  if (resolution && model.resolutions.length > 0 && !model.resolutions.includes(resolution)) {
+  if (resolution && model !== undefined && model.resolutions.length > 0 && !model.resolutions.includes(resolution)) {
     throw new ValidationError("resolution", `${model.modelId} does not support resolution ${resolution}`);
   }
-  if (aspectRatio && model.aspectRatios.length > 0 && !model.aspectRatios.includes(aspectRatio)) {
+  if (aspectRatio && model !== undefined && model.aspectRatios.length > 0 && !model.aspectRatios.includes(aspectRatio)) {
     throw new ValidationError(
       "aspect_ratio",
       `${model.modelId} does not support aspect ratio ${aspectRatio}`,
@@ -1473,13 +1474,6 @@ function bytesToBase64(bytes: Uint8Array): string {
     );
   }
   return btoa(binary);
-}
-
-function findVideoModel(
-  cfg: VideoGenDef,
-  modelId: string,
-): VideoModelDef | undefined {
-  return cfg.models.find((m) => m.modelId === modelId);
 }
 
 async function postJson(

@@ -22,6 +22,7 @@ import type { Provider, SafetySetting, Usage } from "./types.ts";
 
 export type { MediaRef } from "./structs.ts";
 import type { MediaRef } from "./structs.ts";
+import { lookupModel } from "./model_lookup.ts";
 
 /**
  * Universal multimodal input atom. Discriminated union: a Part is a text
@@ -149,19 +150,15 @@ export async function generateImage(
       `${provider.name} does not support image generation`,
     );
   }
-  const model = findImageModel(imgCfg, request.model);
-  if (!model) {
-    throw new ValidationError(
-      "model",
-      `${request.model} is not a known image-generation model for ${provider.name}`,
-    );
-  }
+  // ADR-102 MPT-001: an unlisted model (undefined) skips the per-model checks.
+  const { model } = lookupModel(imgCfg.models, request.model);
   // Empty whitelist means "no client-side check; pass through" — used by
   // providers (e.g., OpenAI) that accept arbitrary sizes within documented
   // bounds. Trust the API boundary instead of carrying a stale whitelist
   // (plan 020 q1).
   if (
     options.aspectRatio &&
+    model !== undefined &&
     model.aspectRatios.length > 0 &&
     !model.aspectRatios.includes(options.aspectRatio)
   ) {
@@ -172,6 +169,7 @@ export async function generateImage(
   }
   if (
     options.imageSize &&
+    model !== undefined &&
     model.imageSizes.length > 0 &&
     !model.imageSizes.includes(options.imageSize)
   ) {
@@ -598,12 +596,15 @@ function joinTextParts(parts: Part[]): string {
 /**
  * validateImageArity rejects image parts the model does not take.
  * BUG-096: both limits are llmkit wire facts per model. maxInputImages 0
- * means no llmkit limit; the provider decides volume.
+ * means no llmkit limit; the provider decides volume. An unlisted model
+ * (undefined) has no limits, so the caller's image parts are sent
+ * (decision 009).
  */
 export function validateImageArity(
-  model: ImageModelDef,
+  model: ImageModelDef | undefined,
   imageCount: number,
 ): void {
+  if (model === undefined) return;
   if (imageCount > 0 && !model.supportsImageInput) {
     throw new ValidationError("parts", `${model.modelId} takes no image parts`);
   }
@@ -613,13 +614,6 @@ export function validateImageArity(
       `${imageCount} image parts exceeds maximum ${model.maxInputImages} for ${model.modelId}`,
     );
   }
-}
-
-function findImageModel(
-  cfg: ImageGenDef,
-  modelId: string,
-): ImageModelDef | undefined {
-  return cfg.models.find((m) => m.modelId === modelId);
 }
 
 /**
