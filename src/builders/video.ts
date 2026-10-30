@@ -287,7 +287,6 @@ export async function videoSubmit(
   validateVideoOptions(
     provider.name,
     vgCfg,
-    model,
     b._duration,
     b._aspectRatio,
     b._resolution,
@@ -1383,17 +1382,14 @@ function validateGeminiOmniInputs(
 //     videoShapeSendsOptions). The first set option is named, in the order
 //     duration, aspect_ratio, resolution.
 //  2. A negative duration.
-//  3. A duration above the model's maxDurationSeconds (0 = no known limit).
-//  4. A duration other than 8 with reference images: Veo forces 8 seconds
+//  3. A duration other than 8 with reference images: Veo forces 8 seconds
 //     (ai.google.dev/gemini-api/docs/veo, read 2026-10-19; HANDOFF-100).
-//  5. A resolution the model does not list (empty list = no fixed set).
-//  6. An aspect ratio the model does not list (empty list = no fixed set).
 //
-// An unlisted model (undefined) skips rules 3, 5 and 6 (ADR-102 MPT-001).
+// A model's maximum duration, resolutions and aspect ratios are hints, not
+// blocks (ADR-102 MPT-006 G5): the provider answers an off-list value.
 function validateVideoOptions(
   providerName: string,
   vgCfg: VideoGenDef,
-  model: VideoModelDef | undefined,
   durationSeconds: number,
   aspectRatio: string,
   resolution: string,
@@ -1415,28 +1411,8 @@ function validateVideoOptions(
   if (durationSeconds < 0) {
     throw new ValidationError("duration", "must be positive");
   }
-  if (
-    durationSeconds > 0 &&
-    model !== undefined &&
-    model.maxDurationSeconds > 0 &&
-    durationSeconds > model.maxDurationSeconds
-  ) {
-    throw new ValidationError(
-      "duration",
-      `${model.modelId} takes at most ${model.maxDurationSeconds} seconds, got ${durationSeconds}`,
-    );
-  }
   if (durationSeconds > 0 && referenceImageCount > 0 && durationSeconds !== 8) {
     throw new ValidationError("duration", `reference images take 8 seconds, got ${durationSeconds}`);
-  }
-  if (resolution && model !== undefined && model.resolutions.length > 0 && !model.resolutions.includes(resolution)) {
-    throw new ValidationError("resolution", `${model.modelId} does not support resolution ${resolution}`);
-  }
-  if (aspectRatio && model !== undefined && model.aspectRatios.length > 0 && !model.aspectRatios.includes(aspectRatio)) {
-    throw new ValidationError(
-      "aspect_ratio",
-      `${model.modelId} does not support aspect ratio ${aspectRatio}`,
-    );
   }
 }
 
