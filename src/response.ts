@@ -53,6 +53,10 @@ import type { Response, Usage } from "./types.ts";
  * Keyless, IO-free and pure (ADR-076 SYM-002): no Client, no credential, no
  * network, no clock. The wire shape is required, not derived — one provider can
  * serve two chat protocols, and inferring it silently mis-parses (SYM-003).
+ * It runs the served-shape check encodeResponse runs (servedChatWireShape,
+ * HANDOFF-105 F4): a shape the provider does not serve, or a provider with no
+ * chat shape, is a ValidationError on field "chatWireShape", and an unknown
+ * provider one on "provider".
  */
 /**
  * Fill in an unspecified wire shape with the provider's DEFAULT chat protocol.
@@ -76,7 +80,7 @@ export function decodeResponse(
   chatWireShape: string,
   body: string,
 ): Response {
-  chatWireShape = resolveChatWireShape(provider, chatWireShape);
+  chatWireShape = servedChatWireShape(provider, chatWireShape);
   const raw: unknown = JSON.parse(body);
   const cfg = PROVIDERS[provider];
   // ADR-085: capture the assistant turn as the provider serialized it, from the
@@ -131,7 +135,8 @@ function setCreated(result: Response, raw: unknown, chatWireShape: string): void
 }
 
 /**
- * servedChatWireShape resolves the shape encodeResponse writes: the named one,
+ * servedChatWireShape resolves the shape decodeResponse reads (HANDOFF-105 F4)
+ * and encodeResponse writes: the named one,
  * or the provider's default when chatWireShape is "". An unknown provider is a
  * ValidationError on field "provider", as in Go. A shape the provider does
  * not serve is a ValidationError on field "chatWireShape", the name
@@ -334,7 +339,8 @@ export function encodeResponse(
 // guardOneWayFields refuses to encode a canonical field whose mapping is
 // OneWay for this provider — the result set of CQ-WMAP-011 restricted to
 // Response (ADR-076 SYM-007). That set is empty today:
-// exceptGoogleToolCallID covers tool calls, which are out (SYM-008), and
+// exceptGoogleToolCallID is on ToolCall, whose Google id the config
+// never writes (HANDOFF-105 F4), and
 // exceptVertexFinishReason is on the image response since ADR-099 slice
 // C4 (CRF-006). A Vertex chat Response writes no finish reason anyway: Vertex
 // has no chat wire shape, so encodeFinishReason finds no table.
