@@ -97,7 +97,7 @@ export function decodeResponse(
 
   const cache = parseCacheUsage(raw, provider);
   const result: Response = {
-    parts: decodeChatParts(raw, cfg, chatWireShape),
+    parts: decodeChatParts(raw, provider, cfg, chatWireShape),
     usage: {
       input: optIntPath(raw, cfg.usageInputPath),
       output: optIntPath(raw, cfg.usageOutputPath),
