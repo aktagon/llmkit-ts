@@ -281,6 +281,7 @@ function newBatchAdapter(
     statusPath: lifecycle.pollingStatusPath,
     doneValues: nonEmptyValues(lifecycle.pollingDoneValue),
     errorValues: lifecycle.pollingErrorValues,
+    failureCodes: lifecycle.pollingFailureCodes,
     errorMessagePath: "",
     pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
     pollTimeoutMs: options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
@@ -477,7 +478,7 @@ interface BatchSlot {
 //
 // With a request count there are exactly count slots, and an id at or above the
 // count follows them. Without one, slots run to the highest index seen. An index
-// with no line reads BATCH_SLOT_MISSING. Lines whose id has another form (a batch
+// with no line is a failed item whose cause code is BATCH_SLOT_MISSING. Lines whose id has another form (a batch
 // created outside llmkit) follow the indexed slots in file order, across sources
 // in source order. A line that is not JSON cannot be placed and is skipped.
 //
@@ -529,17 +530,25 @@ export function parseBatchResults(
   }
 
   const out: PromptResponse[] = slots.map(
-    (slot) => slot?.resp ?? { text: "", usage: {}, finishReason: BATCH_SLOT_MISSING },
+    (slot) =>
+      slot?.resp ?? {
+        text: "",
+        usage: {},
+        state: "failed",
+        cause: { code: BATCH_SLOT_MISSING, status: "", message: "" },
+      },
   );
   return out.concat(unkeyed);
 }
 
 // parseBatchResultLine decodes one result line. The line succeeded when the value
 // at bc.resultStatusPath is one of bc.resultSuccessValues (any value when the
-// provider declares no status path) and its body decodes. Every other line
-// becomes a failed Response: empty text, the first reason path that resolves as
-// finishReason (BATCH_SLOT_ERROR when none does) and the first message path that
-// resolves as finishMessage.
+// provider declares no status path) and its body decodes; its state is
+// "succeeded". Every other line becomes a failed item (ADR-099 CRF-015): empty
+// text, no finish reason or message, state "failed", and a cause whose status is
+// the first reason path that resolves, whose code is that status's entry in
+// bc.resultFailureCodes (BATCH_SLOT_ERROR when it has none), and whose message is
+// the first message path that resolves.
 function parseBatchResultLine(
   provider: string,
   line: string,
@@ -570,20 +579,24 @@ function parseBatchResultLine(
           innerText,
           raw,
         );
-        return { resp, succeeded: true };
+        return { resp: { ...resp, state: "succeeded" }, succeeded: true };
       } catch {
         // Not a decodable body: fall through to a failed Response.
       }
     }
   }
 
+  const status = firstPath(wrapper, bc.resultReasonPaths);
   const failed: PromptResponse = {
     text: "",
     usage: {},
-    finishReason: firstPath(wrapper, bc.resultReasonPaths) || BATCH_SLOT_ERROR,
+    state: "failed",
+    cause: {
+      code: bc.resultFailureCodes[status] ?? BATCH_SLOT_ERROR,
+      status,
+      message: firstPath(wrapper, bc.resultMessagePaths),
+    },
   };
-  const message = firstPath(wrapper, bc.resultMessagePaths);
-  if (message) failed.finishMessage = message;
   return { resp: attachRaw(failed, line, raw), succeeded: false };
 }
 
