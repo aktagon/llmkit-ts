@@ -941,14 +941,16 @@ function flatProjectedEntry(
   }
   // Chat Completions has no order between text and tool calls: the text parts
   // join into content and the tool calls go into tool_calls (ADR-100
-  // MSG-003). A turn with only tool calls carries no content key.
+  // MSG-003). They join with "", as responseText does, so the turn carries the
+  // text the response did (owner decision 4, HANDOFF-105 F5). A turn with only
+  // tool calls carries no content key.
   const calls = toolCallsOf(m.parts);
   const entry: Record<string, unknown> = { role };
   if (calls.length > 0) entry.tool_calls = calls.map((c) => requestToolCall(c, cfg));
   if (calls.length < m.parts.length || calls.length === 0) {
     entry.content = m.parts
       .flatMap((p) => ("text" in p ? [p.text] : []))
-      .join("\n");
+      .join("");
   }
   return [entry];
 }
