@@ -228,13 +228,16 @@ export function encodeChatParts(
 }
 
 /**
- * writeToolCall renders one tool call as a block of the shape. The marker is
- * written when it is a value (Anthropic type=tool_use); a presence marker is
- * the key the name path starts with, so writing the name writes it (the
- * generator checks this). No id is written where the shape has no id path
- * (Google): exceptGoogleToolCallID is OneWay (owner decision 3).
+ * writeToolCall renders one tool call as a block of the shape. encodeResponse
+ * and the request encoder both write through it (owner decision 3,
+ * HANDOFF-105 F5), so a request turn carries the block the response did. The
+ * marker is written when it is a value (Anthropic type=tool_use, OpenAI
+ * type=function); a presence marker is the key the name path starts with, so
+ * writing the name writes it (the generator checks this). No id is written
+ * where the shape has no id path (Google): exceptGoogleToolCallID is
+ * OneWay (owner decision 3, F4).
  */
-function writeToolCall(
+export function writeToolCall(
   call: ToolCall,
   toolCfg: ToolCallResponseConfig,
   cfg: ProviderSpec,
