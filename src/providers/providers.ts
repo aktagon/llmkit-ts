@@ -95,7 +95,7 @@ export const TOOL_CALL_RESPONSE_CONFIGS: Readonly<Record<string, ToolCallRespons
   ChatAnthropic: { blocksPath: "content", markerPath: "type", markerValue: "tool_use", idPath: "id", namePath: "name", argsPath: "input" },
   ChatBedrock: { blocksPath: "output.message.content", markerPath: "toolUse", markerValue: "", idPath: "toolUse.toolUseId", namePath: "toolUse.name", argsPath: "toolUse.input" },
   ChatGoogle: { blocksPath: "candidates[0].content.parts", markerPath: "functionCall", markerValue: "", idPath: "", namePath: "functionCall.name", argsPath: "functionCall.args" },
-  ChatOpenAI: { blocksPath: "choices[0].message.tool_calls", markerPath: "", markerValue: "", idPath: "id", namePath: "function.name", argsPath: "function.arguments" },
+  ChatOpenAI: { blocksPath: "choices[0].message.tool_calls", markerPath: "type", markerValue: "function", idPath: "id", namePath: "function.name", argsPath: "function.arguments" },
 };
 
 const WIRE_SHAPE_RESPONSE_ID_PATHS: Record<string, string> = {

@@ -57,15 +57,23 @@ function blockMatches(
  * ordered parts. A shape whose text is a scalar (ChatOpenAI) yields its text
  * first, then its tool calls. A block-array shape yields its text and
  * tool-call blocks in array order, because the two configs name the same
- * array. A provider with no tool-call config has no tool calls to read.
+ * array.
+ *
+ * A tool-call block the caller could not run is a ValidationError on
+ * "toolCalls", never dropped (HANDOFF-105 F5): a block of a provider with no
+ * tool-call config, and, in an array of tool calls only (one no text config
+ * names, ChatOpenAI), an element that fails the marker, such as an OpenAI
+ * call of type "custom". In an array shared with text the marker selects, so
+ * a block that matches neither config (a thinking block) is not a part.
  */
 export function decodeChatParts(
   raw: unknown,
+  provider: string,
   cfg: ProviderSpec,
   chatWireShape: string,
 ): Part[] {
   const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
-  const toolCfg = cfg.toolArgsFormat ? TOOL_CALL_RESPONSE_CONFIGS[chatWireShape] : undefined;
+  const toolCfg = TOOL_CALL_RESPONSE_CONFIGS[chatWireShape];
   const parts: Part[] = [];
   if (!textCfg) {
     const text = extractPath(raw, cfg.responseTextPath);
@@ -74,26 +82,53 @@ export function decodeChatParts(
   for (const path of blockArrayPaths(textCfg, toolCfg)) {
     const arr = extractRaw(raw, path);
     if (!Array.isArray(arr)) continue;
-    for (const elem of arr) {
-      if (typeof elem !== "object" || elem === null || Array.isArray(elem)) continue;
-      const block = elem as Record<string, unknown>;
+    const toolsOnly = toolCfg?.blocksPath === path && textCfg?.blocksPath !== path;
+    arr.forEach((elem: unknown, i: number) => {
+      const block = isObject(elem) ? elem : undefined;
       if (
-        textCfg &&
-        path === textCfg.blocksPath &&
+        textCfg?.blocksPath === path &&
+        block &&
         blockMatches(block, textCfg.markerPath, textCfg.markerValue)
       ) {
         const text = extractPath(block, textCfg.valuePath);
         if (text) parts.push({ text });
       } else if (
-        toolCfg &&
-        path === toolCfg.blocksPath &&
+        toolsOnly &&
+        !(block && blockMatches(block, toolCfg.markerPath, toolCfg.markerValue))
+      ) {
+        throw otherToolCallType(path, i, block, toolCfg);
+      } else if (
+        toolCfg?.blocksPath === path &&
+        block &&
         blockMatches(block, toolCfg.markerPath, toolCfg.markerValue)
       ) {
+        if (!cfg.toolArgsFormat) throw noToolCallConfigError(provider, chatWireShape);
         parts.push({ toolCall: readToolCall(block, toolCfg, cfg) });
       }
-    }
+    });
   }
   return parts;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * otherToolCallType is the rejection for an element of a tool-call-only array
+ * that is not a tool call of the kind the config marks (owner decision 1,
+ * HANDOFF-105 F5): it is a call the caller cannot run, so it is not dropped.
+ */
+function otherToolCallType(
+  path: string,
+  i: number,
+  block: Record<string, unknown> | undefined,
+  toolCfg: ToolCallResponseConfig,
+): ValidationError {
+  if (!block) return malformedToolCall(`${path}[${i}] is not an object`);
+  return malformedToolCall(
+    `${path}[${i}] has ${toolCfg.markerPath} ${String(extractRaw(block, toolCfg.markerPath))}, want "${toolCfg.markerValue}"`,
+  );
 }
 
 /** blockArrayPaths lists the arrays the two configs scan, each once, text first. */
