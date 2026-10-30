@@ -1,14 +1,16 @@
 // Agent — multi-turn conversations with optional tool calling.
 //
-// @invariant history is mutated only inside chat() and grows append-only;
-//   on a non-2xx response or a max-iterations throw, the partial history
-//   is preserved so callers can inspect what happened.
+// @invariant history is mutated only inside chat(). chat() is all-or-nothing
+//   (owner decision 4, HANDOFF-105 F4): on any throw after the call starts —
+//   a non-2xx response, a middleware veto, max iterations — the history is
+//   restored to what it was before the call, and the AgentError carries the
+//   turns the call made, tool results included.
 // @invariant tool execution failures never propagate out of the loop —
 //   they are surfaced as `"error: ..."` tool-result content so the LLM
 //   can recover (matches Go behaviour at go/agent.go:189).
 
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
-import { APIError, ValidationError } from "./errors.ts";
+import { AgentError, APIError, ValidationError } from "./errors.ts";
 import { accumulateUsage, attachRaw, decodeResponse } from "./response.ts";
 import { responseToolCalls } from "./response_parts.ts";
 import {
@@ -96,6 +98,7 @@ export class Agent {
   // before the turn joins the history, so a rejected request leaves the
   // history as it was (HANDOFF-105 F3). Every turn of the loop sends the same
   // Request with a longer history, so one preparation holds for all of them.
+  // Once the call starts it is all-or-nothing (owner decision 4, F4).
   async chat(message: string): Promise<PromptResponse> {
     const cfg = PROVIDERS[this.provider.name]!;
     const turn: Message = { role: "user", parts: textParts(message) };
@@ -103,8 +106,13 @@ export class Agent {
       ...this.request,
       messages: [...this.history, turn],
     });
+    const before = this.history.length;
     this.history.push(turn);
-    return this.runToolLoop(cfg, prepared);
+    try {
+      return await this.runToolLoop(cfg, prepared);
+    } catch (err) {
+      throw new AgentError(err, this.history.splice(before));
+    }
   }
 
   private async runToolLoop(cfg: ProviderSpec, prepared: PreparedRequest): Promise<PromptResponse> {
