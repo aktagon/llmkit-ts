@@ -27,9 +27,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value with the same meaning, so a same-format round trip is exact, and
   otherwise writes that format's value for the canonical reason: an Anthropic
   `end_turn` encoded for OpenAI is `stop`. A reason the target format cannot
-  express (`"other"`, or tool calls for Google and Responses) is left out.
-  `encodeResponse("vertex", ...)` no longer throws a `ValidationError` for a
-  finish reason; it writes none.
+  express is written as that format's fallback value: `"other"` is `stop`
+  for OpenAI, `end_turn` for Anthropic and Bedrock, `OTHER` for Google and
+  `completed` for Responses; `"tool_calls"` is `STOP` for Google and
+  `completed` for Responses; `"content_filter"` is `end_turn` for Bedrock.
+- **BREAKING — `encodeResponse` rejects a format the provider does not
+  serve.** It throws a `ValidationError` with `field` `"shape"`, for example
+  for `encodeResponse("vertex", ...)`, since Vertex serves no chat format.
+  `encodeResponse("openai", "ChatOpenAI", resp)` is unchanged.
+- **BREAKING — `parseMusicResponse` takes the provider spec.** The
+  signature is `parseMusicResponse(wireShape, fallbackMime, cfg, raw)`; the
+  Vertex and Gemini parsers read the finish reason and message at the
+  provider's declared paths. Vertex reads `predictions[0].raiFilteredReason`.
+- **`encodeResponse` for OpenAI Chat Completions writes `object`
+  (`"chat.completion"`), `choices[0].index` (`0`), `choices[0].message.role`
+  (`"assistant"`) and, when the response has one, `created`.**
+- **Bedrock replies now report a finish reason.** `finishReason` and
+  `providerFinishReason` are read from `stopReason`, and `encodeResponse`
+  writes it.
+
+### Added
+
+- **`Response.created`.** The Unix time the provider reports, read from
+  `created` (Chat Completions) or `created_at` (Responses); absent when the
+  provider reports none.
+- **`Response.toolCalls`.** `text.request` sends `req.tools` and returns the
+  model's tool calls in `toolCalls` without running them.
 - **BREAKING — `finishReason` on `ImageResponse`, `MusicResponse`,
   `SpeechResponse` and `VideoResponse` is renamed `providerFinishReason`.**
   The value is unchanged: the provider's string, verbatim.

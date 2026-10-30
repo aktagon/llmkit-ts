@@ -409,7 +409,7 @@ export interface Response {
   model?: string;
 
   /**
-   * state is the outcome of one batch item: succeeded or failed (ADR-099 CRF-015). Set on every batch item, and on no other response; Go leaves the zero value there.
+   * state is the outcome of one batch item: succeeded or failed (ADR-099 CRF-015). Set on every batch item, and on no other response: ABSENT means the response is not a batch item (owner decision 7, HANDOFF-105 section 3b).
    */
   state?: JobState;
 
@@ -422,6 +422,16 @@ export interface Response {
    * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-002). ABSENT (not empty) when the provider response carries no signal or the provider declares no path for it — the two are the same observation, and neither is an empty string (ADR-081). Examples per provider: Google STOP/MAX_TOKENS/SAFETY/RECITATION; OpenAI stop/length/content_filter/tool_calls; Anthropic end_turn/max_tokens/stop_sequence/tool_use; OpenAI Responses completed/incomplete.
    */
   providerFinishReason?: string;
+
+  /**
+   * created is when the provider created this response, in Unix seconds, passed through verbatim (OpenAI created, Responses created_at; owner decision 4, HANDOFF-105 section 3b). ABSENT (not zero) when the body carries none: Anthropic, Google and Bedrock send no creation time (ADR-081).
+   */
+  created?: number;
+
+  /**
+   * toolCalls is the tool calls the model asked for in this response, in the order the provider sent them, not run (owner decision 3, HANDOFF-105 section 3b). Empty when the model called no tool. The Agent runs the calls it reads; Text.Request returns them to the caller.
+   */
+  toolCalls?: ToolCall[];
 }
 
 /**
