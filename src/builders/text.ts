@@ -17,7 +17,7 @@
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import { APIError, ValidationError } from "../errors.ts";
-import { applyCaching } from "../caching.ts";
+import { applyCaching, checkCacheTTL } from "../caching.ts";
 import { decodeResponseRaw } from "../response.ts";
 import {
   encodeBody,
@@ -116,8 +116,10 @@ export function textSetRequest(b: Text, req: Request): void {
 
 // textSendOptions are the chain settings that do not shape the request
 // (RQC-002): caching and its TTL, middleware and raw. Prompt and batch read
-// them from here.
+// them from here. A TTL that is not positive whole seconds throws
+// (checkCacheTTL).
 export function textSendOptions(b: Text): SendOptions {
+  checkCacheTTL(b._cacheTTL);
   const options: SendOptions = {};
   if (b._caching) options.caching = true;
   if (b._cacheTTL !== undefined) options.cacheTTL = b._cacheTTL;

@@ -16,6 +16,7 @@ import {
   executeRequest,
   prepareRequest,
   toolCallInput,
+  type PreparedRequest,
   type SendOptions,
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
@@ -91,13 +92,22 @@ export class Agent {
     this.history.push(...copyMessages(messages));
   }
 
+  // The request is prepared (validated, model resolved) with the user turn
+  // before the turn joins the history, so a rejected request leaves the
+  // history as it was (HANDOFF-105 F3). Every turn of the loop sends the same
+  // Request with a longer history, so one preparation holds for all of them.
   async chat(message: string): Promise<PromptResponse> {
-    this.history.push({ role: "user", parts: textParts(message) });
-    return this.runToolLoop();
+    const cfg = PROVIDERS[this.provider.name]!;
+    const turn: Message = { role: "user", parts: textParts(message) };
+    const prepared = prepareRequest(this.provider, cfg, {
+      ...this.request,
+      messages: [...this.history, turn],
+    });
+    this.history.push(turn);
+    return this.runToolLoop(cfg, prepared);
   }
 
-  private async runToolLoop(): Promise<PromptResponse> {
-    const cfg = PROVIDERS[this.provider.name]!;
+  private async runToolLoop(cfg: ProviderSpec, prepared: PreparedRequest): Promise<PromptResponse> {
     const maxIters =
       this.options.maxToolIterations ?? DEFAULT_MAX_TOOL_ITERATIONS;
     // Seeded from the first turn, not from zeros: absorbing addition's identity
@@ -109,12 +119,10 @@ export class Agent {
 
     for (let i = 0; i < maxIters; i++) {
       // The shared setup step and encoder (ADR-026 PIPE-001, ADR-098 RQC-001,
-      // RQC-017): the history becomes the Request's messages, so validation,
-      // model resolution and every transform run as on the Text/batch path.
-      const request = prepareRequest(this.provider, cfg, {
-        ...this.request,
-        messages: [...this.history],
-      });
+      // RQC-017): the history becomes the Request's messages; chat ran the
+      // shared setup, so validation, model resolution and every transform run
+      // as on the Text/batch path.
+      const request: PreparedRequest = { ...prepared, messages: [...this.history] };
       const model = request.model;
       const llmEvent: Event = {
         op: "llm_request",
