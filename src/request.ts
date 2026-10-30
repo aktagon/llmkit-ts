@@ -3,6 +3,7 @@
 
 import {
   PROVIDERS,
+  TOOL_CALL_RESPONSE_CONFIGS,
   type ProviderSpec,
   type ProviderName,
   structuredOutput,
@@ -35,6 +36,7 @@ import type {
 import { checkPartKinds, partKind } from "./part_kinds.ts";
 import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
+import { writeToolCall } from "./response_parts.ts";
 
 // SendOptions are the settings of a chat call that do not shape the request
 // (ADR-098 RQC-002): transport, send policy (caching) and response handling.
@@ -244,7 +246,9 @@ export function encodeBody(
   // resolveTurns runs first and only here: it is the one place cfg and the
   // message list meet, so the ADR-085 RSN-006 shape check is made once rather
   // than remembered in each builder below.
-  const msgs = resolveTurns(requestMsgs(request), cfg);
+  const requested = requestMsgs(request);
+  checkRequestToolCalls(requested, cfg);
+  const msgs = resolveTurns(requested, cfg);
   if (cfg.chatWireShape === "ChatBedrock") {
     if (request.system) {
       body.system = [{ text: request.system }];
@@ -770,7 +774,7 @@ function buildBedrockMessages(
   const out: Array<Record<string, unknown>> = [];
   let open: unknown[] | undefined;
   for (const m of msgs.map(unwrap)) {
-    const content = bedrockContent(m.parts);
+    const content = bedrockContent(m.parts, cfg);
     if (m.role !== "tool") {
       open = undefined;
       out.push({ role: cfg.roleMappings[m.role] ?? m.role, content });
@@ -788,7 +792,7 @@ function buildBedrockMessages(
 // order (ADR-060, ADR-100 MSG-003). Converse has no block for an uploaded
 // file id, so a file part is not sent, as before ADR-100. A turn with no
 // parts sends one empty text block.
-function bedrockContent(parts: Part[]): Array<Record<string, unknown>> {
+function bedrockContent(parts: Part[], cfg: ProviderSpec): Array<Record<string, unknown>> {
   if (parts.length === 0) return [{ text: "" }];
   return parts.flatMap((p): Array<Record<string, unknown>> => {
     if ("file" in p) return [];
@@ -802,10 +806,7 @@ function bedrockContent(parts: Part[]): Array<Record<string, unknown>> {
         },
       ];
     }
-    if ("toolCall" in p) {
-      const c = p.toolCall;
-      return [{ toolUse: { toolUseId: c.id, name: c.name, input: toolCallInput(c) } }];
-    }
+    if ("toolCall" in p) return [requestToolCall(p.toolCall, cfg)];
     if ("toolResult" in p) {
       const r = p.toolResult;
       return [{ toolResult: { toolUseId: r.toolUseId, content: [{ text: r.content }] } }];
@@ -842,7 +843,7 @@ function buildGoogleContents(
     }
     const role =
       turn.role === "tool" ? "user" : (cfg.roleMappings[turn.role] ?? turn.role);
-    return { role, parts: googleParts(turn.parts, idToName) };
+    return { role, parts: googleParts(turn.parts, idToName, cfg) };
   });
 }
 
@@ -851,6 +852,7 @@ function buildGoogleContents(
 function googleParts(
   parts: Part[],
   idToName: Map<string, string>,
+  cfg: ProviderSpec,
 ): Array<Record<string, unknown>> {
   if (parts.length === 0) return [{ text: "" }];
   return parts.map((p): Record<string, unknown> => {
@@ -862,9 +864,7 @@ function googleParts(
         inline_data: { mime_type: p.image.mimeType, data: bytesToBase64(p.image.bytes) },
       };
     }
-    if ("toolCall" in p) {
-      return { functionCall: { name: p.toolCall.name, args: toolCallInput(p.toolCall) } };
-    }
+    if ("toolCall" in p) return requestToolCall(p.toolCall, cfg);
     if ("toolResult" in p) {
       const r = p.toolResult;
       return {
@@ -927,7 +927,7 @@ function flatProjectedEntry(
     return results.map((r) => (responses ? responsesToolResult(r) : openAIToolResult(r)));
   }
   const role = cfg.roleMappings[m.role] ?? m.role;
-  if (anthropic) return [{ role, content: anthropicContent(m.parts) }];
+  if (anthropic) return [{ role, content: anthropicContent(m.parts, cfg) }];
   if (m.role !== "assistant") return [{ role, content: openAIContent(m.parts) }];
   if (responses) {
     // Responses keeps order: each text part is an assistant message entry and
@@ -944,7 +944,7 @@ function flatProjectedEntry(
   // MSG-003). A turn with only tool calls carries no content key.
   const calls = toolCallsOf(m.parts);
   const entry: Record<string, unknown> = { role };
-  if (calls.length > 0) entry.tool_calls = calls.map(openAIToolCall);
+  if (calls.length > 0) entry.tool_calls = calls.map((c) => requestToolCall(c, cfg));
   if (calls.length < m.parts.length || calls.length === 0) {
     entry.content = m.parts
       .flatMap((p) => ("text" in p ? [p.text] : []))
@@ -970,7 +970,7 @@ function openAIContent(parts: Part[]): unknown {
 
 // anthropicContent renders a user or assistant turn's content for Anthropic: a
 // string for at most one text part, else blocks in part order.
-function anthropicContent(parts: Part[]): unknown {
+function anthropicContent(parts: Part[], cfg: ProviderSpec): unknown {
   const text = plainText(parts);
   if (text !== undefined) return text;
   return parts.map((p): Record<string, unknown> => {
@@ -987,10 +987,7 @@ function anthropicContent(parts: Part[]): unknown {
         },
       };
     }
-    if ("toolCall" in p) {
-      const c = p.toolCall;
-      return { type: "tool_use", id: c.id, name: c.name, input: toolCallInput(c) };
-    }
+    if ("toolCall" in p) return requestToolCall(p.toolCall, cfg);
     return { type: "text", text: "text" in p ? p.text : "" };
   });
 }
@@ -1101,14 +1098,35 @@ function attachToolDefs(
   );
 }
 
-// openAIToolCall renders one Chat Completions tool call, with the arguments
-// as a JSON string.
-function openAIToolCall(c: ToolCall): Record<string, unknown> {
-  return {
-    id: c.id,
-    type: "function",
-    function: { name: c.name, arguments: JSON.stringify(toolCallInput(c)) },
-  };
+// requestToolCall renders one assistant tool call for the request body through
+// the generated ToolCallResponseConfig encodeResponse writes with (owner
+// decision 3, HANDOFF-105 F5), so the request and the response cannot
+// disagree. encodeBody has checked that the shape and the provider declare one
+// (checkRequestToolCalls). A call with no input goes out as an empty object:
+// the providers take an object, not null.
+function requestToolCall(call: ToolCall, cfg: ProviderSpec): Record<string, unknown> {
+  const input = call.input === undefined || call.input === null ? {} : call.input;
+  return writeToolCall({ ...call, input }, TOOL_CALL_RESPONSE_CONFIGS[cfg.chatWireShape]!, cfg);
+}
+
+// checkRequestToolCalls rejects a request whose turns carry a tool call the
+// provider has no tool-call config to write, on a shape that writes tool calls
+// from config (every chat shape but ChatResponsesOpenAI, whose function_call
+// item responsesFunctionCall writes). Dropping the call would send a different
+// conversation; encodeResponse rejects the same case.
+function checkRequestToolCalls(msgs: Msg[], cfg: ProviderSpec): void {
+  if (cfg.chatWireShape === "ChatResponsesOpenAI") return;
+  if (TOOL_CALL_RESPONSE_CONFIGS[cfg.chatWireShape] && cfg.toolArgsFormat) return;
+  msgs.forEach((m, i) => {
+    unwrap(m).parts.forEach((p, j) => {
+      if ("toolCall" in p) {
+        throw new ValidationError(
+          `messages[${i}].parts[${j}]`,
+          `provider "${cfg.name}" has no tool-call shape on chat wire shape "${cfg.chatWireShape}"`,
+        );
+      }
+    });
+  });
 }
 
 // Responses (ADR-055): each call is its own top-level input[] item, paired to
