@@ -548,7 +548,8 @@ export function parseBatchResults(
 // text, no finish reason or message, state "failed", and a cause whose status is
 // the first reason path that resolves, whose code is that status's entry in
 // bc.resultFailureCodes (BATCH_SLOT_ERROR when it has none), and whose message is
-// the first message path that resolves.
+// the first message path that resolves. A line that succeeded but whose body
+// does not decode keeps the decode error as its message (HANDOFF-105 F5).
 function parseBatchResultLine(
   provider: string,
   line: string,
@@ -559,6 +560,7 @@ function parseBatchResultLine(
   const signalled =
     !bc.resultStatusPath ||
     bc.resultSuccessValues.includes(extractPath(wrapper, bc.resultStatusPath));
+  let message = firstPath(wrapper, bc.resultMessagePaths);
   if (signalled) {
     // VERBATIM, not parse-navigate-re-stringify: the inner body is what ADR-085
     // captures the assistant turn from, and JSON.stringify of a parsed value has
@@ -580,8 +582,10 @@ function parseBatchResultLine(
           raw,
         );
         return { resp: { ...resp, state: "succeeded" }, succeeded: true };
-      } catch {
-        // Not a decodable body: fall through to a failed Response.
+      } catch (err) {
+        // The provider says the request succeeded, but llmkit cannot read its
+        // body: the item failed here, and the decode error is why.
+        message = err instanceof Error ? err.message : String(err);
       }
     }
   }
@@ -594,7 +598,7 @@ function parseBatchResultLine(
     cause: {
       code: bc.resultFailureCodes[status] ?? BATCH_SLOT_ERROR,
       status,
-      message: firstPath(wrapper, bc.resultMessagePaths),
+      message,
     },
   };
   return { resp: attachRaw(failed, line, raw), succeeded: false };
