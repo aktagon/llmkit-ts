@@ -44,11 +44,13 @@ export class BatchHandle {
 
   /**
    * wait polls the batch lifecycle until completion and returns one Response
-   * per prompt, at the prompt's index. A failed request keeps its slot: empty
-   * text, finishReason set to the provider's error reason ("errored",
-   * "expired", "batch_expired", an error code; BATCH_SLOT_ERROR when the
-   * provider gives none) and finishMessage set to the provider's error
-   * message. A request with no result line reads BATCH_SLOT_MISSING. Results
+   * per prompt, at the prompt's index. Each Response has state "succeeded" or
+   * "failed" (ADR-099 CRF-015). A failed request keeps its slot: empty text, no
+   * finishReason or finishMessage, and a cause with the provider's failure
+   * status ("errored", "batch_expired", an error code), its typed code
+   * ("expired", "cancelled", "error"; BATCH_SLOT_ERROR when the status has no
+   * entry) and the provider's error message. A request with no result line has
+   * cause.code BATCH_SLOT_MISSING. Results
    * whose request id is not one this SDK assigned (a batch created elsewhere,
    * resumed by ID) follow the indexed ones in file order.
    */

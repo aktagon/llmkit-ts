@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING — a batch item reports its outcome in `state` and `cause`.**
+  Each `Response` from `BatchHandle.wait` or `poll` has `state` `"succeeded"`
+  or `"failed"`. A failed item has a `cause` (`JobFailure`) and no
+  `finishReason` or `finishMessage`: the provider's failure status
+  (`"errored"`, `"batch_expired"`, an error code) moved from `finishReason` to
+  `cause.status`, and its error message from `finishMessage` to
+  `cause.message`. Branch on `item.state === "failed"`.
+- **BREAKING — `JobFailure.timedOut` is replaced by `JobFailure.code`.**
+  `code` is a `JobFailureCode`: `"error"`, `"expired"`, `"cancelled"`,
+  `"timeout"` or `"missing"`. `poll()` reports it too: an OpenAI batch whose
+  status is `expired` has code `"expired"`, and `cancelled` has
+  `"cancelled"`. The poll deadline still throws `PollTimeoutError`.
+- **BREAKING — `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR` are
+  `JobFailureCode` values.** They are the `cause.code` of an item with no
+  result line and of a failure the provider gives no known status for. They
+  were `finishReason` strings. `JobFailureCode` is exported from the package
+  root.
+- Batch items carry `id` and `model` from the provider's response body.
 - **BREAKING — `Request` has no `user` field.** Put the final prompt as the
   last user turn of `messages`. The `ToolDefinition` (name, description and
   input schema of a tool) and `SafetySetting` types are exported from the

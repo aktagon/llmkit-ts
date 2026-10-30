@@ -85,6 +85,7 @@ export { decodeRequest } from "./request_decode.ts";
 // BatchHandle.poll / TranscriptionHandle.poll return, plus its JobState and
 // failure cause. Public because they are what poll() returns (POLL-004).
 export type { JobState, JobStatus, JobFailure } from "./job.ts";
+export type { JobFailureCode } from "./providers/batch.ts";
 export type { Tool } from "./types.ts";
 export type {
   ImageRequest,
