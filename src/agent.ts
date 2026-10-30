@@ -116,12 +116,13 @@ export class Agent {
     this.unsaved = [];
     const cfg = PROVIDERS[this.provider.name]!;
     const history = [...this.history];
-    const turn: Message = { role: "user", parts: textParts(message) };
     const prepared = prepareRequest(this.provider, cfg, {
       ...this.request,
-      messages: [...history, turn],
+      messages: [...history, { role: "user", parts: textParts(message) }],
     });
-    const turns: Message[] = [turn];
+    // The call's turns start with the user turn prepareRequest returned, as
+    // in Go and Rust: the saved turn is the one the call sends (HANDOFF-105 F6).
+    const turns: Message[] = (prepared.messages ?? []).slice(history.length);
     let response: PromptResponse;
     try {
       response = await this.runToolLoop(cfg, prepared, history, turns);
