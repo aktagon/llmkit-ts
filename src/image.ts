@@ -152,32 +152,8 @@ export async function generateImage(
   }
   // ADR-102 MPT-001: an unlisted model (undefined) skips the per-model checks.
   const { model } = lookupModel(imgCfg.models, request.model);
-  // Empty whitelist means "no client-side check; pass through" — used by
-  // providers (e.g., OpenAI) that accept arbitrary sizes within documented
-  // bounds. Trust the API boundary instead of carrying a stale whitelist
-  // (plan 020 q1).
-  if (
-    options.aspectRatio &&
-    model !== undefined &&
-    model.aspectRatios.length > 0 &&
-    !model.aspectRatios.includes(options.aspectRatio)
-  ) {
-    throw new ValidationError(
-      "aspect_ratio",
-      `${options.aspectRatio} not supported by ${request.model}`,
-    );
-  }
-  if (
-    options.imageSize &&
-    model !== undefined &&
-    model.imageSizes.length > 0 &&
-    !model.imageSizes.includes(options.imageSize)
-  ) {
-    throw new ValidationError(
-      "image_size",
-      `${options.imageSize} not supported by ${request.model}`,
-    );
-  }
+  // ADR-102 MPT-006 G5: a listed model's aspect ratios and sizes are hints,
+  // not blocks. The provider answers an off-list value.
   const imageCount = parts.filter((p) => "image" in p).length;
   validateImageArity(model, imageCount);
 

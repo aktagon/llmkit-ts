@@ -197,7 +197,7 @@ await c.image
   .generate("Generate the person wearing the outfit.");
 ```
 
-Aspect ratios and sizes validate against a per-model whitelist before the HTTP request — `imageSize("512")` on Nano Banana 2.1 throws `ValidationError` without paying for a 4xx round-trip. Empty whitelists mean "no client-side check; pass through" — providers like OpenAI accept arbitrary sizes within documented bounds, so the SDK trusts the API boundary instead of carrying a stale list.
+The table lists the aspect ratios and sizes each model documents. The SDK sends any value you set, listed or not, and the provider answers a value it does not accept. OpenAI takes any size within its documented bounds.
 
 | Provider | Model                          | Aspect ratios                                                                   | Sizes                               |
 | -------- | ------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------- |
