@@ -143,6 +143,7 @@ export function decodeResponse(
   if (chatWireShape === "ChatResponsesOpenAI") {
     const envelope = parseResponsesEnvelope(raw);
     if (providerTurn) envelope.providerTurn = providerTurn;
+    envelope.chatWireShape = chatWireShape;
     return envelope;
   }
 
@@ -173,6 +174,7 @@ export function decodeResponse(
   const toolCalls = extractToolCalls(raw, chatWireShape);
   if (toolCalls.length > 0) result.toolCalls = toolCalls;
   if (providerTurn) result.providerTurn = providerTurn;
+  if (chatWireShape) result.chatWireShape = chatWireShape;
   return result;
 }
 
@@ -256,7 +258,10 @@ export function setFinishReason(
  * encodeFinishReason picks the wire value encodeResponse writes (ADR-099
  * CRF-010). The provider's own string wins when the target shape knows it with
  * the same canonical value, so a same-format round trip is exact (Google
- * RECITATION stays RECITATION). Otherwise the preferred entry for the canonical
+ * RECITATION stays RECITATION). A response decoded from the target shape also
+ * keeps a string the table does not know (owner decision 1, HANDOFF-105 F3):
+ * Anthropic pause_turn decodes as other and encodes back as pause_turn.
+ * Otherwise the preferred entry for the canonical
  * value is written (Anthropic end_turn becomes OpenAI stop). A canonical value
  * the shape has no entry for is written as the shape's declared fallback
  * (owner decision 1, HANDOFF-105 section 3b): ChatOpenAI other is stop. An
@@ -273,10 +278,21 @@ function encodeFinishReason(
   const canonical = response.finishReason;
   if (canonical === undefined) return undefined;
   const table = wireShapeFinishReasons(chatWireShape);
-  const entry =
-    table.find(
-      (e) => e.wireValue === response.providerFinishReason && e.canonical === canonical,
-    ) ?? table.find((e) => e.preferred && e.canonical === canonical);
+  const known = table.find(
+    (e) => e.wireValue === response.providerFinishReason && e.canonical === canonical,
+  );
+  if (known) return known;
+  // After the table, so a fused entry (CRF-007) keeps its detail.
+  if (response.providerFinishReason !== undefined && response.chatWireShape === chatWireShape) {
+    return {
+      wireValue: response.providerFinishReason,
+      detailPath: "",
+      detailValue: "",
+      canonical,
+      preferred: false,
+    };
+  }
+  const entry = table.find((e) => e.preferred && e.canonical === canonical);
   if (entry) return entry;
   const fallback = wireShapeFinishReasonFallback(chatWireShape, canonical);
   return fallback === undefined
