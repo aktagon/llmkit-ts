@@ -151,6 +151,10 @@ function blockArrayPaths(
  * argument set is no input. A block with no tool name, or arguments that do
  * not decode, is a ValidationError on field "toolCalls": it is not a call the
  * caller can run.
+ *
+ * input is a parsed value, so it cannot keep the provider's bytes as Go does
+ * (HANDOFF-105 F5): JSON.parse turns an integer past 2^53 into the nearest
+ * double. Key order and string contents are kept.
  */
 function readToolCall(
   block: Record<string, unknown>,
