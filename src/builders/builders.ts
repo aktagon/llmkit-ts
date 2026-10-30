@@ -197,7 +197,9 @@ export class Text {
   /**
    * Sets how long the cache that Caching creates for this call lives.
    * Only resource caching (Google) creates a cache and reads it; without it
-   * the provider's default TTL applies. Other providers ignore it.
+   * the provider's default TTL applies. Other providers ignore it. The TTL
+   * is a positive whole number of seconds; any other value fails the call
+   * with a validation error on the TTL.
    */
   cacheTTL(seconds: number): Text { const out = clone(this); out._cacheTTL = seconds; return out; }
   caching(): Text { const out = clone(this); out._caching = true; return out; }
@@ -473,7 +475,9 @@ export class Agent {
   /**
    * Sets how long the cache that Caching creates for this call lives.
    * Only resource caching (Google) creates a cache and reads it; without it
-   * the provider's default TTL applies. Other providers ignore it.
+   * the provider's default TTL applies. Other providers ignore it. The TTL
+   * is a positive whole number of seconds; any other value fails the call
+   * with a validation error on the TTL.
    */
   cacheTTL(seconds: number): Agent { const out = clone(this); out._cacheTTL = seconds; out._state = undefined; return out; }
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }

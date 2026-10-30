@@ -188,17 +188,21 @@ function setCreated(result: Response, raw: unknown, chatWireShape: string): void
 
 /**
  * servedChatWireShape resolves the shape encodeResponse writes: the named one,
- * or the provider's default when chatWireShape is "". A shape the provider does
- * not serve is a ValidationError on field "shape" (owner decision 2,
- * HANDOFF-105 section 3b), and so is a provider that serves no chat shape at
+ * or the provider's default when chatWireShape is "". An unknown provider is a
+ * ValidationError on field "provider", as in Go. A shape the provider does
+ * not serve is a ValidationError on field "chatWireShape", the name
+ * encodeRequest uses (owner decision 2, HANDOFF-105 section 3b), and so is a provider that serves no chat shape at
  * all: writing provider paths into another family's body produces a body
  * neither family reads.
  */
 function servedChatWireShape(provider: ProviderName, chatWireShape: string): string {
+  if (!PROVIDERS[provider]) {
+    throw new ValidationError("provider", `unknown: ${provider}`);
+  }
   const shape = resolveChatWireShape(provider, chatWireShape);
   if (shape === "" || !withWireShape(PROVIDERS[provider], shape)) {
     throw new ValidationError(
-      "shape",
+      "chatWireShape",
       `provider "${provider}" does not serve chat wire shape "${chatWireShape}"`,
     );
   }
