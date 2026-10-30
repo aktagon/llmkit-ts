@@ -11,12 +11,17 @@
 import {
   PROVIDERS,
   RESPONSE_TEXT_CONFIGS,
+  wireShapeFinishReasons,
   wireShapeResponseIdPath,
   wireShapeResponseModelPath,
 } from "./providers/providers.ts";
-import type { ProviderName, ProviderSpec } from "./providers/providers.ts";
+import type {
+  FinishReason,
+  FinishReasonEntry,
+  ProviderName,
+  ProviderSpec,
+} from "./providers/providers.ts";
 import { cachingConfig } from "./providers/caching.ts";
-import { ValidationError } from "./errors.ts";
 import {
   extractPath,
   matchingBlocks,
@@ -151,7 +156,7 @@ export function decodeResponse(
   };
   if (cfg.finishReasonPath) {
     const reason = extractPath(raw, cfg.finishReasonPath);
-    if (reason) result.finishReason = reason;
+    if (reason) setFinishReason(result, chatWireShape, reason, raw);
   }
   if (cfg.finishMessagePath) {
     const message = extractPath(raw, cfg.finishMessagePath);
@@ -160,6 +165,66 @@ export function decodeResponse(
   setResponseIdentity(result, raw, cfg.responseIdPath, cfg.responseModelPath);
   if (providerTurn) result.providerTurn = providerTurn;
   return result;
+}
+
+/**
+ * decodeFinishReason maps the provider's finish-reason string to its canonical
+ * value through the chat wire shape's generated table (ADR-099 CRF-001). A
+ * string with no entry is "other" (CRF-011). `raw` is read only for an entry
+ * whose wire value fuses two canonical values (CRF-007); a caller with no body
+ * passes undefined, and such an entry then does not match.
+ */
+export function decodeFinishReason(
+  chatWireShape: string,
+  wire: string,
+  raw: unknown,
+): FinishReason {
+  const entry = wireShapeFinishReasons(chatWireShape).find(
+    (e) =>
+      e.wireValue === wire &&
+      (e.detailPath === "" || extractPath(raw, e.detailPath) === e.detailValue),
+  );
+  return entry ? entry.canonical : "other";
+}
+
+/**
+ * setFinishReason sets both finish-reason fields from the provider's string:
+ * providerFinishReason verbatim (CRF-002), finishReason canonical.
+ */
+export function setFinishReason(
+  result: Response,
+  chatWireShape: string,
+  wire: string,
+  raw: unknown,
+): void {
+  result.providerFinishReason = wire;
+  result.finishReason = decodeFinishReason(chatWireShape, wire, raw);
+}
+
+/**
+ * encodeFinishReason picks the table entry encodeResponse writes (ADR-099
+ * CRF-010). The provider's own string wins when the target shape knows it with
+ * the same canonical value, so a same-format round trip is exact (Google
+ * RECITATION stays RECITATION). Otherwise the preferred entry for the canonical
+ * value is written (Anthropic end_turn becomes OpenAI stop).
+ *
+ * Undefined when the target shape has no wire value for the canonical value:
+ * "other" always, and tool_calls on the shapes whose enum has no tool value
+ * (rbox.ttl exceptGoogleToolCallsFinish, exceptResponsesToolCallsFinish).
+ * Nothing is written then, because any value would claim a different stop.
+ */
+function encodeFinishReason(
+  chatWireShape: string,
+  response: Response,
+): FinishReasonEntry | undefined {
+  const canonical = response.finishReason;
+  if (canonical === undefined) return undefined;
+  const table = wireShapeFinishReasons(chatWireShape);
+  return (
+    table.find(
+      (e) => e.wireValue === response.providerFinishReason && e.canonical === canonical,
+    ) ?? table.find((e) => e.preferred && e.canonical === canonical)
+  );
 }
 
 /**
@@ -220,7 +285,7 @@ export function encodeResponse(
   chatWireShape = resolveChatWireShape(provider, chatWireShape);
   guardOneWayFields(provider, response);
   if (chatWireShape === "ChatResponsesOpenAI") {
-    return JSON.stringify(encodeResponsesEnvelope(response));
+    return JSON.stringify(encodeResponsesEnvelope(chatWireShape, response));
   }
 
   const cfg = PROVIDERS[provider];
@@ -237,7 +302,11 @@ export function encodeResponse(
     setWirePath(raw, cfg.usageCostPath, response.usage.cost / cfg.usageCostScale);
   }
   setWirePath(raw, cfg.reasoningTokensPath, response.usage.reasoning);
-  setWirePath(raw, cfg.finishReasonPath, response.finishReason);
+  const finish = encodeFinishReason(chatWireShape, response);
+  if (finish) {
+    setWirePath(raw, cfg.finishReasonPath, finish.wireValue);
+    setWirePath(raw, finish.detailPath, finish.detailValue);
+  }
   setWirePath(raw, cfg.finishMessagePath, response.finishMessage);
   setWirePath(raw, cfg.responseIdPath, response.id);
   setWirePath(raw, cfg.responseModelPath, response.model);
@@ -245,21 +314,19 @@ export function encodeResponse(
 }
 
 // guardOneWayFields refuses to encode a canonical field whose mapping is
-// OneWay for this provider — the result set of CQ-WMAP-011 (ADR-076
-// SYM-007). Only one member is in Phase 2's scope; the other,
-// exceptGoogleToolCallID, covers tool calls, which are out (SYM-008).
+// OneWay for this provider — the result set of CQ-WMAP-011 restricted to
+// Response (ADR-076 SYM-007). That set is empty today:
+// exceptGoogleToolCallID covers tool calls, which are out (SYM-008), and
+// exceptVertexFinishReason is on the image response since ADR-099 slice
+// C4 (CRF-006). A Vertex chat Response writes no finish reason anyway: Vertex
+// has no chat wire shape, so encodeFinishReason finds no table.
 //
-// An empty value is not an error: there is nothing to write, so the common path
-// stays usable and only the lying path fails. The ValidationError's field and
-// message carry the mapping's canonicalPath and invertibilityNote
-// verbatim.
-function guardOneWayFields(provider: ProviderName, response: Response): void {
-  if (provider === "vertex" && response.finishReason) {
-    throw new ValidationError(
-      "response.finish_reason",
-      "Vertex carries no finish-reason field. Its path reads predictions[0].raiFilteredReason — a safety-filter explanation surfaced AS the finish reason. Extraction is a deliberate fusion, so the reverse leg cannot decide whether a given canonical finish_reason originated as a safety verdict, and writing an ordinary stop signal into that field would fabricate one.",
-    );
-  }
+// The guard stays so a new whole-field exception on Response fails
+// lint_response_codec.py until it is guarded here. An empty value is not an
+// error: there is nothing to write. The ValidationError's field and message
+// carry the mapping's canonicalPath and invertibilityNote verbatim.
+function guardOneWayFields(_provider: ProviderName, _response: Response): void {
+  // No whole-field one-way exception on Response today.
 }
 
 // parseResponsesEnvelope extracts text + usage from OpenAI's Responses reply
@@ -285,7 +352,7 @@ function parseResponsesEnvelope(raw: unknown): Response {
     },
   };
   const status = extractPath(raw, "status");
-  if (status) result.finishReason = status;
+  if (status) setFinishReason(result, "ChatResponsesOpenAI", status, raw);
   setResponseIdentity(
     result,
     raw,
@@ -300,7 +367,10 @@ function parseResponsesEnvelope(raw: unknown): Response {
 // content[] blocks of type "output_text", with input_tokens/output_tokens usage
 // and cached + reasoning sub-details. Hand-coded per wire shape on both legs,
 // symmetric with the reader, for the same reason the reader is.
-function encodeResponsesEnvelope(response: Response): Record<string, unknown> {
+function encodeResponsesEnvelope(
+  chatWireShape: string,
+  response: Response,
+): Record<string, unknown> {
   const raw: Record<string, unknown> = {};
   if (response.text) {
     raw.output = [
@@ -322,7 +392,11 @@ function encodeResponsesEnvelope(response: Response): Record<string, unknown> {
     "usage.output_tokens_details.reasoning_tokens",
     response.usage.reasoning,
   );
-  setWirePath(raw, "status", response.finishReason);
+  const finish = encodeFinishReason(chatWireShape, response);
+  if (finish) {
+    setWirePath(raw, "status", finish.wireValue);
+    setWirePath(raw, finish.detailPath, finish.detailValue);
+  }
   setWirePath(raw, wireShapeResponseIdPath("ChatResponsesOpenAI"), response.id);
   setWirePath(raw, wireShapeResponseModelPath("ChatResponsesOpenAI"), response.model);
   return raw;

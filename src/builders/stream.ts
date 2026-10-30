@@ -39,6 +39,7 @@ import {
   type SendOptions,
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
+import { setFinishReason } from "../response.ts";
 import type { Event } from "../providers/middleware.ts";
 import type {
   Provider,
@@ -212,7 +213,12 @@ async function runStream(
         output: outcome.usage.output,
       },
     };
-    if (outcome.finishReason) result.finishReason = outcome.finishReason;
+    // The same table as the one-shot body (ADR-099 CRF-008). The stream keeps
+    // no body, so a fused value (CRF-007) cannot be told apart and decodes to
+    // "other".
+    if (outcome.finishReason) {
+      setFinishReason(result, cfg.chatWireShape, outcome.finishReason, undefined);
+    }
     if (outcome.id) result.id = outcome.id;
     if (outcome.model) result.model = outcome.model;
     firePost(options.middleware, {
