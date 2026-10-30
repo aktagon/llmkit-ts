@@ -7,9 +7,8 @@
 
 import type { MediaRef, Message, Part, ToolCall } from "./structs.ts";
 import { base64ToBytes, bytesToBase64 } from "./image.ts";
-import { JsonText, writeJson } from "./json_text.ts";
+import { compactJson, JsonText, writeJson } from "./json_text.ts";
 import { extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
-import { compactJson } from "./response_parts.ts";
 import { PART_KINDS } from "./structs.ts";
 import { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
 

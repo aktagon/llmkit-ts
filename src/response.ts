@@ -305,7 +305,7 @@ export function encodeResponse(
 ): string {
   chatWireShape = servedChatWireShape(provider, chatWireShape);
   guardOneWayFields(provider, response);
-  checkTurnParts("assistant", response.parts, "parts");
+  checkTurnParts("assistant", response.parts, "parts", (call) => call.input);
   if (chatWireShape === "ChatResponsesOpenAI") {
     return writeJson(encodeResponsesEnvelope(provider, chatWireShape, response));
   }

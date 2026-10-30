@@ -58,23 +58,23 @@ function write(value: unknown): string | undefined {
   return JSON.stringify(value) as string | undefined;
 }
 
-const JSON_WHITESPACE = new Set([" ", "\t", "\n", "\r"]);
-
-// compactJson drops the whitespace between the tokens of valid JSON text and
-// keeps every token as written, as Go's json.Compact does.
-function compactJson(text: string): string {
+/**
+ * compactJson is text, valid JSON, with the whitespace between tokens removed
+ * and every token kept as written (key order, number spelling, string
+ * escapes).
+ */
+export function compactJson(text: string): string {
   let out = "";
   let inString = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]!;
+  let escaped = false;
+  for (const c of text) {
     if (inString) {
       out += c;
-      if (c === "\\") out += text[++i] ?? "";
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
       else if (c === '"') inString = false;
-    } else if (c === '"') {
-      inString = true;
-      out += c;
-    } else if (!JSON_WHITESPACE.has(c)) {
+    } else if (c !== " " && c !== "\t" && c !== "\n" && c !== "\r") {
+      inString = c === '"';
       out += c;
     }
   }

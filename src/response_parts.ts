@@ -12,7 +12,7 @@ import {
 } from "./providers/providers.ts";
 import { ValidationError } from "./errors.ts";
 import { extractPath, extractRaw, setWirePath } from "./paths.ts";
-import { JsonText } from "./json_text.ts";
+import { compactJson, JsonText } from "./json_text.ts";
 import { extractRawJsonPath } from "./provider_turn.ts";
 import type { Part, Response, ToolCall } from "./structs.ts";
 
@@ -166,8 +166,9 @@ function blockArrayPaths(
  * text, and "null" is the text null. A map-format argument is a value inside
  * the body, so its text is its tokens: compactJson drops only the whitespace
  * between them, the body's layout, as Go's json.Compact does. A map-format
- * value the parse found but the text scan did not is a ValidationError, as in
- * Go and Rust: the call is never kept without its arguments (HANDOFF-105 F7).
+ * argument is read from rawArgs alone, for where it is and what it is: one
+ * scan, so the parse cannot name other arguments than the text (HANDOFF-105
+ * F8). Its null and "" are no input (owner decision 2).
  */
 function readToolCall(
   block: Record<string, unknown>,
@@ -181,15 +182,14 @@ function readToolCall(
   if (toolCfg.idPath) id = extractPath(block, toolCfg.idPath);
   else if (cfg.toolIdSource === "function_name") id = name;
   const call: ToolCall = { id, name };
-  const args = extractRaw(block, toolCfg.argsPath);
-  if (args === undefined || args === null) return call;
   if (cfg.toolArgsFormat !== "json_string") {
-    if (rawArgs === undefined) {
-      throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath} are not in the body text`);
-    }
-    call.input = compactJson(rawArgs);
+    if (rawArgs === undefined) return call;
+    const text = compactJson(rawArgs);
+    if (text !== "null" && text !== '""') call.input = text;
     return call;
   }
+  const args = extractRaw(block, toolCfg.argsPath);
+  if (args === undefined || args === null) return call;
   if (typeof args !== "string") {
     throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath} are not a JSON string`);
   }
@@ -201,29 +201,6 @@ function readToolCall(
   }
   call.input = args;
   return call;
-}
-
-/**
- * compactJson is text, valid JSON, with the whitespace between tokens removed
- * and every token kept as written (key order, number spelling, string
- * escapes).
- */
-export function compactJson(text: string): string {
-  let out = "";
-  let inString = false;
-  let escaped = false;
-  for (const c of text) {
-    if (inString) {
-      out += c;
-      if (escaped) escaped = false;
-      else if (c === "\\") escaped = true;
-      else if (c === '"') inString = false;
-    } else if (c !== " " && c !== "\t" && c !== "\n" && c !== "\r") {
-      inString = c === '"';
-      out += c;
-    }
-  }
-  return out;
 }
 
 /**
