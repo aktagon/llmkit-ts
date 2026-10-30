@@ -659,11 +659,15 @@ export function toolRunArgs(call: ToolCall): Record<string, unknown> {
 
 // requestToolInput is the argument text a request sends for a tool call, on
 // every chat shape, Responses included (HANDOFF-105 F6): the caller's or the
-// provider's text as it is, or "{}" when there is no input or the input is
-// null, because the providers take an object.
+// provider's text as it is, or "{}" when there is no input, the input is null
+// or the input is empty, because the providers take an object (HANDOFF-105
+// F8, owner decision 2).
 function requestToolInput(call: ToolCall): string {
-  const text = call.input;
-  return text === undefined || text.trim() === "null" ? "{}" : text;
+  // A caller outside the type system can pass a parsed value; it reaches
+  // checkTurnParts as it is and is rejected there, not read with trim().
+  const text: unknown = call.input;
+  if (text === undefined || text === "") return "{}";
+  return typeof text === "string" && text.trim() === "null" ? "{}" : (text as string);
 }
 
 // A validated turn: a role and its parts, each part one kind the role may
@@ -693,9 +697,17 @@ const ROLE_PARTS: Readonly<Record<string, readonly string[]>> = {
  * a kind chat does not accept (MSG-011), or a kind the role cannot carry
  * (MSG-002). `field` names the parts list, e.g. "messages[2].parts". The
  * request encoder runs it on every turn, and encodeResponse on the response's
- * assistant turn.
+ * assistant turn. `written` is the input text the caller's encoder writes for
+ * a tool call (undefined: it writes none), so the check judges the text that
+ * goes out: a request writes requestToolInput, which turns "" into "{}"
+ * (HANDOFF-105 F8, owner decision 2).
  */
-export function checkTurnParts(role: string, parts: Part[], field: string): void {
+export function checkTurnParts(
+  role: string,
+  parts: Part[],
+  field: string,
+  written: (call: ToolCall) => unknown,
+): void {
   checkPartKinds("chat", parts, field);
   const allowed = ROLE_PARTS[role] ?? [];
   parts.forEach((p, j) => {
@@ -706,7 +718,7 @@ export function checkTurnParts(role: string, parts: Part[], field: string): void
     // input is JSON text (HANDOFF-105 F7, owner decision 2); a caller that
     // still passes a parsed value is told so, not sent "[object Object]".
     if (!("toolCall" in p)) return;
-    const input: unknown = p.toolCall.input;
+    const input = written(p.toolCall);
     if (input !== undefined && (typeof input !== "string" || !isJSON(input))) {
       throw new ValidationError(`${field}[${j}]`, `tool call "${p.toolCall.name}" input is not JSON`);
     }
@@ -729,7 +741,7 @@ function isJSON(text: string): boolean {
 // mis-serialized downstream.
 function toInternal(messages: Message[]): Msg[] {
   return messages.map((m, i): Msg => {
-    checkTurnParts(m.role, m.parts, `messages[${i}].parts`);
+    checkTurnParts(m.role, m.parts, `messages[${i}].parts`, requestToolInput);
     const projected: PartsMsg = { kind: "parts", role: m.role, parts: m.parts };
     // providerTurn is the same turn in the provider's own serialization. When
     // present it supersedes the parts on the wire while the parts stay what
