@@ -12,6 +12,7 @@ import {
 } from "./providers/providers.ts";
 import { ValidationError } from "./errors.ts";
 import { extractPath, extractRaw, setWirePath } from "./paths.ts";
+import { JsonText } from "./json_text.ts";
 import { extractRawJsonPath } from "./provider_turn.ts";
 import type { Part, Response, ToolCall } from "./structs.ts";
 
@@ -68,7 +69,7 @@ function blockMatches(
  * a block that matches neither config (a thinking block) is not a part.
  *
  * body is the text raw was parsed from: a map-format argument value is read
- * from it, so inputJson keeps the provider's tokens (readToolCall).
+ * from it, so input keeps the provider's tokens (readToolCall).
  */
 export function decodeChatParts(
   body: string,
@@ -158,13 +159,15 @@ function blockArrayPaths(
  * with no tool name, or arguments that do not decode, is a ValidationError on
  * field "toolCalls": it is not a call the caller can run.
  *
- * inputJson is the provider's text and input its parse (HANDOFF-105 F6, owner
- * decision 1): JSON.parse turns an integer past 2^53 into the nearest double,
- * so the parse cannot carry the text. A json_string argument is kept exactly,
- * spaces included: the string is the text, and "null" is the text null. A
- * map-format argument is a value inside the body, so its text is its tokens:
- * compactJson drops only the whitespace between them, the body's layout, as
- * Go's json.Compact does.
+ * input is the provider's text, validated and never re-encoded (HANDOFF-105
+ * F6 owner decision 1, F7 owner decision 2): JSON.parse turns an integer past
+ * 2^53 into the nearest double, so the parse cannot carry the text. A
+ * json_string argument is kept exactly, spaces included: the string is the
+ * text, and "null" is the text null. A map-format argument is a value inside
+ * the body, so its text is its tokens: compactJson drops only the whitespace
+ * between them, the body's layout, as Go's json.Compact does. A map-format
+ * value the parse found but the text scan did not is a ValidationError, as in
+ * Go and Rust: the call is never kept without its arguments (HANDOFF-105 F7).
  */
 function readToolCall(
   block: Record<string, unknown>,
@@ -181,8 +184,10 @@ function readToolCall(
   const args = extractRaw(block, toolCfg.argsPath);
   if (args === undefined || args === null) return call;
   if (cfg.toolArgsFormat !== "json_string") {
-    call.input = args;
-    if (rawArgs !== undefined) call.inputJson = compactJson(rawArgs);
+    if (rawArgs === undefined) {
+      throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath} are not in the body text`);
+    }
+    call.input = compactJson(rawArgs);
     return call;
   }
   if (typeof args !== "string") {
@@ -190,11 +195,11 @@ function readToolCall(
   }
   if (args === "") return call;
   try {
-    call.input = JSON.parse(args) as unknown;
+    JSON.parse(args);
   } catch (err) {
     throw malformedToolCall(`"${name}": arguments at ${toolCfg.argsPath}: ${String(err)}`);
   }
-  call.inputJson = args;
+  call.input = args;
   return call;
 }
 
@@ -203,7 +208,7 @@ function readToolCall(
  * and every token kept as written (key order, number spelling, string
  * escapes).
  */
-function compactJson(text: string): string {
+export function compactJson(text: string): string {
   let out = "";
   let inString = false;
   let escaped = false;
@@ -222,21 +227,13 @@ function compactJson(text: string): string {
 }
 
 /**
- * toolCallText is the argument JSON text of a call (HANDOFF-105 F6):
- * inputJson when it is set, else input as JSON, else undefined when the call
- * has no input.
+ * toolCallInput is a tool call's arguments as a parsed value, read from
+ * ToolCall.input, the JSON text (HANDOFF-105 F7, owner decision 2), or
+ * undefined when the call has no input. JSON.parse turns an integer past 2^53
+ * into the nearest double; input keeps the exact text.
  */
-export function toolCallText(call: ToolCall): string | undefined {
-  if (call.inputJson !== undefined) return call.inputJson;
-  return call.input === undefined ? undefined : JSON.stringify(call.input);
-}
-
-/**
- * toolCallValue is the argument value of a call: the parse of inputJson when
- * it is set, else input.
- */
-export function toolCallValue(call: ToolCall): unknown {
-  return call.inputJson !== undefined ? (JSON.parse(call.inputJson) as unknown) : call.input;
+export function toolCallInput(call: ToolCall): unknown {
+  return call.input === undefined ? undefined : (JSON.parse(call.input) as unknown);
 }
 
 /**
@@ -306,13 +303,12 @@ export function writeToolCall(
   if (toolCfg.markerValue !== "") setWirePath(block, toolCfg.markerPath, toolCfg.markerValue);
   setWirePath(block, toolCfg.idPath, call.id);
   setWirePath(block, toolCfg.namePath, call.name);
-  const text = toolCallText(call);
-  if (text === undefined) return block;
-  // The text goes out as it is in json_string (HANDOFF-105 F6). A map
-  // argument is embedded as its parse, which changes an integer past 2^53
-  // (HANDOFF-105 F6 deviations). checkTurnParts has already rejected text
-  // that is not JSON.
-  const args = cfg.toolArgsFormat === "json_string" ? text : (JSON.parse(text) as unknown);
+  if (call.input === undefined) return block;
+  // The text goes out as it is: as the JSON string itself (json_string), or
+  // as a JsonText that writeJson splices into the body (map), so no parse
+  // changes it (HANDOFF-105 F7, owner decision 1). checkTurnParts has already
+  // rejected text that is not JSON.
+  const args = cfg.toolArgsFormat === "json_string" ? call.input : new JsonText(call.input);
   setWirePath(block, toolCfg.argsPath, args);
   return block;
 }

@@ -36,7 +36,8 @@ import type {
 import { checkPartKinds, partKind } from "./part_kinds.ts";
 import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
-import { toolCallText, toolCallValue, writeToolCall } from "./response_parts.ts";
+import { toolCallInput, writeToolCall } from "./response_parts.ts";
+import { writeJson } from "./json_text.ts";
 
 // SendOptions are the settings of a chat call that do not shape the request
 // (ADR-098 RQC-002): transport, send policy (caching) and response handling.
@@ -156,7 +157,7 @@ export function encodeRequest(
   return {
     path: requestPath(cfg, req.model),
     headers,
-    body: new TextEncoder().encode(JSON.stringify(body)),
+    body: new TextEncoder().encode(writeJson(body)),
   };
 }
 
@@ -645,11 +646,11 @@ export function validateOptions(
 // (history with tool turns) and the Text/batch path route through the same
 // builder.
 
-// toolCallInput is the call's argument value as the plain object
+// toolRunArgs is the call's argument value as the plain object
 // Tool.run({...}) takes: {} when the input is absent or not an object. The
 // agent loop uses it.
-export function toolCallInput(call: ToolCall): Record<string, unknown> {
-  const value = toolCallValue(call);
+export function toolRunArgs(call: ToolCall): Record<string, unknown> {
+  const value = toolCallInput(call);
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
   }
@@ -661,7 +662,7 @@ export function toolCallInput(call: ToolCall): Record<string, unknown> {
 // provider's text as it is, or "{}" when there is no input or the input is
 // null, because the providers take an object.
 function requestToolInput(call: ToolCall): string {
-  const text = toolCallText(call);
+  const text = call.input;
   return text === undefined || text.trim() === "null" ? "{}" : text;
 }
 
@@ -702,7 +703,11 @@ export function checkTurnParts(role: string, parts: Part[], field: string): void
     if (!allowed.includes(kind)) {
       throw new ValidationError(`${field}[${j}]`, `${role} turn does not accept ${kind} parts`);
     }
-    if ("toolCall" in p && p.toolCall.inputJson !== undefined && !isJSON(p.toolCall.inputJson)) {
+    // input is JSON text (HANDOFF-105 F7, owner decision 2); a caller that
+    // still passes a parsed value is told so, not sent "[object Object]".
+    if (!("toolCall" in p)) return;
+    const input: unknown = p.toolCall.input;
+    if (input !== undefined && (typeof input !== "string" || !isJSON(input))) {
       throw new ValidationError(`${field}[${j}]`, `tool call "${p.toolCall.name}" input is not JSON`);
     }
   });
@@ -1125,8 +1130,8 @@ function attachToolDefs(
 // (checkRequestToolCalls). A call with no input goes out as an empty object:
 // the providers take an object, not null.
 function requestToolCall(call: ToolCall, cfg: ProviderSpec): Record<string, unknown> {
-  const inputJson = requestToolInput(call);
-  return writeToolCall({ ...call, inputJson }, TOOL_CALL_RESPONSE_CONFIGS[cfg.chatWireShape]!, cfg);
+  const input = requestToolInput(call);
+  return writeToolCall({ ...call, input }, TOOL_CALL_RESPONSE_CONFIGS[cfg.chatWireShape]!, cfg);
 }
 
 // checkRequestToolCalls rejects a request whose turns carry a tool call the
@@ -1207,7 +1212,7 @@ export async function executeRequest(
 ): Promise<{ status: number; ok: boolean; text: string }> {
   const baseUrl = provider.baseUrl || cfg.baseUrl;
   const url = buildUrl(baseUrl + requestPath(cfg, model), provider, cfg);
-  const jsonBody = JSON.stringify(body);
+  const jsonBody = writeJson(body);
 
   let headers: Record<string, string>;
   if (cfg.authScheme === "SigV4") {
