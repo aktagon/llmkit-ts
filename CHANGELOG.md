@@ -12,9 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `Response.finishReason` is a canonical `FinishReason`.** It
   holds one of five values shared by every provider: `"stop"`, `"length"`,
   `"tool_calls"`, `"content_filter"` or `"other"`, and is absent when the
-  provider reported none. Anthropic `end_turn` is `"stop"`, Google `SAFETY`
-  and `RECITATION` are `"content_filter"`, and a Responses `incomplete` is
-  `"length"` or `"content_filter"` by its `incomplete_details.reason`. A value
+  provider reported none. Anthropic `end_turn` is `"stop"`, Anthropic
+  `refusal` and Google `SAFETY`, `RECITATION`, `BLOCKLIST`,
+  `PROHIBITED_CONTENT` and `SPII` are `"content_filter"`, and a Responses
+  `incomplete` is `"length"` or `"content_filter"` by its
+  `incomplete_details.reason`. A value
   with no canonical meaning is `"other"`. The provider's own string moved to
   `Response.providerFinishReason`. A comparison such as
   `resp.finishReason === "end_turn"` no longer typechecks; compare
