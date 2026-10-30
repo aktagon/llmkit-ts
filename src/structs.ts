@@ -234,7 +234,7 @@ export interface MusicResponse {
   usage: Usage;
 
   /**
-   * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-003). Gemini surfaces STOP/SAFETY etc.; Vertex Imagen-style providers surface a RAI filter reason when content is blocked; MiniMax carries a base_resp status. Optional.
+   * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-003). Gemini surfaces STOP/SAFETY etc.; Vertex Lyria surfaces its RAI filter reason (raiFilteredReason); MiniMax carries a base_resp status. Optional.
    */
   providerFinishReason?: string;
 

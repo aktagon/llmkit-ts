@@ -137,6 +137,7 @@ const WIRE_SHAPE_FINISH_REASONS: Readonly<Partial<Record<string, readonly Finish
   ChatAnthropic: [
     { wireValue: "end_turn", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
     { wireValue: "max_tokens", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "refusal", detailPath: "", detailValue: "", canonical: "content_filter", preferred: true },
     { wireValue: "stop_sequence", detailPath: "", detailValue: "", canonical: "stop", preferred: false },
     { wireValue: "tool_use", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: true },
   ],
@@ -147,9 +148,12 @@ const WIRE_SHAPE_FINISH_REASONS: Readonly<Partial<Record<string, readonly Finish
     { wireValue: "tool_use", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: true },
   ],
   ChatGoogle: [
+    { wireValue: "BLOCKLIST", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
     { wireValue: "MAX_TOKENS", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "PROHIBITED_CONTENT", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
     { wireValue: "RECITATION", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
     { wireValue: "SAFETY", detailPath: "", detailValue: "", canonical: "content_filter", preferred: true },
+    { wireValue: "SPII", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
     { wireValue: "STOP", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
   ],
   ChatOpenAI: [
