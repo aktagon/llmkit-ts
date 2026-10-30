@@ -178,6 +178,64 @@ export function wireShapeFinishReasons(chatWireShape: string): readonly FinishRe
   return WIRE_SHAPE_FINISH_REASONS[chatWireShape] ?? [];
 }
 
+const WIRE_SHAPE_FINISH_REASON_FALLBACKS: Readonly<
+  Partial<Record<string, Readonly<Partial<Record<FinishReason, string>>>>>
+> = {
+  ChatAnthropic: { other: "end_turn" },
+  ChatBedrock: { content_filter: "end_turn", other: "end_turn" },
+  ChatGoogle: { other: "OTHER", tool_calls: "STOP" },
+  ChatOpenAI: { other: "stop" },
+  ChatResponsesOpenAI: { other: "completed", tool_calls: "completed" },
+};
+
+/**
+ * The wire value encodeResponse writes for a canonical finish reason the
+ * shape's table has no entry for (owner decision 1, HANDOFF-105 F1), or
+ * undefined when the shape declares none for it. Decode never reads it.
+ */
+export function wireShapeFinishReasonFallback(
+  chatWireShape: string,
+  reason: FinishReason,
+): string | undefined {
+  return WIRE_SHAPE_FINISH_REASON_FALLBACKS[chatWireShape]?.[reason];
+}
+
+const WIRE_SHAPE_RESPONSE_CREATED_PATHS: Record<string, string> = {
+  ChatAnthropic: "",
+  ChatBedrock: "",
+  ChatGoogle: "",
+  ChatOpenAI: "created",
+  ChatResponsesOpenAI: "created_at",
+};
+
+/** Where a one-shot body of a chat wire shape carries its creation time in Unix
+ * seconds, "" when the shape's bodies carry none (owner decision 4). */
+export function wireShapeResponseCreatedPath(chatWireShape: string): string {
+  return WIRE_SHAPE_RESPONSE_CREATED_PATHS[chatWireShape] ?? "";
+}
+
+/**
+ * A field every response body of a chat wire shape carries with the same
+ * value (shapeFixedValue, owner decision 4).
+ */
+export interface FixedValue {
+  readonly path: string;
+  readonly value: string | number;
+}
+
+const WIRE_SHAPE_FIXED_VALUES: Readonly<Partial<Record<string, readonly FixedValue[]>>> = {
+  ChatOpenAI: [
+    { path: "choices[0].index", value: 0 },
+    { path: "choices[0].message.role", value: "assistant" },
+    { path: "object", value: "chat.completion" },
+  ],
+};
+
+/** The fixed values encodeResponse writes for a chat wire shape, sorted by path. */
+export function wireShapeFixedValues(chatWireShape: string): readonly FixedValue[] {
+  return WIRE_SHAPE_FIXED_VALUES[chatWireShape] ?? [];
+}
+
 // ProviderSpec is HOW the library talks to a provider [PRIVATE]: the
 // internal wire/transform spec consumed only by the runtime. Volatile;
 // not exported from the package barrel.
@@ -452,7 +510,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     usageCostPath: "",
     usageCostScale: 1.0,
     reasoningTokensPath: "",
-    finishReasonPath: "",
+    finishReasonPath: "stopReason",
     finishMessagePath: "",
     streamFinishReasonPath: "",
     streamFinishMessagePath: "",

@@ -11,7 +11,10 @@
 import {
   PROVIDERS,
   RESPONSE_TEXT_CONFIGS,
+  wireShapeFinishReasonFallback,
   wireShapeFinishReasons,
+  wireShapeFixedValues,
+  wireShapeResponseCreatedPath,
   wireShapeResponseIdPath,
   wireShapeResponseModelPath,
 } from "./providers/providers.ts";
@@ -31,6 +34,9 @@ import {
 } from "./paths.ts";
 import { parseCacheUsage } from "./caching.ts";
 import { captureProviderTurn } from "./provider_turn.ts";
+import { ValidationError } from "./errors.ts";
+import { withWireShape } from "./request.ts";
+import { extractToolCalls } from "./tool_calls.ts";
 import type { Response, Usage } from "./types.ts";
 
 /**
@@ -163,8 +169,49 @@ export function decodeResponse(
     if (message) result.finishMessage = message;
   }
   setResponseIdentity(result, raw, cfg.responseIdPath, cfg.responseModelPath);
+  setCreated(result, raw, chatWireShape);
+  const toolCalls = extractToolCalls(raw, chatWireShape);
+  if (toolCalls.length > 0) result.toolCalls = toolCalls;
   if (providerTurn) result.providerTurn = providerTurn;
   return result;
+}
+
+/**
+ * setCreated sets the response's creation time (owner decision 4, HANDOFF-105
+ * section 3b) from the shape's created path. Absent when the shape declares
+ * none (Anthropic, Google, Bedrock) or the body has no value there.
+ */
+function setCreated(result: Response, raw: unknown, chatWireShape: string): void {
+  const created = optIntPath(raw, wireShapeResponseCreatedPath(chatWireShape));
+  if (created !== undefined) result.created = created;
+}
+
+/**
+ * servedChatWireShape resolves the shape encodeResponse writes: the named one,
+ * or the provider's default when chatWireShape is "". A shape the provider does
+ * not serve is a ValidationError on field "shape" (owner decision 2,
+ * HANDOFF-105 section 3b), and so is a provider that serves no chat shape at
+ * all: writing provider paths into another family's body produces a body
+ * neither family reads.
+ */
+function servedChatWireShape(provider: ProviderName, chatWireShape: string): string {
+  const shape = resolveChatWireShape(provider, chatWireShape);
+  if (shape === "" || !withWireShape(PROVIDERS[provider], shape)) {
+    throw new ValidationError(
+      "shape",
+      `provider "${provider}" does not serve chat wire shape "${chatWireShape}"`,
+    );
+  }
+  return shape;
+}
+
+/**
+ * encodeFixedValues writes the fields every body of the shape carries with the
+ * same value (shapeFixedValue, owner decision 4): on ChatOpenAI the object
+ * type, the choice index and the message role.
+ */
+function encodeFixedValues(raw: Record<string, unknown>, chatWireShape: string): void {
+  for (const fv of wireShapeFixedValues(chatWireShape)) setWirePath(raw, fv.path, fv.value);
 }
 
 /**
@@ -202,16 +249,18 @@ export function setFinishReason(
 }
 
 /**
- * encodeFinishReason picks the table entry encodeResponse writes (ADR-099
+ * encodeFinishReason picks the wire value encodeResponse writes (ADR-099
  * CRF-010). The provider's own string wins when the target shape knows it with
  * the same canonical value, so a same-format round trip is exact (Google
  * RECITATION stays RECITATION). Otherwise the preferred entry for the canonical
- * value is written (Anthropic end_turn becomes OpenAI stop).
+ * value is written (Anthropic end_turn becomes OpenAI stop). A canonical value
+ * the shape has no entry for is written as the shape's declared fallback
+ * (owner decision 1, HANDOFF-105 section 3b): ChatOpenAI other is stop. An
+ * unmapped provider string, such as Google LANGUAGE, is not a known wire
+ * value, so it too encodes as the fallback (CRF-010).
  *
- * Undefined when the target shape has no wire value for the canonical value:
- * "other" always, and tool_calls on the shapes whose enum has no tool value
- * (rbox.ttl exceptGoogleToolCallsFinish, exceptResponsesToolCallsFinish).
- * Nothing is written then, because any value would claim a different stop.
+ * Undefined only when the response reports no finish reason, or the shape
+ * declares no table: there is nothing to write.
  */
 function encodeFinishReason(
   chatWireShape: string,
@@ -220,11 +269,15 @@ function encodeFinishReason(
   const canonical = response.finishReason;
   if (canonical === undefined) return undefined;
   const table = wireShapeFinishReasons(chatWireShape);
-  return (
+  const entry =
     table.find(
       (e) => e.wireValue === response.providerFinishReason && e.canonical === canonical,
-    ) ?? table.find((e) => e.preferred && e.canonical === canonical)
-  );
+    ) ?? table.find((e) => e.preferred && e.canonical === canonical);
+  if (entry) return entry;
+  const fallback = wireShapeFinishReasonFallback(chatWireShape, canonical);
+  return fallback === undefined
+    ? undefined
+    : { wireValue: fallback, detailPath: "", detailValue: "", canonical, preferred: false };
 }
 
 /**
@@ -282,7 +335,7 @@ export function encodeResponse(
   chatWireShape: string,
   response: Response,
 ): string {
-  chatWireShape = resolveChatWireShape(provider, chatWireShape);
+  chatWireShape = servedChatWireShape(provider, chatWireShape);
   guardOneWayFields(provider, response);
   if (chatWireShape === "ChatResponsesOpenAI") {
     return JSON.stringify(encodeResponsesEnvelope(chatWireShape, response));
@@ -310,6 +363,8 @@ export function encodeResponse(
   setWirePath(raw, cfg.finishMessagePath, response.finishMessage);
   setWirePath(raw, cfg.responseIdPath, response.id);
   setWirePath(raw, cfg.responseModelPath, response.model);
+  setWirePath(raw, wireShapeResponseCreatedPath(chatWireShape), response.created);
+  encodeFixedValues(raw, chatWireShape);
   return JSON.stringify(raw);
 }
 
@@ -359,6 +414,7 @@ function parseResponsesEnvelope(raw: unknown): Response {
     wireShapeResponseIdPath("ChatResponsesOpenAI"),
     wireShapeResponseModelPath("ChatResponsesOpenAI"),
   );
+  setCreated(result, raw, "ChatResponsesOpenAI");
   return result;
 }
 
@@ -399,6 +455,8 @@ function encodeResponsesEnvelope(
   }
   setWirePath(raw, wireShapeResponseIdPath("ChatResponsesOpenAI"), response.id);
   setWirePath(raw, wireShapeResponseModelPath("ChatResponsesOpenAI"), response.model);
+  setWirePath(raw, wireShapeResponseCreatedPath("ChatResponsesOpenAI"), response.created);
+  encodeFixedValues(raw, chatWireShape);
   return raw;
 }
 
