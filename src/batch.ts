@@ -1,3 +1,4 @@
+import { writeJson } from "./json_text.ts";
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
   BATCH_REQUEST_ID_PREFIX,
@@ -119,7 +120,7 @@ export async function submitBatch(
         endpoint: bc.endpointPath,
         completion_window: bc.completionWindow,
       };
-      body = new TextEncoder().encode(JSON.stringify(payload));
+      body = new TextEncoder().encode(writeJson(payload));
     } else {
       const { payload, betaHeaders } = await buildBatchBody(
         prepared,
@@ -135,7 +136,7 @@ export async function submitBatch(
       for (const [k, v] of Object.entries(betaHeaders)) {
         headers[k] = k === "anthropic-beta" ? appendBeta(headers[k] ?? "", v) : v;
       }
-      body = new TextEncoder().encode(JSON.stringify(payload));
+      body = new TextEncoder().encode(writeJson(payload));
     }
 
     const createUrl = base + bc.lifecycle.createEndpoint;
@@ -418,7 +419,7 @@ async function buildBatchJsonl(
       await applyCaching(reqBody, provider, cfg, req.model, options);
     }
     lines.push(
-      JSON.stringify({
+      writeJson({
         custom_id: `${BATCH_REQUEST_ID_PREFIX}${i}`,
         method: "POST",
         url: bc.endpointPath,

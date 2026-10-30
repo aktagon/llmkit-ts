@@ -49,6 +49,7 @@ import type {
 import type { Text } from "./builders.ts";
 import { buildPromptArgs } from "./text.ts";
 import { sendHTTP } from "../http.ts";
+import { writeJson } from "../json_text.ts";
 
 // Maximum chunks held in the bridge queue before the producer
 // pauses. Matches Go chan(64) and Python asyncio.Queue(maxsize=64)
@@ -176,7 +177,7 @@ async function runStream(
     const httpResp = await sendHTTP(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
-      body: JSON.stringify(body),
+      body: writeJson(body),
       signal: options.signal,
     }, provider.timeoutMs);
 

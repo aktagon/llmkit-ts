@@ -104,7 +104,9 @@ function skipString(text: string, i: number): number {
 }
 
 /** spanOfMember returns the [start, end) span of `field`'s value in the object
- * beginning at `start`, or null when that is not an object or has no such key. */
+ * beginning at `start`, or null when that is not an object or has no such key.
+ * A key that appears twice resolves to its LAST value, as JSON.parse, Go and
+ * Rust resolve it (HANDOFF-105 F7), so the text and the parse name one value. */
 function spanOfMember(
   text: string,
   start: number,
@@ -113,9 +115,11 @@ function spanOfMember(
   let i = skipWs(text, start);
   if (text[i] !== "{") return null;
   i++;
+  let found: [number, number] | null = null;
   for (;;) {
     i = skipWs(text, i);
-    if (i >= text.length || text[i] === "}") return null;
+    if (i >= text.length) return null;
+    if (text[i] === "}") return found;
     const keyEnd = skipString(text, i);
     if (keyEnd === -1) return null;
     // The key is a JSON string, so JSON.parse decodes its escapes correctly.
@@ -130,8 +134,9 @@ function spanOfMember(
     const valueStart = skipWs(text, i + 1);
     const valueEnd = skipValue(text, valueStart);
     if (valueEnd === -1) return null;
-    if (key === field) return [valueStart, valueEnd];
+    if (key === field) found = [valueStart, valueEnd];
     i = skipWs(text, valueEnd);
+    if (text[i] === "}") return found;
     if (text[i] !== ",") return null;
     i++;
   }
@@ -192,6 +197,33 @@ export function extractRawJsonPath(
     }
   }
   return text.slice(start, end);
+}
+
+/**
+ * extractRawJsonElements returns the VERBATIM JSON text of each element of the
+ * array at `path`, or undefined when the path does not resolve to an array. One
+ * scan of the array, where extractRawJsonPath per index would rescan it from
+ * the start each time. loadHistory reads each tool call's input text through
+ * it (HANDOFF-105 F7).
+ */
+export function extractRawJsonElements(text: string, path: string): string[] | undefined {
+  const array = extractRawJsonPath(text, path);
+  if (array === undefined) return undefined;
+  let i = skipWs(array, 0);
+  if (array[i] !== "[") return undefined;
+  i++;
+  const out: string[] = [];
+  for (;;) {
+    i = skipWs(array, i);
+    if (i >= array.length) return undefined;
+    if (array[i] === "]") return out;
+    const end = skipValue(array, i);
+    if (end === -1) return undefined;
+    out.push(array.slice(i, end));
+    i = skipWs(array, end);
+    if (array[i] === ",") i++;
+    else if (array[i] !== "]") return undefined;
+  }
 }
 
 /**

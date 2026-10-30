@@ -18,7 +18,7 @@ import {
   encodeBody,
   executeRequest,
   prepareRequest,
-  toolCallInput,
+  toolRunArgs,
   type PreparedRequest,
   type SendOptions,
 } from "./request.ts";
@@ -55,7 +55,7 @@ export class Agent {
   // The public Message list (ADR-100). An assistant turn the loop received
   // carries its providerTurn (ADR-085) beside its parts, which stay what the
   // loop reads to run tools; the next request replays the providerTurn.
-  private readonly history: Message[] = [];
+  private history: Message[] = [];
   // The turns of the last call, when it failed; empty after a call that
   // succeeded (HANDOFF-105 F5, owner decision 2).
   private unsaved: Message[] = [];
@@ -111,7 +111,9 @@ export class Agent {
   // Once the call starts it is all-or-nothing (owner decision 4, F4). The call
   // builds its turns in a list of its own and adds them to the history only
   // when it succeeds (HANDOFF-105 F5), so bot.messages never shows a running
-  // call's turns, and overlapping calls each add their own turns together.
+  // call's turns. A finished call replaces the history with the history it
+  // started from plus its own turns, as in Go and Rust (HANDOFF-105 F7, owner
+  // decision 3): of two overlapping calls, the one that finishes last wins.
   async chat(message: string): Promise<PromptResponse> {
     this.unsaved = [];
     const cfg = PROVIDERS[this.provider.name]!;
@@ -130,7 +132,7 @@ export class Agent {
       this.unsaved = turns;
       throw err;
     }
-    this.history.push(...turns);
+    this.history = [...history, ...turns];
     return response;
   }
 
@@ -237,7 +239,7 @@ export class Agent {
         return attachRaw(result, respText, !!this.options.raw);
       }
       for (const call of calls) {
-        const callArgs = toolCallInput(call);
+        const callArgs = toolRunArgs(call);
         const tool = this.tools.find((t) => t.name === call.name);
         const toolEvent: Event = {
           op: "tool_call",
