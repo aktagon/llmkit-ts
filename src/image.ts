@@ -24,6 +24,7 @@ import type { Provider, SafetySetting, Usage } from "./types.ts";
 
 export type { MediaRef } from "./structs.ts";
 import type { MediaRef } from "./structs.ts";
+import { lookupModel } from "./model_lookup.ts";
 
 // Part is declared in ./structs.ts (ADR-100 MSG-005) and re-exported here so
 // existing `import { Part } from "./image.ts"` callsites keep working.
@@ -140,37 +141,10 @@ export async function generateImage(
       `${provider.name} does not support image generation`,
     );
   }
-  const model = findImageModel(imgCfg, request.model);
-  if (!model) {
-    throw new ValidationError(
-      "model",
-      `${request.model} is not a known image-generation model for ${provider.name}`,
-    );
-  }
-  // Empty whitelist means "no client-side check; pass through" — used by
-  // providers (e.g., OpenAI) that accept arbitrary sizes within documented
-  // bounds. Trust the API boundary instead of carrying a stale whitelist
-  // (plan 020 q1).
-  if (
-    options.aspectRatio &&
-    model.aspectRatios.length > 0 &&
-    !model.aspectRatios.includes(options.aspectRatio)
-  ) {
-    throw new ValidationError(
-      "aspect_ratio",
-      `${options.aspectRatio} not supported by ${request.model}`,
-    );
-  }
-  if (
-    options.imageSize &&
-    model.imageSizes.length > 0 &&
-    !model.imageSizes.includes(options.imageSize)
-  ) {
-    throw new ValidationError(
-      "image_size",
-      `${options.imageSize} not supported by ${request.model}`,
-    );
-  }
+  // ADR-102 MPT-001: an unlisted model (undefined) skips the per-model checks.
+  const { model } = lookupModel(imgCfg.models, request.model);
+  // ADR-102 MPT-006 G5: a listed model's aspect ratios and sizes are hints,
+  // not blocks. The provider answers an off-list value.
   const imageCount = parts.filter((p) => "image" in p).length;
   validateImageArity(model, imageCount);
 
@@ -589,12 +563,15 @@ function joinTextParts(parts: Part[]): string {
 /**
  * validateImageArity rejects image parts the model does not take.
  * BUG-096: both limits are llmkit wire facts per model. maxInputImages 0
- * means no llmkit limit; the provider decides volume.
+ * means no llmkit limit; the provider decides volume. An unlisted model
+ * (undefined) has no limits, so the caller's image parts are sent
+ * (decision 009).
  */
 export function validateImageArity(
-  model: ImageModelDef,
+  model: ImageModelDef | undefined,
   imageCount: number,
 ): void {
+  if (model === undefined) return;
   if (imageCount > 0 && !model.supportsImageInput) {
     throw new ValidationError("parts", `${model.modelId} takes no image parts`);
   }
@@ -604,13 +581,6 @@ export function validateImageArity(
       `${imageCount} image parts exceeds maximum ${model.maxInputImages} for ${model.modelId}`,
     );
   }
-}
-
-function findImageModel(
-  cfg: ImageGenDef,
-  modelId: string,
-): ImageModelDef | undefined {
-  return cfg.models.find((m) => m.modelId === modelId);
 }
 
 /**
