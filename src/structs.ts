@@ -336,7 +336,7 @@ export interface Request {
   /**
    * seed is the sampling seed.
    */
-  seed?: number;
+  seed?: number | bigint;
 
   /**
    * frequencyPenalty is the penalty on tokens by how often they appeared.
