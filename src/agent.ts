@@ -15,7 +15,7 @@ import { APIError, ValidationError } from "./errors.ts";
 import { accumulateUsage, attachRaw, decodeResponse } from "./response.ts";
 import { responseToolCalls } from "./response_parts.ts";
 import {
-  encodeBody,
+  encodeChat,
   executeRequest,
   prepareRequest,
   toolRunArgs,
@@ -154,11 +154,13 @@ export class Agent {
     const mw = this.options.middleware;
 
     for (let i = 0; i < maxIters; i++) {
-      // The shared setup step and encoder (ADR-026 PIPE-001, ADR-098 RQC-001,
-      // RQC-017): the history becomes the Request's messages; chat ran the
-      // shared setup, so validation, model resolution and every transform run
-      // as on the Text/batch path.
-      const request: PreparedRequest = { ...prepared, messages: [...history, ...turns] };
+      // The shared encoder (ADR-026 PIPE-001, ADR-098 RQC-001, RQC-017): the
+      // history becomes the Request's messages, and encodeChat checks every
+      // turn before the pre hook fires, as on the Text/batch path.
+      const { request, body, headers } = encodeChat(this.provider, cfg, {
+        ...prepared,
+        messages: [...history, ...turns],
+      });
       const model = request.model;
       const llmEvent: Event = {
         op: "llm_request",
@@ -173,7 +175,6 @@ export class Agent {
       let respText = "";
       let decoded: PromptResponse;
       try {
-        const { body, headers } = encodeBody(this.provider.name, cfg, request);
         // Caching is a shared request-construction step (ADR-026): applied on
         // every send path by construction, like Text/batch. Before this, a
         // .caching() agent silently paid full input price every turn (BUG-004).

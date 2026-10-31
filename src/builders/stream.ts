@@ -32,8 +32,7 @@ import { extractPath, extractIntPath, optIntPath } from "../paths.ts";
 import {
   buildAuthHeaders,
   buildUrl,
-  encodeBody,
-  prepareRequest,
+  encodeChat,
   requestPath,
   resolveChatProtocol,
   type SendOptions,
@@ -140,7 +139,7 @@ async function runStream(
     );
   }
 
-  const prepared = prepareRequest(provider, cfg, request);
+  const { request: prepared, body, headers: content } = encodeChat(provider, cfg, request);
 
   const baseEvent: Event = {
     op: "llm_request",
@@ -153,7 +152,6 @@ async function runStream(
   const start = performance.now();
 
   try {
-    const { body, headers: content } = encodeBody(provider.name, cfg, prepared);
     // The stream body carries the same caching as the one-shot body (Go's
     // promptStream; HANDOFF-105 R3b).
     if (options.caching) {
