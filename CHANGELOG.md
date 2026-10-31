@@ -69,7 +69,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Number.MAX_SAFE_INTEGER`. OpenAI's string arguments keep their spaces.
 - A tool call with no input, input `"null"` or input `""` sends `{}` in every
   request. `""` used to throw a `ValidationError`. A provider's
-  `"input": ""` reads as no input, as `null` does.
+  `"input": ""` in an Anthropic, Google or Bedrock reply is an argument
+  value: the call's `input` is `'""'`, and the next request sends it. Only
+  `null` reads as no input.
+- **U+2028 and U+2029 are written as `\u2028` and `\u2029`** in every key
+  and string the SDK writes: prompt text, OpenAI's string tool-call
+  arguments, image, speech, music, video, transcription and caching bodies,
+  and the telemetry export. These are the bytes the Go SDK sends. They used
+  to go out as the characters. A provider's own text, such as a tool call's
+  arguments or a replayed turn, is sent as the provider wrote it.
+- **BREAKING — a saved provider turn must be one JSON value of its format's
+  kind.** `loadHistory` and every request (`text`, stream, batch, the Agent,
+  `encodeRequest`) throw a `ValidationError` on `messages[i].provider_turn`
+  when the turn's text is not JSON, or is an object where the format replays
+  an array (Anthropic, Responses) or an array where it replays an object
+  (OpenAI Chat Completions, Google). Such a turn used to be rebuilt from the
+  message's parts, or sent as it was.
 
 ### Added
 
