@@ -63,7 +63,7 @@ export function decodeRequest(
 
   let body: unknown;
   try {
-    body = JSON.parse(new TextDecoder().decode(wire.body));
+    body = JSON.parse(new TextDecoder().decode(wire.body), exactIntegers);
   } catch {
     body = undefined;
   }
@@ -176,21 +176,48 @@ function decodeOptions(req: Request, cfg: ProviderSpec, body: JSONObject): void 
   }
 }
 
-// integerProblem is what is wrong with an integer option's value, if
-// anything. JSON has one number type, so an integral number in any notation
-// (4096, 4096.0, 4.096e3) is an integer, and a fraction is not (owner decision
-// 3, HANDOFF-105 F3). JSON.parse reads 1e999 as Infinity, which is out of
-// range, as is an integer past the safe range.
-function integerProblem(v: unknown): string | undefined {
-  if (typeof v !== "number" || (!Number.isInteger(v) && Number.isFinite(v))) return "must be an integer";
-  if (!Number.isSafeInteger(v)) return "is out of range";
-  return undefined;
+// exactIntegers is the JSON.parse reviver decodeRequest reads the body with.
+// JSON.parse turns an integer past 2^53 into the nearest double, so the
+// reviver returns such an integer as a bigint: read from its source text when
+// that is a literal integer, which keeps it exact, as Go and Rust read it, and
+// from the double for any other notation (1e18), as Go and Rust read that
+// (HANDOFF-105 F12). On a runtime whose reviver gets no source text, the
+// double stays, and integerOption rejects it as out of range, as before.
+function exactIntegers(_key: string, value: unknown, context?: { source?: string }): unknown {
+  if (typeof value !== "number" || !Number.isInteger(value) || Number.isSafeInteger(value)) return value;
+  const source = context?.source;
+  if (source === undefined) return value;
+  return /^-?\d+$/.test(source) ? BigInt(source) : BigInt(value);
 }
 
-function numberProblem(v: unknown): string | undefined {
-  if (typeof v !== "number") return "must be a number";
-  if (!Number.isFinite(v)) return "is out of range";
-  return undefined;
+const INT64_MIN = -(2n ** 63n);
+const INT64_MAX = 2n ** 63n - 1n;
+
+// integerOption reads an integer option, or returns the problem with its
+// value. JSON has one number type, so an integral number in any notation
+// (4096, 4096.0, 4.096e3) is an integer, and a fraction is not (owner decision
+// 3, HANDOFF-105 F3). JSON.parse reads 1e999 as Infinity, which is out of
+// range. A seed is a 64-bit value (xsd:long), read exactly over the int64
+// range, as a bigint past 2^53 (F12); a number below. The other integer
+// options are numbers, so an integer past 2^53 is out of range for them.
+function integerOption(v: unknown, wide: boolean): { value: number | bigint } | { problem: string } {
+  if (typeof v === "bigint") {
+    if (wide && v >= INT64_MIN && v <= INT64_MAX) return { value: v };
+    return { problem: "is out of range" };
+  }
+  if (typeof v !== "number" || (!Number.isInteger(v) && Number.isFinite(v))) return { problem: "must be an integer" };
+  if (!Number.isSafeInteger(v)) return { problem: "is out of range" };
+  return { value: v };
+}
+
+// numberOption reads a real-number option, or returns the problem with its
+// value. exactIntegers gives an integer past 2^53 as a bigint; as a real
+// number it is the nearest double, as JSON.parse reads it.
+function numberOption(v: unknown): { value: number } | { problem: string } {
+  const n = typeof v === "bigint" ? Number(v) : v;
+  if (typeof n !== "number") return { problem: "must be a number" };
+  if (!Number.isFinite(n)) return { problem: "is out of range" };
+  return { value: n };
 }
 
 // setOption stores one decoded option value in its Request field, the
@@ -201,10 +228,11 @@ function setOption(req: Request, param: OptionKey, v: unknown): string | undefin
     case OptionKeys.TOP_K:
     case OptionKeys.THINKING_BUDGET:
     case OptionKeys.SEED: {
-      const problem = integerProblem(v);
-      if (problem) return problem;
-      const n = v as number;
-      if (param === OptionKeys.MAX_TOKENS) req.maxTokens = n;
+      const read = integerOption(v, param === OptionKeys.SEED);
+      if ("problem" in read) return read.problem;
+      const n = read.value;
+      if (typeof n === "bigint") req.seed = n;
+      else if (param === OptionKeys.MAX_TOKENS) req.maxTokens = n;
       else if (param === OptionKeys.TOP_K) req.topK = n;
       else if (param === OptionKeys.THINKING_BUDGET) req.thinkingBudget = n;
       else req.seed = n;
@@ -214,9 +242,9 @@ function setOption(req: Request, param: OptionKey, v: unknown): string | undefin
     case OptionKeys.TOP_P:
     case OptionKeys.FREQUENCY_PENALTY:
     case OptionKeys.PRESENCE_PENALTY: {
-      const problem = numberProblem(v);
-      if (problem) return problem;
-      const n = v as number;
+      const read = numberOption(v);
+      if ("problem" in read) return read.problem;
+      const n = read.value;
       if (param === OptionKeys.TEMPERATURE) req.temperature = n;
       else if (param === OptionKeys.TOP_P) req.topP = n;
       else if (param === OptionKeys.FREQUENCY_PENALTY) req.frequencyPenalty = n;

@@ -38,10 +38,12 @@ export class JsonText {
  * is left out, an undefined array element is null, and a value with toJSON is
  * written through it.
  *
- * One difference: U+2028 and U+2029 are written as the escapes \u2028 and
+ * Two differences: U+2028 and U+2029 are written as the escapes \u2028 and
  * \u2029, as Go writes them, where JSON.stringify writes the characters
  * (HANDOFF-105 F9, owner decision 1). A JsonText, the provider's or the
  * caller's text, is escaped so too (F10): the escape keeps the JSON value.
+ * And a bigint, such as a seed past 2^53, is written as its digits, where
+ * JSON.stringify throws (F12).
  */
 export function writeJson(value: unknown): string {
   const text = write(value);
@@ -51,6 +53,7 @@ export function writeJson(value: unknown): string {
 
 function write(value: unknown): string | undefined {
   if (value instanceof JsonText) return escapeLineSeparators(value.text);
+  if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) return `[${value.map((v) => write(v) ?? "null").join(",")}]`;
   if (value !== null && typeof value === "object" && !("toJSON" in value)) {
     const members: string[] = [];
