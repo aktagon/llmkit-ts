@@ -11,6 +11,7 @@ import {
   type ImageModelDef,
   imageGenConfig,
 } from "./providers/image_gen.ts";
+import { writeJson } from "./json_text.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { checkPartKinds } from "./part_kinds.ts";
 import { partsCarry, selectRequestVariant } from "./request_variant.ts";
@@ -355,7 +356,7 @@ export async function generateImage(
       httpResp = await sendHTTP(url, {
         method: "POST",
         headers: { ...authHeaders, "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: writeJson(body),
         signal: options.signal,
       }, provider.timeoutMs);
     }
@@ -457,7 +458,7 @@ function buildOpenAIEditFormData(
   if (options.count !== undefined) form.append("n", String(options.count));
   if (options.extraFields) {
     for (const [k, v] of Object.entries(options.extraFields)) {
-      form.append(k, typeof v === "string" ? v : JSON.stringify(v));
+      form.append(k, typeof v === "string" ? v : writeJson(v));
     }
   }
   let idx = 0;
