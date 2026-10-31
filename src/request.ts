@@ -36,7 +36,7 @@ import type {
 import { checkChatPart, checkPartKinds, partKind } from "./part_kinds.ts";
 import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
-import { toolCallInput, writeToolCall } from "./response_parts.ts";
+import { partsText, partsToolCalls, toolCallInput, writeToolCall } from "./response_parts.ts";
 import { JsonText, writeJson } from "./json_text.ts";
 
 // SendOptions are the settings of a chat call that do not shape the request
@@ -828,10 +828,6 @@ function plainText(parts: Part[]): string | undefined {
   return undefined;
 }
 
-function toolCallsOf(parts: Part[]): ToolCall[] {
-  return parts.flatMap((p) => ("toolCall" in p ? [p.toolCall] : []));
-}
-
 function dataURI(img: MediaRef): string {
   return `data:${img.mimeType};base64,${bytesToBase64(img.bytes)}`;
 }
@@ -907,7 +903,7 @@ function buildGoogleContents(
   const idToName = new Map<string, string>();
   return msgs.map((m): Record<string, unknown> | JsonText => {
     const turn = unwrap(m);
-    for (const c of toolCallsOf(turn.parts)) idToName.set(c.id, c.name);
+    for (const c of partsToolCalls(turn.parts)) idToName.set(c.id, c.name);
     // A replayed Google turn is candidates[0].content verbatim — the same
     // {role, parts} object the contents array takes, so it drops straight in.
     // Its calls still fed idToName above, because a LATER tool result is
@@ -1013,16 +1009,14 @@ function flatProjectedEntry(
   }
   // Chat Completions has no order between text and tool calls: the text parts
   // join into content and the tool calls go into tool_calls (ADR-100
-  // MSG-003). They join with "", as responseText does, so the turn carries the
-  // text the response did (owner decision 4, HANDOFF-105 F5). A turn with only
-  // tool calls carries no content key.
-  const calls = toolCallsOf(m.parts);
+  // MSG-003). They join with "" by the response rule (partsText), so the
+  // turn carries the text the response did (owner decision 4, HANDOFF-105
+  // F5). A turn with only tool calls carries no content key.
+  const calls = partsToolCalls(m.parts);
   const entry: Record<string, unknown> = { role };
   if (calls.length > 0) entry.tool_calls = calls.map((c) => requestToolCall(c, cfg));
   if (calls.length < m.parts.length || calls.length === 0) {
-    entry.content = m.parts
-      .flatMap((p) => ("text" in p ? [p.text] : []))
-      .join("");
+    entry.content = partsText(m.parts);
   }
   return [entry];
 }
