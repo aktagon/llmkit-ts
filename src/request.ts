@@ -129,6 +129,36 @@ export function withWireShape(
 }
 
 /**
+ * servedChatSpec is the one served-shape check: encodeRequest, decodeResponse
+ * and encodeResponse all run it (HANDOFF-105 F11). It returns the provider's
+ * spec with the endpoint and wire shape of the named shape, or of the
+ * provider's default when chatWireShape is "". Callers that decode a body they
+ * know is Chat Completions, such as batch result lines, pass "": ADR-055
+ * requires every provider's default protocol to be a Chat Completions family,
+ * so "" never resolves into the Responses arm (BUG-053). An unknown provider is a
+ * ValidationError on field "provider". A shape the provider does not serve is
+ * a ValidationError on field "chatWireShape" (owner decision 2, HANDOFF-105
+ * section 3b), and so is a provider that serves no chat shape at all: writing
+ * provider paths into another family's body produces a body neither family
+ * reads.
+ */
+export function servedChatSpec(provider: ProviderName, chatWireShape: string): ProviderSpec {
+  const base = PROVIDERS[provider];
+  if (!base) {
+    throw new ValidationError("provider", `unknown: ${provider}`);
+  }
+  const shape = chatWireShape !== "" ? chatWireShape : base.chatWireShape;
+  const cfg = shape === "" ? undefined : withWireShape(base, shape);
+  if (!cfg) {
+    throw new ValidationError(
+      "chatWireShape",
+      `provider "${provider}" does not serve chat wire shape "${chatWireShape}"`,
+    );
+  }
+  return cfg;
+}
+
+/**
  * encodeRequest encodes a chat request for a provider's wire shape (ADR-098).
  * It is keyless and makes no network call: the WireRequest carries the path
  * and the content headers, and the caller's send path adds the base URL, the
@@ -141,17 +171,7 @@ export function encodeRequest(
   chatWireShape: string,
   request: PromptRequest,
 ): WireRequest {
-  const base = PROVIDERS[provider as ProviderName];
-  if (!base) {
-    throw new ValidationError("provider", `unknown: ${provider}`);
-  }
-  const cfg = chatWireShape ? withWireShape(base, chatWireShape) : base;
-  if (!cfg) {
-    throw new ValidationError(
-      "chatWireShape",
-      `provider "${provider}" does not support wire shape "${chatWireShape}"`,
-    );
-  }
+  const cfg = servedChatSpec(provider as ProviderName, chatWireShape);
   const chat = encodeChat({ name: provider as ProviderName, apiKey: "" }, cfg, request);
   return {
     path: requestPath(cfg, chat.request.model),
