@@ -79,6 +79,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arguments or a replayed turn, is escaped too: it keeps the same JSON value.
   These are the bytes the Go SDK sends. They used to go out as the
   characters.
+- **BREAKING — `Request.seed` is `number | bigint`.** A seed is a 64-bit
+  value, and a `number` holds an integer exactly only up to
+  `Number.MAX_SAFE_INTEGER`. `decodeRequest` gives a larger seed as a
+  `bigint`, and every request writes a `bigint` seed as its digits.
+  Code that reads `request.seed` as a `number`, such as
+  `request.seed + 1`, no longer typechecks; check `typeof` first. The
+  `seed(n)` chain method still takes a `number`.
+- **An empty text part is a `ValidationError` on every request,** naming
+  the part, for example `parts[0]`: image, music, video and transcription,
+  as chat already did. These requests used to send it. Speech takes no
+  parts.
 - **BREAKING — a saved provider turn must be one JSON value of its format's
   kind.** `loadHistory` and every request (`text`, stream, batch, the Agent,
   `encodeRequest`) throw a `ValidationError` on `messages[i].provider_turn`
@@ -193,7 +204,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   integral number in any notation, such as `4096.0`, and rejects a fraction.
   A number out of range, such as `1e999`, fails on its own field. Any other field, such as `"stream": true`, `tools`, `response_format` or a content list, throws a
   `ValidationError` that names it, for example `messages[1].tool_calls`.
-  An integer option past `Number.MAX_SAFE_INTEGER` is rejected rather than
+  A `seed` is read exactly over the 64-bit range: past
+  `Number.MAX_SAFE_INTEGER` it is a `bigint`, below it a `number`. Any other
+  integer option past `Number.MAX_SAFE_INTEGER` is rejected rather than
   rounded. Other wire shapes throw on field `chatWireShape`.
 
 ### Fixed
