@@ -2,4 +2,4 @@
 
 // Current generation of the on-disk wire format for serialized
 // agent history (ADR-023 STAB-001).
-export const WIRE_SCHEMA_VERSION = 1 as const;
+export const WIRE_SCHEMA_VERSION = 2 as const;

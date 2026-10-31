@@ -18,7 +18,9 @@ import {
   type VideoModelDef,
   videoGenConfig,
 } from "../providers/video_gen.ts";
+import { writeJson } from "../json_text.ts";
 import { APIError, ValidationError, VideoDeleteError } from "../errors.ts";
+import { checkPartKinds } from "../part_kinds.ts";
 import type { CarriedInput, RequestVariant } from "../providers/image_gen.ts";
 import { partsCarry, selectRequestVariant } from "../request_variant.ts";
 import { sendHTTP } from "../http.ts";
@@ -142,7 +144,7 @@ export class VideoHandle {
         this.provider,
         cfg,
       );
-      vertexPollBody = JSON.stringify({ operationName: this.id });
+      vertexPollBody = writeJson({ operationName: this.id });
     } else {
       pollUrl = appendVideoAuth(
         videoPollURL(vgCfg.pollEndpoint, base, this.id),
@@ -259,13 +261,8 @@ export async function videoSubmit(
   const { model } = lookupModel(vgCfg.models, b._model);
   validateGeminiOmniInputs(vgCfg, parts, b._lastFrame, b._referenceImages, b._duration);
 
+  checkPartKinds("video_generation", parts);
   parts.forEach((part, i) => {
-    if ("lyrics" in part) {
-      throw new ValidationError(
-        `parts[${i}]`,
-        "video generation does not accept lyrics parts",
-      );
-    }
     if ("image" in part) {
       // Image-to-video seed frame (BUG-010): accepted only by models whose
       // VideoModelDef sets supportsImageToVideo; text-to-video-only models
@@ -1463,7 +1460,7 @@ async function postJson(
     {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: writeJson(body),
     },
     timeoutMs,
   );
@@ -1572,7 +1569,7 @@ async function sigV4PostJson(
   cfg: ProviderSpec,
 ): Promise<string> {
   const { signSigV4 } = await import("../sigv4.ts");
-  const jsonBody = JSON.stringify(body);
+  const jsonBody = writeJson(body);
   const region = process.env[cfg.regionEnvVar] || "";
   const secret = process.env[cfg.secretKeyEnvVar] || "";
   const session = process.env[cfg.sessionTokenEnvVar] || "";

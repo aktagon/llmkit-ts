@@ -4,114 +4,145 @@
 // typed-builder is the single canonical entry point.
 //
 // `buildPromptArgs` translates a chained Text builder + final user
-// message into the lower-level (provider, Request, PromptOptions)
-// triple consumed by request.ts helpers. Doing this lift lets us
-// reuse the existing buildRequest/executeRequest/applyCaching layer
-// without duplicating ~150 LOC of provider-specific request shaping.
+// message into the (provider, Request, SendOptions) triple consumed by
+// request.ts. The Request carries the model, every turn and every
+// request-shaping option (ADR-098 RQC-001); SendOptions carries what does
+// not shape the request (RQC-002).
 //
-// `_parts` handling: text parts are concatenated (then `finalText` is
-// appended as the last text segment if non-empty); image parts lower into
-// `request.images` as base64 `data:` URIs and reach the wire as native image
-// blocks (ADR-060, resolving ADR-008 OQ-2). `_files` threads to the wire
-// document block (BUG-014).
+// The final user turn (ADR-100 MSG-004): the `_files` as file parts, then
+// the image parts, then one text part joining the text parts and
+// `finalText` with newlines. The text part is left out when there is no
+// text. Image parts reach the wire as native image blocks (ADR-060).
 
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import { APIError, ValidationError } from "../errors.ts";
-import { applyCaching } from "../caching.ts";
+import { applyCaching, checkCacheTTL } from "../caching.ts";
 import { decodeResponseRaw } from "../response.ts";
 import {
-  buildRequest as buildLegacyRequest,
+  encodeChat,
   executeRequest,
   resolveChatProtocol,
-  validateOptions,
+  type SendOptions,
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event } from "../providers/middleware.ts";
-import type {
-  InputImage,
-  PromptOptions,
-  Provider,
-  Request,
-  Response,
-} from "../types.ts";
-import { bytesToBase64 } from "../image.ts";
+import type { Provider, Request, Response } from "../types.ts";
+import type { Message, Part } from "../structs.ts";
 import type { Text } from "./builders.ts";
 
 /**
  * Translates a chained Text builder + final prompt text into the
- * triple consumed by the lower-level legacy runtime: provider,
- * Request, PromptOptions. Same behaviour as the slice-1 buildRequest
- * helper; renamed so it doesn't collide with `buildRequest` from
- * request.ts (which builds the on-the-wire body).
+ * triple the send paths consume: provider, Request, SendOptions. The
+ * builder's model goes into Request.model, so the provider carries none.
  */
 export function buildPromptArgs(
   b: Text,
   finalText: string,
-): { provider: Provider; request: Request; options: PromptOptions } {
+): { provider: Provider; request: Request; options: SendOptions } {
+  const provider = textProvider(b);
+
+  // The final user turn, ordered so every request golden keeps its bytes:
+  // files, then images, then the text parts and finalText joined with
+  // newlines (the text-parts-openai request-wire golden holds every SDK to
+  // the join). It follows the history (BUG-108).
+  const turn: Part[] = b._files.map((file) => ({ file }));
+  const textSegments: string[] = [];
+  for (const p of b._parts) {
+    if ("text" in p) {
+      if (p.text) textSegments.push(p.text);
+    } else if ("image" in p) {
+      turn.push(p);
+    }
+  }
+  if (finalText) textSegments.push(finalText);
+  if (textSegments.length > 0) turn.push({ text: textSegments.join("\n") });
+
+  const request: Request = {};
+  if (b._model) request.model = b._model;
+  if (b._system) request.system = b._system;
+  const messages: Message[] = [...b._history];
+  if (turn.length > 0) messages.push({ role: "user", parts: turn });
+  if (messages.length > 0) request.messages = messages;
+  if (b._tools.length > 0) request.tools = b._tools;
+  if (b._schema) request.schema = b._schema;
+  if (b._maxTokens !== undefined) request.maxTokens = b._maxTokens;
+  if (b._temperature !== undefined) request.temperature = b._temperature;
+  if (b._topP !== undefined) request.topP = b._topP;
+  if (b._topK !== undefined) request.topK = b._topK;
+  if (b._frequencyPenalty !== undefined)
+    request.frequencyPenalty = b._frequencyPenalty;
+  if (b._presencePenalty !== undefined)
+    request.presencePenalty = b._presencePenalty;
+  if (b._seed !== undefined) request.seed = b._seed;
+  if (b._stopSequences.length > 0) request.stop = b._stopSequences;
+  if (b._thinkingBudget !== undefined)
+    request.thinkingBudget = b._thinkingBudget;
+  if (b._reasoningEffort !== undefined)
+    request.reasoningEffort = b._reasoningEffort;
+  if (b._safetySettings.length > 0) request.safetySettings = b._safetySettings;
+
+  return { provider, request, options: textSendOptions(b) };
+}
+
+/**
+ * The body of the generated Text.request chain method (ADR-098 RQC-005), the
+ * inverse of buildPromptArgs: every request-shaping field takes req's value.
+ * req.messages become the history, and the text, image and file parts are
+ * dropped, because req.messages already holds every turn. The send settings
+ * (textSendOptions) and the protocol are not request fields, so they stay.
+ */
+export function textSetRequest(b: Text, req: Request): void {
+  b._model = req.model ?? "";
+  b._system = req.system ?? "";
+  b._history = [...(req.messages ?? [])];
+  b._parts = [];
+  b._files = [];
+  b._tools = [...(req.tools ?? [])];
+  b._schema = req.schema ?? "";
+  b._maxTokens = req.maxTokens;
+  b._temperature = req.temperature;
+  b._topP = req.topP;
+  b._topK = req.topK;
+  b._stopSequences = [...(req.stop ?? [])];
+  b._seed = req.seed;
+  b._frequencyPenalty = req.frequencyPenalty;
+  b._presencePenalty = req.presencePenalty;
+  b._reasoningEffort = req.reasoningEffort;
+  b._thinkingBudget = req.thinkingBudget;
+  b._safetySettings = [...(req.safetySettings ?? [])];
+}
+
+// textSendOptions are the chain settings that do not shape the request
+// (RQC-002): caching and its TTL, middleware and raw. Prompt and batch read
+// them from here. A TTL that is not positive whole seconds throws
+// (checkCacheTTL).
+export function textSendOptions(b: Text): SendOptions {
+  checkCacheTTL(b._cacheTTL);
+  const options: SendOptions = {};
+  if (b._caching) options.caching = true;
+  if (b._cacheTTL !== undefined) options.cacheTTL = b._cacheTTL;
+  if (b._middleware.length > 0) options.middleware = b._middleware;
+  if (b._raw) options.raw = true;
+  return options;
+}
+
+// textProvider is the client's provider as the send paths read it: name, key,
+// caller headers, timeout and base URL. It carries no model: the builder's
+// model is Request.model.
+export function textProvider(b: Text): Provider {
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
     headers: b.client.provider.headers,
     timeoutMs: b.client.provider.timeoutMs,
   };
-  if (b._model) provider.model = b._model;
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;
-
-  // Join accumulated text parts, then finalText, with newlines (the
-  // text-parts-openai request-wire golden holds every SDK to it). Image parts
-  // lower into InputImage entries as base64 `data:` URIs, in caller order
-  // (ADR-060, mirroring Go's splitTextAndImages).
-  const textSegments: string[] = [];
-  const images: InputImage[] = [];
-  for (const p of b._parts) {
-    if ("text" in p) {
-      if (p.text) textSegments.push(p.text);
-    } else if ("image" in p) {
-      images.push({
-        url: `data:${p.image.mimeType};base64,${bytesToBase64(p.image.bytes)}`,
-        mimeType: p.image.mimeType,
-        detail: "",
-      });
-    }
-  }
-  if (finalText) textSegments.push(finalText);
-  const user = textSegments.join("\n");
-
-  // History and the final prompt travel separately; requestMsgs (request.ts)
-  // appends the prompt, with its files and images, after the history (BUG-108).
-  const request: Request = {};
-  if (b._system) request.system = b._system;
-  if (b._history.length > 0) request.messages = [...b._history];
-  if (user) request.user = user;
-  if (b._files.length > 0) request.files = b._files;
-  if (images.length > 0) request.images = images;
-  if (b._schema) request.schema = b._schema;
-
-  const options: PromptOptions = {};
-  if (b._maxTokens !== undefined) options.maxTokens = b._maxTokens;
-  if (b._temperature !== undefined) options.temperature = b._temperature;
-  if (b._topP !== undefined) options.topP = b._topP;
-  if (b._topK !== undefined) options.topK = b._topK;
-  if (b._frequencyPenalty !== undefined)
-    options.frequencyPenalty = b._frequencyPenalty;
-  if (b._presencePenalty !== undefined)
-    options.presencePenalty = b._presencePenalty;
-  if (b._seed !== undefined) options.seed = b._seed;
-  if (b._stopSequences.length > 0) options.stopSequences = b._stopSequences;
-  if (b._thinkingBudget !== undefined)
-    options.thinkingBudget = b._thinkingBudget;
-  if (b._reasoningEffort) options.reasoningEffort = b._reasoningEffort;
-  if (b._caching) options.caching = true;
-  if (b._middleware.length > 0) options.middleware = b._middleware;
-  if (b._safetySettings.length > 0) options.safetySettings = b._safetySettings;
-  if (b._raw) options.raw = true;
-
-  return { provider, request, options };
+  return provider;
 }
 
 export async function textPrompt(b: Text, msg: string): Promise<Response> {
-  const { provider, request, options } = buildPromptArgs(b, msg);
+  const { provider, request: built, options } = buildPromptArgs(b, msg);
 
   const cfg = PROVIDERS[provider.name];
   if (!cfg) {
@@ -121,44 +152,35 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
     throw new ValidationError("apiKey", "required");
   }
 
-  validateOptions(provider.name, options);
-
   // ADR-055: opt into a non-default chat protocol (Responses). Overrides the
   // endpoint + wire shape on this call's cfg copy; empty keeps the default.
   // Throws ValidationError(field:"protocol") before any network call when the
   // token is unknown or the provider does not expose it.
   const effCfg = resolveChatProtocol(cfg, b._protocol);
+  const { request, body, headers } = encodeChat(provider, effCfg, built);
 
   const baseEvent: Event = {
     op: "llm_request",
     phase: "pre",
     provider: provider.name,
-    model: provider.model || cfg.defaultModel,
+    model: request.model,
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
   const start = performance.now();
 
   try {
-    const extraHeaders: Record<string, string> = {};
-    const body = buildLegacyRequest(
-      provider,
-      request,
-      effCfg,
-      options,
-      [],
-      extraHeaders,
-    );
     if (options.caching) {
-      await applyCaching(body, provider, effCfg, options);
+      await applyCaching(body, provider, effCfg, request.model, options);
     }
 
     const resp = await executeRequest(
       provider,
       effCfg,
+      request.model,
       body,
       options,
-      extraHeaders,
+      headers,
     );
     if (!resp.ok) {
       throw new APIError(

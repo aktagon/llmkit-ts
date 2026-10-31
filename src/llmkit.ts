@@ -54,15 +54,16 @@ export type {
   Provider,
   Request,
   Response,
-  PromptOptions,
   Message,
   Usage,
   File,
   BatchHandle,
-  AgentOptions,
   ToolCall,
   ToolResult,
   ProviderTurn,
+  SafetySetting,
+  ToolDefinition,
+  WireRequest,
 } from "./types.ts";
 // Capability vocabulary (ADR-019 catalogue filter + ADR-030
 // Client.supports query).
@@ -74,10 +75,23 @@ export { APIError, ValidationError, PollTimeoutError, VideoDeleteError } from ".
 // is the same reader the send paths call (SYM-004); encodeResponse is its
 // inverse, refusing to fabricate a field whose mapping is one-way (SYM-007).
 export { decodeResponse, encodeResponse } from "./response.ts";
+// A Response is its assistant turn as ordered parts (HANDOFF-105 F4); these
+// read its text and its tool calls from them. toolCallInput parses a tool
+// call's argument text, ToolCall.input (HANDOFF-105 F7).
+export { responseText, responseToolCalls, toolCallInput } from "./response_parts.ts";
+// Request codec (ADR-098): the keyless, IO-free encoder the chat send paths
+// share. It returns the path, the content headers and the body; the send path
+// adds the base URL, the key and the caller's headers (RQC-006).
+export { encodeRequest } from "./request.ts";
+// decodeRequest is its inverse for the ChatOpenAI wire shape (RQC-007..013).
+export { decodeRequest } from "./request_decode.ts";
 // Async-job poll surface (ADR-062 / ADR-063): the normalized JobStatus that
 // BatchHandle.poll / TranscriptionHandle.poll return, plus its JobState and
 // failure cause. Public because they are what poll() returns (POLL-004).
 export type { JobState, JobStatus, JobFailure } from "./job.ts";
+export type { JobFailureCode } from "./providers/batch.ts";
+// The canonical finish reason (ADR-099 CRF-001): Response.finishReason.
+export type { FinishReason } from "./providers/providers.ts";
 export type { Tool } from "./types.ts";
 export type {
   ImageRequest,

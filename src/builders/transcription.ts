@@ -18,7 +18,9 @@ import {
   type TranscriptionDef,
   transcriptionConfig,
 } from "../providers/transcription_gen.ts";
+import { writeJson } from "../json_text.ts";
 import { APIError, ValidationError } from "../errors.ts";
+import { checkPartKinds } from "../part_kinds.ts";
 import { sendHTTP } from "../http.ts";
 import { encodeMultipart } from "../multipart.ts";
 import {
@@ -169,6 +171,7 @@ function newTranscriptionAdapter(
     statusPath: tcCfg.statusPath,
     doneValues: nonEmptyValues(tcCfg.doneStatus),
     errorValues: nonEmptyValues(tcCfg.errorStatus),
+    failureCodes: tcCfg.failureCodes,
     errorMessagePath: cfg.errorMessagePath,
     pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
     pollTimeoutMs: options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
@@ -470,27 +473,18 @@ function transcriptionResultFromOpenAI(
 // (OAA-005): exactly one inline-bytes audio Part. A remote URL is rejected
 // (OpenAI ingests no URL — inverse of AssemblyAI). Mirror of go normalizeAudioBytesPart.
 function normalizeAudioBytesPart(parts: Part[]): MediaRef {
+  checkPartKinds("transcription", parts);
   let ref: MediaRef | undefined;
-  let audioCount = 0;
   parts.forEach((part, i) => {
-    if ("audioBytes" in part) {
-      audioCount++;
-      ref = part.audioBytes;
-    } else if ("audio" in part) {
+    if ("audioUrl" in part) {
       throw new ValidationError(
         `parts[${i}]`,
         "synchronous transcription accepts inline audio bytes only (audioBytes); a remote audio URL is not supported",
       );
-    } else if ("text" in part || "image" in part || "lyrics" in part) {
-      throw new ValidationError(
-        `parts[${i}]`,
-        "transcription accepts only audio parts (audioBytes)",
-      );
-    } else {
-      throw new ValidationError(`parts[${i}]`, "empty part");
     }
+    if ("audio" in part) ref = part.audio;
   });
-  if (audioCount !== 1 || !ref) {
+  if (parts.length !== 1 || !ref) {
     throw new ValidationError(
       "parts",
       "transcription requires exactly one audio part",
@@ -593,30 +587,18 @@ function normalizeAudioPart(parts: Part[]): {
   url: string;
   bytes?: Uint8Array;
 } {
-  let url = "";
-  let bytes: Uint8Array | undefined;
-  let audioCount = 0;
-  parts.forEach((part, i) => {
-    if ("audio" in part) {
-      audioCount++;
-      url = part.audio;
-    } else if ("audioBytes" in part) {
-      audioCount++;
-      bytes = part.audioBytes.bytes;
-    } else if ("text" in part || "image" in part || "lyrics" in part) {
-      throw new ValidationError(
-        `parts[${i}]`,
-        "transcription accepts only audio parts (audio / audioBytes)",
-      );
-    } else {
-      throw new ValidationError(`parts[${i}]`, "empty part");
-    }
-  });
-  if (audioCount !== 1) {
+  checkPartKinds("transcription", parts);
+  if (parts.length !== 1) {
     throw new ValidationError(
       "parts",
       "transcription requires exactly one audio part",
     );
+  }
+  let url = "";
+  let bytes: Uint8Array | undefined;
+  for (const part of parts) {
+    if ("audioUrl" in part) url = part.audioUrl;
+    if ("audio" in part) bytes = part.audio.bytes;
   }
   return { url, bytes };
 }
@@ -657,7 +639,7 @@ async function postJson(
     {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: writeJson(body),
     },
     timeoutMs,
   );

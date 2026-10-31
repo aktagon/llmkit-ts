@@ -1,5 +1,7 @@
 // Code generated — DO NOT EDIT.
 
+import type { JobFailure, JobState } from "./job.ts";
+import type { FinishReason } from "./providers/providers.ts";
 import type { Capability, Provider, Usage } from "./types.ts";
 
 /**
@@ -38,7 +40,7 @@ export interface BatchHandle {
 }
 
 /**
- * File is a reference to an uploaded file. Returned by UploadFile and attached to subsequent text-generation requests via Request.Files.
+ * File is a reference to an uploaded file. Returned by UploadFile and attached to a later text-generation request as a file Part.
  */
 export interface File {
   /**
@@ -97,9 +99,9 @@ export interface ImageResponse {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal. Examples per provider: Google STOP/IMAGE_OTHER/SAFETY/MAX_TOKENS; OpenAI Images API has no equivalent field (always absent); xAI Grok has no equivalent field (always absent).
+   * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-003). Examples per provider: Google STOP/IMAGE_OTHER/SAFETY/MAX_TOKENS; OpenAI Images API has no equivalent field (always absent); xAI Grok has no equivalent field (always absent).
    */
-  finishReason?: string;
+  providerFinishReason?: string;
 
   /**
    * finishMessage is the free-text provider explanation of the stop signal. Gemini populates this for non-success FinishReason values; other providers leave it empty. Use as the user-facing message when len(Images) == 0.
@@ -143,31 +145,21 @@ export interface MediaRef {
 }
 
 /**
- * Message is a single turn in a multi-turn conversation. Discriminated by role: text turns set content; assistant-with-tools turns set tool_calls; tool turns set tool_result. Consumers MUST inspect role before reading the optional tool-turn fields. ADR-020 extends Message with tool_calls and tool_result so *Agent history round-trips fully across process boundaries.
+ * Message is a single turn in a multi-turn conversation: a role plus an ordered list of parts (ADR-100 MSG-001). The role decides which part kinds the turn may carry: a user turn text, images and files; an assistant turn text and tool calls; a tool turn tool results (MSG-002). The encoder rejects any other kind with a ValidationError.
  */
 export interface Message {
   /**
-   * role is the speaker identifier. Conventionally "user", "assistant", or "tool"; provider transforms may map to other roles (Bedrock's "USER"/"ASSISTANT", Google's "user"/"model").
+   * role is the speaker: "user", "assistant" or "tool". Provider transforms may map it to other roles (Bedrock's "USER"/"ASSISTANT", Google's "user"/"model").
    */
   role: string;
 
   /**
-   * content is the turn's text content. Empty on assistant-with-tools turns and on tool turns (the carrier field switches to tool_calls or tool_result respectively).
+   * parts are the turn's content, in order. The encoder keeps this order where the provider's wire keeps it (Anthropic, Google, Bedrock, Responses); OpenAI Chat Completions joins the text parts into content and moves the tool calls into tool_calls (ADR-100 MSG-003).
    */
-  content: string;
+  parts: Part[];
 
   /**
-   * toolCalls are the tool invocations the model produced on an assistant turn. Defaults to an empty list (never null) so consumers can iterate without a None-guard regardless of role. Empty on text turns and tool turns.
-   */
-  toolCalls: ToolCall[];
-
-  /**
-   * toolResult is the tool execution result on a role=tool turn. Null on text turns and assistant turns. Singular (not plural) because one tool turn carries exactly one result.
-   */
-  toolResult: ToolResult | null;
-
-  /**
-   * providerTurn is the provider's own serialization of this turn, when the SDK received it from a provider (ADR-085). Null on user turns, tool turns, and any assistant turn the caller authored via History(...) or a compaction hook — those are reconstructed from the fields above, as every turn was before ADR-085. Consumers never need to read it: it exists so the next request can replay the turn verbatim instead of rebuilding a lossy copy.
+   * providerTurn is the provider's own serialization of this turn, when the SDK received it from a provider (ADR-085). Null on user turns, tool turns, and any assistant turn the caller authored via History(...) or a compaction hook — those are reconstructed from the parts, as every turn was before ADR-085. Consumers never need to read it: it exists so the next request can replay the turn verbatim instead of rebuilding a lossy copy.
    */
   providerTurn?: ProviderTurn;
 }
@@ -242,9 +234,9 @@ export interface MusicResponse {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal. Gemini surfaces STOP/SAFETY etc.; Vertex Imagen-style providers surface a RAI filter reason when content is blocked; MiniMax carries a base_resp status. Optional.
+   * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-003). Gemini surfaces STOP/SAFETY etc.; Vertex Lyria surfaces its RAI filter reason (raiFilteredReason); MiniMax carries a base_resp status. Optional.
    */
-  finishReason?: string;
+  providerFinishReason?: string;
 
   /**
    * finishMessage is the free-text provider explanation of the stop signal. Use as the user-facing message when len(Audio) == 0.
@@ -273,7 +265,7 @@ export interface ProviderError {
 }
 
 /**
- * ProviderTurn is one assistant turn exactly as the provider serialized it, captured at assistantTurnPath and replayed unchanged on every subsequent request in the run (ADR-085). It sits BESIDE the canonical projection, not instead of it: Message.role/.content/.tool_calls stay the consumer's view of the turn, and this is what goes back on the wire. Present only on a turn the SDK received from a provider; a caller-authored turn (History(...), a compaction hook) has none and is reconstructed as before.
+ * ProviderTurn is one assistant turn exactly as the provider serialized it, captured at assistantTurnPath and replayed unchanged on every subsequent request in the run (ADR-085). It sits BESIDE the canonical projection, not instead of it: Message.role and Message.parts stay the consumer's view of the turn, and this is what goes back on the wire. Present only on a turn the SDK received from a provider; a caller-authored turn (History(...), a compaction hook) has none and is reconstructed as before.
  */
 export interface ProviderTurn {
   /**
@@ -288,13 +280,98 @@ export interface ProviderTurn {
 }
 
 /**
- * Response is the universal response container returned by text-generation terminals (Text.Prompt, Agent.Prompt). Five fields; all five are core (no per-capability augmentation).
+ * Request is the one form of a chat call (ADR-098): every turn, the tool definitions, and every option that shapes the request body. Text, Agent and batch build one and encode it; nothing else builds a chat body (RQC-001). Settings that do not shape the request (transport, caching, middleware, the Agent's loop limit, raw) stay outside it (RQC-002). Unset and empty fields are absent from the wire body.
+ */
+export interface Request {
+  /**
+   * model is the model id. When set, it wins over the builder's and the client's model (RQC-004); empty keeps the usual resolution.
+   */
+  model?: string;
+
+  /**
+   * system is the system prompt. Empty sends none.
+   */
+  system?: string;
+
+  /**
+   * messages are every turn, including the final prompt (RQC-001). Media are parts of a user turn (ADR-100 MSG-015).
+   */
+  messages?: Message[];
+
+  /**
+   * tools are the tools the model may call (RQC-018).
+   */
+  tools?: ToolDefinition[];
+
+  /**
+   * schema is the JSON Schema text for structured output. Empty asks for none.
+   */
+  schema?: string;
+
+  /**
+   * maxTokens is the cap on output tokens.
+   */
+  maxTokens?: number;
+
+  /**
+   * temperature is the sampling temperature.
+   */
+  temperature?: number;
+
+  /**
+   * topP is the nucleus sampling probability mass.
+   */
+  topP?: number;
+
+  /**
+   * topK is the number of most likely tokens sampled from.
+   */
+  topK?: number;
+
+  /**
+   * stop are the stop sequences. Empty sets none.
+   */
+  stop?: string[];
+
+  /**
+   * seed is the sampling seed.
+   */
+  seed?: number | bigint;
+
+  /**
+   * frequencyPenalty is the penalty on tokens by how often they appeared.
+   */
+  frequencyPenalty?: number;
+
+  /**
+   * presencePenalty is the penalty on tokens that already appeared.
+   */
+  presencePenalty?: number;
+
+  /**
+   * reasoningEffort is the reasoning effort level, such as "low" or "high". Unset sends none.
+   */
+  reasoningEffort?: string;
+
+  /**
+   * thinkingBudget is the token budget for extended thinking.
+   */
+  thinkingBudget?: number;
+
+  /**
+   * safetySettings are the per-category safety filters for Gemini providers. Empty sets none.
+   */
+  safetySettings?: SafetySetting[];
+}
+
+/**
+ * Response is the universal response container returned by text-generation terminals (Text.Prompt, Agent.Prompt). Every field is core (no per-capability augmentation).
  */
 export interface Response {
   /**
-   * text is the assistant's response text. Providers that return content as a list of blocks may put other blocks first — reasoning, or an image — and the text is found by matching the block, never by taking the first one. Empty is a normal outcome, not an error: a turn that only called a tool carries no text, and so does a turn cut off before it finished reasoning. Check the finish reason to tell those apart.
+   * parts are the assistant turn this response carried, as ordered parts: text parts and tool-call parts, in the order the provider sent them (ADR-100 Part; owner decision 1, HANDOFF-105 F4). A block-array wire (Anthropic, Google, Bedrock) keeps text and tool calls in one array, so their order is its order; OpenAI Chat Completions carries the text first and the tool calls after it. An empty text block adds no part. The SDK reads the response text and the tool calls from these parts: the text is the text parts joined with no separator, and is empty when there are none; the tool calls are the tool-call parts in order, not run. Empty on a failed batch item.
    */
-  text: string;
+  parts: Part[];
 
   /**
    *
@@ -302,12 +379,12 @@ export interface Response {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal, passed through verbatim. ABSENT (not empty) when the provider response carries no signal or the provider declares no path for it — the two are the same observation, and neither is an empty string (ADR-081). Examples per provider: Google STOP/MAX_TOKENS/SAFETY/RECITATION; OpenAI stop/length/content_filter/tool_calls; Anthropic end_turn/max_tokens/stop_sequence/tool_use; xAI stop/length/content_filter.
+   * finishReason is why the response stopped, as one of five canonical values shared by every provider: stop, length, tool_calls, content_filter, other (ADR-099 CRF-001). The provider's own value maps through the finish-reason table of the response's chat wire shape (Anthropic end_turn is stop, Google SAFETY is content_filter); a value with no entry is other (CRF-011). The provider's string is in provider_finish_reason. Absent when the response reports no finish reason; Go leaves the empty value there.
    */
-  finishReason?: string;
+  finishReason?: FinishReason;
 
   /**
-   * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI carry no equivalent field, so it is ABSENT for them rather than empty (ADR-081). A failed batch request carries the provider's error message here (BUG-072).
+   * finishMessage is the provider-supplied free-text explanation of the stop signal. Populated by Google when present; OpenAI / Anthropic / xAI carry no equivalent field, so it is ABSENT for them rather than empty (ADR-081). A failed batch item carries its error message in cause, not here (ADR-099 CRF-015).
    */
   finishMessage?: string;
 
@@ -320,6 +397,56 @@ export interface Response {
    * providerTurn is the assistant turn this response carried, as the provider serialized it (ADR-085). Always captured — unlike raw, it is not opt-in — so a caller running their own loop on Text.Prompt can thread the turn into the next request without parsing raw per provider, which is the work this library exists to absorb. Null when the response carries no assistant turn at the wire shape's declared position, or when the shape declares none (Bedrock).
    */
   providerTurn?: ProviderTurn;
+
+  /**
+   * id is the provider-assigned id of this response, passed through verbatim (OpenAI chatcmpl-..., Anthropic msg_..., Google responseId). ABSENT (not empty) when the response carries none: Bedrock Converse sends no id (ADR-081).
+   */
+  id?: string;
+
+  /**
+   * model is the model the provider reports for this response, passed through verbatim. It can differ from the requested model: OpenAI returns the dated snapshot, and Google reports the served version (modelVersion). ABSENT (not empty) when the response carries none: Bedrock Converse reports no model (ADR-081).
+   */
+  model?: string;
+
+  /**
+   * state is the outcome of one batch item: succeeded or failed (ADR-099 CRF-015). Set on every batch item, and on no other response: ABSENT means the response is not a batch item (owner decision 7, HANDOFF-105 section 3b).
+   */
+  state?: JobState;
+
+  /**
+   * cause is why a batch item failed, set only when its state is failed (ADR-099 CRF-015): the typed code, the provider's failure status verbatim, and the provider's error message. A failed item carries no finish reason and no finish message.
+   */
+  cause?: JobFailure;
+
+  /**
+   * providerFinishReason is the provider stop signal, passed through verbatim (ADR-099 CRF-002). ABSENT (not empty) when the provider response carries no signal or the provider declares no path for it — the two are the same observation, and neither is an empty string (ADR-081). Examples per provider: Google STOP/MAX_TOKENS/SAFETY/RECITATION; OpenAI stop/length/content_filter/tool_calls; Anthropic end_turn/max_tokens/stop_sequence/tool_use; OpenAI Responses completed/incomplete.
+   */
+  providerFinishReason?: string;
+
+  /**
+   * created is when the provider created this response, in Unix seconds, passed through verbatim (OpenAI created, Responses created_at; owner decision 4, HANDOFF-105 section 3b). ABSENT (not zero) when the body carries none: Anthropic, Google and Bedrock send no creation time (ADR-081).
+   */
+  created?: number;
+
+  /**
+   * chatWireShape is the chat wire shape this response was decoded from (ChatOpenAI, ChatResponsesOpenAI, ChatAnthropic, ChatGoogle, ChatBedrock). Every decode path sets it: one-shot, stream, batch item and agent. ABSENT when the response was not decoded from a wire body, such as one the caller built. EncodeResponse writes provider_finish_reason verbatim only when this equals the target shape (owner decision 1, HANDOFF-105 F3).
+   */
+  chatWireShape?: string;
+}
+
+/**
+ * SafetySetting configures one per-category content safety filter for Gemini providers. Category and threshold pass through verbatim to the wire body: use the HARM_CATEGORY_* and HARM_BLOCK_THRESHOLD_* constants or Google's latest string values.
+ */
+export interface SafetySetting {
+  /**
+   * category is the harm category, for example "HARM_CATEGORY_DANGEROUS_CONTENT".
+   */
+  category: string;
+
+  /**
+   * threshold is the block threshold, for example "BLOCK_ONLY_HIGH" or "BLOCK_NONE".
+   */
+  threshold: string;
 }
 
 /**
@@ -337,9 +464,9 @@ export interface SpeechResponse {
   usage: Usage;
 
   /**
-   * finishReason is the provider stop signal, when present. Optional.
+   * providerFinishReason is the provider stop signal, passed through verbatim, when present (ADR-099 CRF-003). Optional.
    */
-  finishReason?: string;
+  providerFinishReason?: string;
 }
 
 /**
@@ -357,9 +484,29 @@ export interface ToolCall {
   name: string;
 
   /**
-   * input is the JSON-decoded argument object the model passed. Null on absent or empty arg sets; otherwise a provider-specific JSON value (typically an object, but type-erased through OptionalAny because schemas vary per tool).
+   * input is the argument JSON the model passed, as the text the provider sent: key order, number spelling and string escapes are kept, and the encoders write it back as it is (HANDOFF-105 F6). A JSON-string argument (OpenAI) keeps its spaces too; an argument embedded as a JSON value (Anthropic, Google, Bedrock) is its tokens without the body's layout. Absent when the provider sent no arguments, null embedded as a JSON value, or an empty argument string; the text null when a JSON-string argument holds null. A caller-built input is written as the caller gave it, an embedded value without its layout; a request sends {} when the input is absent, null or empty (HANDOFF-105 F8). Typically an object, but type-erased because schemas vary per tool.
    */
-  input?: unknown;
+  input?: string;
+}
+
+/**
+ * ToolDefinition is a tool the model may call, as the request describes it: name, description and input schema (ADR-098 RQC-018). It is plain data; the Agent keeps the function that runs the tool beside the Request.
+ */
+export interface ToolDefinition {
+  /**
+   * name is the tool name the model calls it by. ToolCall.name carries it back.
+   */
+  name: string;
+
+  /**
+   * description tells the model what the tool does and when to call it.
+   */
+  description: string;
+
+  /**
+   * schema is the JSON Schema of the tool's input object.
+   */
+  schema: Record<string, unknown>;
 }
 
 /**
@@ -507,9 +654,9 @@ export interface VideoResponse {
   usage: Usage;
 
   /**
-   * finishReason is the provider terminal status / stop signal (grok: a non-done status such as expired or failed). Empty on success. Optional.
+   * providerFinishReason is the provider terminal status / stop signal, passed through verbatim (ADR-099 CRF-003) (grok: a non-done status such as expired or failed). Empty on success. Optional.
    */
-  finishReason?: string;
+  providerFinishReason?: string;
 
   /**
    * finishMessage is the free-text provider explanation of a non-success status (grok: error.message on a failed job). Use as the user-facing message when len(Videos) == 0.
@@ -521,3 +668,62 @@ export interface VideoResponse {
    */
   raw?: unknown;
 }
+
+/**
+ * WireRequest is a chat request as the provider receives it, minus the key (ADR-098 RQC-006). EncodeRequest returns it. The base URL is the client's; the send path adds auth and caller headers.
+ */
+export interface WireRequest {
+  /**
+   * path is the endpoint path, with the model filled in where the wire shape puts it.
+   */
+  path: string;
+
+  /**
+   * headers are the content headers only, such as anthropic-beta. They need no key.
+   */
+  headers: Record<string, string>;
+
+  /**
+   * body is the JSON request body.
+   */
+  body: Uint8Array;
+}
+
+/**
+ * Part is the universal multimodal input atom: exactly one of text, an image, an uploaded file, a tool call, a tool result, lyrics, an audio URL or audio bytes. Every capability takes the same Part (ADR-100 MSG-010); each one rejects a kind it does not accept with a ValidationError that names the kind (MSG-011).
+ */
+export type Part =
+  | { /** text is a text payload. */ text: string }
+  | { /** image is an inline image: its mime type and raw bytes. */ image: MediaRef }
+  | { /** file is a reference to a file uploaded to the provider. */ file: File }
+  | { /** toolCall is one tool invocation the model issued on an assistant turn (ADR-100 MSG-008). */ toolCall: ToolCall }
+  | { /** toolResult is the result of one tool call, on a tool turn (ADR-100 MSG-008). */ toolResult: ToolResult }
+  | { /** lyrics is song lyrics, for music generation (ADR-033). */ lyrics: string }
+  | { /** audioUrl is a public audio URL, for transcription (ADR-048). The provider fetches it. */ audioUrl: string }
+  | { /** audio is local audio bytes, for transcription (ADR-048). The runtime uploads them first when the provider needs a URL. */ audio: MediaRef };
+
+/**
+ * PART_KINDS maps each Part key to its variant name (ADR-100 MSG-012).
+ */
+export const PART_KINDS: Readonly<Record<string, string>> = {
+  text: "text",
+  image: "image",
+  file: "file",
+  toolCall: "tool_call",
+  toolResult: "tool_result",
+  lyrics: "lyrics",
+  audioUrl: "audio_url",
+  audio: "audio",
+};
+
+/**
+ * ACCEPTED_PART_KINDS lists the Part variants each capability accepts,
+ * keyed by the capability label (acceptsPartKind, ADR-100 MSG-011).
+ */
+export const ACCEPTED_PART_KINDS: Readonly<Record<string, readonly string[]>> = {
+  chat: ["text", "image", "file", "tool_call", "tool_result"],
+  image_generation: ["text", "image"],
+  music_generation: ["text", "lyrics"],
+  transcription: ["audio_url", "audio"],
+  video_generation: ["text", "image"],
+};

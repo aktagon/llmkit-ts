@@ -8,80 +8,41 @@
 // entry point IS the function the send path calls, not a second implementation
 // beside it.
 
-import { PROVIDERS, RESPONSE_TEXT_CONFIGS } from "./providers/providers.ts";
-import type { ProviderName, ProviderSpec } from "./providers/providers.ts";
+import {
+  PROVIDERS,
+  wireShapeFinishReasonFallback,
+  wireShapeFinishReasons,
+  wireShapeFixedValues,
+  wireShapeResponseCreatedPath,
+  wireShapeResponseIdPath,
+  wireShapeResponseModelPath,
+} from "./providers/providers.ts";
+import type {
+  FinishReason,
+  FinishReasonEntry,
+  ProviderName,
+  ProviderSpec,
+} from "./providers/providers.ts";
 import { cachingConfig } from "./providers/caching.ts";
-import { ValidationError } from "./errors.ts";
 import {
   extractPath,
-  matchingBlocks,
   optIntPath,
   optFloatPath,
   setWirePath,
 } from "./paths.ts";
 import { parseCacheUsage } from "./caching.ts";
 import { captureProviderTurn } from "./provider_turn.ts";
+import { ValidationError } from "./errors.ts";
+import { writeJson } from "./json_text.ts";
+import { checkTurnParts, servedChatSpec } from "./request.ts";
+import {
+  decodeChatParts,
+  encodeChatParts,
+  noToolCallConfigError,
+  responseText,
+  responseToolCalls,
+} from "./response_parts.ts";
 import type { Response, Usage } from "./types.ts";
-
-/**
- * extractResponseText reads the assistant's text out of a parsed provider body.
- *
- * Two readers, selected by the WIRE SHAPE, never by provider name:
- *
- * - block-array families declare a RESPONSE_TEXT_CONFIGS entry and are read by
- *   DISCRIMINATOR, because array position is not stable — Opus 5 and Sonnet 5
- *   think by default, so content[0] is a thinking block (BUG-053);
- * - scalar families declare none, and absence SELECTS the fixed-path reader.
- *
- * An empty result is a real answer, not a failure: every tool-use turn carries
- * no text block at all. finishReason is what says why, which is why
- * Response.text stays a plain string rather than becoming optional across seven
- * SDKs to mark something routine.
- */
-function extractResponseText(
-  raw: unknown,
-  cfg: ProviderSpec,
-  chatWireShape: string,
-): string {
-  const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
-  if (!textCfg) return extractPath(raw, cfg.responseTextPath);
-  const blocks = matchingBlocks(
-    raw,
-    textCfg.blocksPath,
-    textCfg.markerPath,
-    textCfg.markerValue,
-  );
-  if (blocks.length === 0) return "";
-  return extractPath(blocks[0], textCfg.valuePath);
-}
-
-/**
- * encodeResponseText is extractResponseText's inverse, driven by the SAME
- * config so the two cannot drift apart.
- *
- * The marker is WRITTEN, not just tested. Emitting only the value path would
- * produce {"content":[{"text":"pong"}]} — a body with no type discriminator,
- * which the reader above then finds no matching block in. That is the ADR-076
- * fixed point breaking, and it is why textMarkerValue is documented as a
- * write instruction rather than a read predicate.
- */
-function encodeResponseText(
-  raw: Record<string, unknown>,
-  cfg: ProviderSpec,
-  chatWireShape: string,
-  text: string,
-): void {
-  const textCfg = RESPONSE_TEXT_CONFIGS[chatWireShape];
-  if (!textCfg) {
-    setWirePath(raw, cfg.responseTextPath, text);
-    return;
-  }
-  const block = `${textCfg.blocksPath}[0]`;
-  if (textCfg.markerValue !== "") {
-    setWirePath(raw, `${block}.${textCfg.markerPath}`, textCfg.markerValue);
-  }
-  setWirePath(raw, `${block}.${textCfg.valuePath}`, text);
-}
 
 /**
  * decodeResponse extracts text and usage from a provider response body into the
@@ -93,30 +54,17 @@ function encodeResponseText(
  * Keyless, IO-free and pure (ADR-076 SYM-002): no Client, no credential, no
  * network, no clock. The wire shape is required, not derived — one provider can
  * serve two chat protocols, and inferring it silently mis-parses (SYM-003).
+ * It runs the served-shape check encodeResponse runs (servedChatWireShape,
+ * HANDOFF-105 F4): a shape the provider does not serve, or a provider with no
+ * chat shape, is a ValidationError on field "chatWireShape", and an unknown
+ * provider one on "provider".
  */
-/**
- * Fill in an unspecified wire shape with the provider's DEFAULT chat protocol.
- * 
- * Callers that decode a body they know is Chat Completions — batch result lines,
- * chiefly — pass "" to mean "not the Responses envelope". Harmless while the shape
- * only chose between the Responses arm and the provider's declared paths; NOT
- * harmless once it also selects the TEXT READER, because "" resolved to no config,
- * which is the positional reader BUG-053 removed. Batched Anthropic replies with a
- * leading thinking block decoded to "" long after the send path was fixed.
- * 
- * Resolving here keeps N=1. ADR-055 requires every provider's default protocol to
- * be a Chat Completions family, so this can never resolve INTO the Responses arm.
- */
-function resolveChatWireShape(provider: ProviderName, chatWireShape: string): string {
-  return chatWireShape !== "" ? chatWireShape : PROVIDERS[provider].chatWireShape;
-}
-
 export function decodeResponse(
   provider: ProviderName,
   chatWireShape: string,
   body: string,
 ): Response {
-  chatWireShape = resolveChatWireShape(provider, chatWireShape);
+  chatWireShape = servedChatWireShape(provider, chatWireShape);
   const raw: unknown = JSON.parse(body);
   const cfg = PROVIDERS[provider];
   // ADR-085: capture the assistant turn as the provider serialized it, from the
@@ -127,12 +75,13 @@ export function decodeResponse(
   if (chatWireShape === "ChatResponsesOpenAI") {
     const envelope = parseResponsesEnvelope(raw);
     if (providerTurn) envelope.providerTurn = providerTurn;
+    envelope.chatWireShape = chatWireShape;
     return envelope;
   }
 
   const cache = parseCacheUsage(raw, provider);
   const result: Response = {
-    text: extractResponseText(raw, cfg, chatWireShape),
+    parts: decodeChatParts(body, provider, cfg, chatWireShape),
     usage: {
       input: optIntPath(raw, cfg.usageInputPath),
       output: optIntPath(raw, cfg.usageOutputPath),
@@ -146,14 +95,142 @@ export function decodeResponse(
   };
   if (cfg.finishReasonPath) {
     const reason = extractPath(raw, cfg.finishReasonPath);
-    if (reason) result.finishReason = reason;
+    if (reason) setFinishReason(result, chatWireShape, reason, raw);
   }
   if (cfg.finishMessagePath) {
     const message = extractPath(raw, cfg.finishMessagePath);
     if (message) result.finishMessage = message;
   }
+  setResponseIdentity(result, raw, cfg.responseIdPath, cfg.responseModelPath);
+  setCreated(result, raw, chatWireShape);
   if (providerTurn) result.providerTurn = providerTurn;
+  if (chatWireShape) result.chatWireShape = chatWireShape;
   return result;
+}
+
+/**
+ * setCreated sets the response's creation time (owner decision 4, HANDOFF-105
+ * section 3b) from the shape's created path. Absent when the shape declares
+ * none (Anthropic, Google, Bedrock) or the body has no value there.
+ */
+function setCreated(result: Response, raw: unknown, chatWireShape: string): void {
+  const created = optIntPath(raw, wireShapeResponseCreatedPath(chatWireShape));
+  if (created !== undefined) result.created = created;
+}
+
+/**
+ * servedChatWireShape resolves the shape decodeResponse reads (HANDOFF-105 F4)
+ * and encodeResponse writes, through servedChatSpec, the check encodeRequest
+ * runs.
+ */
+function servedChatWireShape(provider: ProviderName, chatWireShape: string): string {
+  return servedChatSpec(provider, chatWireShape).chatWireShape;
+}
+
+/**
+ * encodeFixedValues writes the fields every body of the shape carries with the
+ * same value (shapeFixedValue, owner decision 4): on ChatOpenAI the object
+ * type, the choice index and the message role.
+ */
+function encodeFixedValues(raw: Record<string, unknown>, chatWireShape: string): void {
+  for (const fv of wireShapeFixedValues(chatWireShape)) setWirePath(raw, fv.path, fv.value);
+}
+
+/**
+ * decodeFinishReason maps the provider's finish-reason string to its canonical
+ * value through the chat wire shape's generated table (ADR-099 CRF-001). A
+ * string with no entry is "other" (CRF-011). `raw` is read only for an entry
+ * whose wire value fuses two canonical values (CRF-007); a caller with no body
+ * passes undefined, and such an entry then does not match.
+ */
+export function decodeFinishReason(
+  chatWireShape: string,
+  wire: string,
+  raw: unknown,
+): FinishReason {
+  const entry = wireShapeFinishReasons(chatWireShape).find(
+    (e) =>
+      e.wireValue === wire &&
+      (e.detailPath === "" || extractPath(raw, e.detailPath) === e.detailValue),
+  );
+  return entry ? entry.canonical : "other";
+}
+
+/**
+ * setFinishReason sets both finish-reason fields from the provider's string:
+ * providerFinishReason verbatim (CRF-002), finishReason canonical.
+ */
+export function setFinishReason(
+  result: Response,
+  chatWireShape: string,
+  wire: string,
+  raw: unknown,
+): void {
+  result.providerFinishReason = wire;
+  result.finishReason = decodeFinishReason(chatWireShape, wire, raw);
+}
+
+/**
+ * encodeFinishReason picks the wire value encodeResponse writes (ADR-099
+ * CRF-010). The provider's own string wins when the target shape knows it with
+ * the same canonical value, so a same-format round trip is exact (Google
+ * RECITATION stays RECITATION). A response decoded from the target shape also
+ * keeps a string the table does not know (owner decision 1, HANDOFF-105 F3):
+ * Anthropic pause_turn decodes as other and encodes back as pause_turn.
+ * Otherwise the preferred entry for the canonical
+ * value is written (Anthropic end_turn becomes OpenAI stop). A canonical value
+ * the shape has no entry for is written as the shape's declared fallback
+ * (owner decision 1, HANDOFF-105 section 3b): ChatOpenAI other is stop. An
+ * unmapped provider string, such as Google LANGUAGE, is not a known wire
+ * value, so it too encodes as the fallback (CRF-010).
+ *
+ * Undefined only when the response reports no finish reason, or the shape
+ * declares no table: there is nothing to write.
+ */
+function encodeFinishReason(
+  chatWireShape: string,
+  response: Response,
+): FinishReasonEntry | undefined {
+  const canonical = response.finishReason;
+  if (canonical === undefined) return undefined;
+  const table = wireShapeFinishReasons(chatWireShape);
+  const known = table.find(
+    (e) => e.wireValue === response.providerFinishReason && e.canonical === canonical,
+  );
+  if (known) return known;
+  // After the table, so a fused entry (CRF-007) keeps its detail.
+  if (response.providerFinishReason !== undefined && response.chatWireShape === chatWireShape) {
+    return {
+      wireValue: response.providerFinishReason,
+      detailPath: "",
+      detailValue: "",
+      canonical,
+      preferred: false,
+    };
+  }
+  const entry = table.find((e) => e.preferred && e.canonical === canonical);
+  if (entry) return entry;
+  const fallback = wireShapeFinishReasonFallback(chatWireShape, canonical);
+  return fallback === undefined
+    ? undefined
+    : { wireValue: fallback, detailPath: "", detailValue: "", canonical, preferred: false };
+}
+
+/**
+ * setResponseIdentity sets the response id and the reported model (ADR-099
+ * CRF-012) from the given paths. Each stays absent when its path is empty
+ * (Bedrock) or the body has no value there.
+ */
+function setResponseIdentity(
+  result: Response,
+  raw: unknown,
+  idPath: string,
+  modelPath: string,
+): void {
+  const id = idPath ? extractPath(raw, idPath) : "";
+  if (id) result.id = id;
+  const model = modelPath ? extractPath(raw, modelPath) : "";
+  if (model) result.model = model;
 }
 
 /**
@@ -194,15 +271,16 @@ export function encodeResponse(
   chatWireShape: string,
   response: Response,
 ): string {
-  chatWireShape = resolveChatWireShape(provider, chatWireShape);
+  chatWireShape = servedChatWireShape(provider, chatWireShape);
   guardOneWayFields(provider, response);
+  checkTurnParts("assistant", response.parts, "parts", (call) => call.input);
   if (chatWireShape === "ChatResponsesOpenAI") {
-    return JSON.stringify(encodeResponsesEnvelope(response));
+    return writeJson(encodeResponsesEnvelope(provider, chatWireShape, response));
   }
 
   const cfg = PROVIDERS[provider];
   const raw: Record<string, unknown> = {};
-  encodeResponseText(raw, cfg, chatWireShape, response.text);
+  encodeChatParts(raw, provider, cfg, chatWireShape, response.parts);
   setWirePath(raw, cfg.usageInputPath, response.usage.input);
   setWirePath(raw, cfg.usageOutputPath, response.usage.output);
   const cc = cachingConfig(provider);
@@ -214,27 +292,34 @@ export function encodeResponse(
     setWirePath(raw, cfg.usageCostPath, response.usage.cost / cfg.usageCostScale);
   }
   setWirePath(raw, cfg.reasoningTokensPath, response.usage.reasoning);
-  setWirePath(raw, cfg.finishReasonPath, response.finishReason);
+  const finish = encodeFinishReason(chatWireShape, response);
+  if (finish) {
+    setWirePath(raw, cfg.finishReasonPath, finish.wireValue);
+    setWirePath(raw, finish.detailPath, finish.detailValue);
+  }
   setWirePath(raw, cfg.finishMessagePath, response.finishMessage);
-  return JSON.stringify(raw);
+  setWirePath(raw, cfg.responseIdPath, response.id);
+  setWirePath(raw, cfg.responseModelPath, response.model);
+  setWirePath(raw, wireShapeResponseCreatedPath(chatWireShape), response.created);
+  encodeFixedValues(raw, chatWireShape);
+  return writeJson(raw);
 }
 
 // guardOneWayFields refuses to encode a canonical field whose mapping is
-// OneWay for this provider — the result set of CQ-WMAP-011 (ADR-076
-// SYM-007). Only one member is in Phase 2's scope; the other,
-// exceptGoogleToolCallID, covers tool calls, which are out (SYM-008).
+// OneWay for this provider — the result set of CQ-WMAP-011 restricted to
+// Response (ADR-076 SYM-007). That set is empty today:
+// exceptGoogleToolCallID is on ToolCall, whose Google id the config
+// never writes (HANDOFF-105 F4), and
+// exceptVertexFinishReason is on the image response since ADR-099 slice
+// C4 (CRF-006). A Vertex chat Response writes no finish reason anyway: Vertex
+// has no chat wire shape, so encodeFinishReason finds no table.
 //
-// An empty value is not an error: there is nothing to write, so the common path
-// stays usable and only the lying path fails. The ValidationError's field and
-// message carry the mapping's canonicalPath and invertibilityNote
-// verbatim.
-function guardOneWayFields(provider: ProviderName, response: Response): void {
-  if (provider === "vertex" && response.finishReason) {
-    throw new ValidationError(
-      "response.finish_reason",
-      "Vertex carries no finish-reason field. Its path reads predictions[0].raiFilteredReason — a safety-filter explanation surfaced AS the finish reason. Extraction is a deliberate fusion, so the reverse leg cannot decide whether a given canonical finish_reason originated as a safety verdict, and writing an ordinary stop signal into that field would fabricate one.",
-    );
-  }
+// The guard stays so a new whole-field exception on Response fails
+// lint_response_codec.py until it is guarded here. An empty value is not an
+// error: there is nothing to write. The ValidationError's field and message
+// carry the mapping's canonicalPath and invertibilityNote verbatim.
+function guardOneWayFields(_provider: ProviderName, _response: Response): void {
+  // No whole-field one-way exception on Response today.
 }
 
 // parseResponsesEnvelope extracts text + usage from OpenAI's Responses reply
@@ -245,8 +330,9 @@ function guardOneWayFields(provider: ProviderName, response: Response): void {
 // with the ChatResponsesOpenAI request arm (ADR-028: behavior held by tests,
 // not by declared response paths).
 function parseResponsesEnvelope(raw: unknown): Response {
+  const text = extractResponsesText(raw);
   const result: Response = {
-    text: extractResponsesText(raw),
+    parts: text ? [{ text }] : [],
     usage: {
       input: optIntPath(raw, "usage.input_tokens"),
       output: optIntPath(raw, "usage.output_tokens"),
@@ -260,7 +346,14 @@ function parseResponsesEnvelope(raw: unknown): Response {
     },
   };
   const status = extractPath(raw, "status");
-  if (status) result.finishReason = status;
+  if (status) setFinishReason(result, "ChatResponsesOpenAI", status, raw);
+  setResponseIdentity(
+    result,
+    raw,
+    wireShapeResponseIdPath("ChatResponsesOpenAI"),
+    wireShapeResponseModelPath("ChatResponsesOpenAI"),
+  );
+  setCreated(result, raw, "ChatResponsesOpenAI");
   return result;
 }
 
@@ -268,14 +361,24 @@ function parseResponsesEnvelope(raw: unknown): Response {
 // Responses reply (ADR-055) — an output[] array whose message item carries
 // content[] blocks of type "output_text", with input_tokens/output_tokens usage
 // and cached + reasoning sub-details. Hand-coded per wire shape on both legs,
-// symmetric with the reader, for the same reason the reader is.
-function encodeResponsesEnvelope(response: Response): Record<string, unknown> {
+// symmetric with the reader, for the same reason the reader is. The shape
+// declares no ToolCallResponseConfig, so a response with tool calls is a
+// ValidationError on field "toolCalls" (HANDOFF-105 F4 decision 2).
+function encodeResponsesEnvelope(
+  provider: ProviderName,
+  chatWireShape: string,
+  response: Response,
+): Record<string, unknown> {
+  if (responseToolCalls(response).length > 0) {
+    throw noToolCallConfigError(provider, chatWireShape);
+  }
   const raw: Record<string, unknown> = {};
-  if (response.text) {
+  const text = responseText(response);
+  if (text) {
     raw.output = [
       {
         type: "message",
-        content: [{ type: "output_text", text: response.text }],
+        content: [{ type: "output_text", text }],
       },
     ];
   }
@@ -291,7 +394,15 @@ function encodeResponsesEnvelope(response: Response): Record<string, unknown> {
     "usage.output_tokens_details.reasoning_tokens",
     response.usage.reasoning,
   );
-  setWirePath(raw, "status", response.finishReason);
+  const finish = encodeFinishReason(chatWireShape, response);
+  if (finish) {
+    setWirePath(raw, "status", finish.wireValue);
+    setWirePath(raw, finish.detailPath, finish.detailValue);
+  }
+  setWirePath(raw, wireShapeResponseIdPath("ChatResponsesOpenAI"), response.id);
+  setWirePath(raw, wireShapeResponseModelPath("ChatResponsesOpenAI"), response.model);
+  setWirePath(raw, wireShapeResponseCreatedPath("ChatResponsesOpenAI"), response.created);
+  encodeFixedValues(raw, chatWireShape);
   return raw;
 }
 
