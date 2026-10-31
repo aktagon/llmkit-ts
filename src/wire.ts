@@ -8,7 +8,7 @@
 import type { MediaRef, Message, Part, ToolCall } from "./structs.ts";
 import { base64ToBytes, bytesToBase64 } from "./image.ts";
 import { compactJson, JsonText, writeJson } from "./json_text.ts";
-import { extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
+import { checkProviderTurn, extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
 import { ValidationError } from "./errors.ts";
 import { PART_KINDS } from "./structs.ts";
 import { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
@@ -142,7 +142,11 @@ export function loadHistory(data: string): Message[] {
   // read from the document's text, not from the parse, which would round an
   // integer past 2^53 and reorder integer-like keys.
   const rawMsgTexts = extractRawJsonElements(data, "messages") ?? [];
-  return rawMsgs.map((m, i) => fromWireMessage(m, rawMsgTexts[i]));
+  return rawMsgs.map((m, i) => {
+    const message = fromWireMessage(m, rawMsgTexts[i]);
+    checkProviderTurn(message.providerTurn, `messages[${i}].provider_turn`);
+    return message;
+  });
 }
 
 function toWireMessage(m: Message, i: number): WireMessage {
