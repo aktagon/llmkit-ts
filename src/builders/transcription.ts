@@ -18,6 +18,7 @@ import {
   type TranscriptionDef,
   transcriptionConfig,
 } from "../providers/transcription_gen.ts";
+import { writeJson } from "../json_text.ts";
 import { APIError, ValidationError } from "../errors.ts";
 import { checkPartKinds } from "../part_kinds.ts";
 import { sendHTTP } from "../http.ts";
@@ -638,7 +639,7 @@ async function postJson(
     {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: writeJson(body),
     },
     timeoutMs,
   );

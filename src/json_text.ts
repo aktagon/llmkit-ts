@@ -37,6 +37,11 @@ export class JsonText {
  * Everything else is written as JSON.stringify writes it: an undefined member
  * is left out, an undefined array element is null, and a value with toJSON is
  * written through it.
+ *
+ * One difference: U+2028 and U+2029 in a string writeJson writes are written
+ * as the escapes \u2028 and \u2029, as Go's encoding/json writes them, where
+ * JSON.stringify writes the characters (HANDOFF-105 F9, owner decision 1). A
+ * JsonText is the provider's or the caller's text and keeps its spelling.
  */
 export function writeJson(value: unknown): string {
   const text = write(value);
@@ -51,11 +56,26 @@ function write(value: unknown): string | undefined {
     const members: string[] = [];
     for (const [key, member] of Object.entries(value)) {
       const text = write(member);
-      if (text !== undefined) members.push(`${JSON.stringify(key)}:${text}`);
+      if (text !== undefined) members.push(`${stringify(key)}:${text}`);
     }
     return `{${members.join(",")}}`;
   }
-  return JSON.stringify(value) as string | undefined;
+  return stringify(value);
+}
+
+/**
+ * stringify is JSON.stringify(value) with U+2028 and U+2029 escaped. In JSON
+ * text JSON.stringify wrote, either character can only stand inside a string,
+ * so replacing it with its escape keeps the value.
+ */
+function stringify(value: unknown): string | undefined {
+  return (JSON.stringify(value) as string | undefined)?.replace(LINE_SEPARATORS, escapeLineSeparator);
+}
+
+const LINE_SEPARATORS = /[\u2028\u2029]/g;
+
+function escapeLineSeparator(c: string): string {
+  return c === "\u2028" ? "\\u2028" : "\\u2029";
 }
 
 /**
