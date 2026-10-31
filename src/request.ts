@@ -33,7 +33,7 @@ import type {
   ToolResult,
   WireRequest,
 } from "./structs.ts";
-import { checkPartKinds, partKind } from "./part_kinds.ts";
+import { checkChatPart, checkPartKinds, partKind } from "./part_kinds.ts";
 import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
 import { toolCallInput, writeToolCall } from "./response_parts.ts";
@@ -717,7 +717,8 @@ const ROLE_PARTS: Readonly<Record<string, readonly string[]>> = {
 
 /**
  * checkTurnParts throws a ValidationError for a part that sets no kind or two,
- * a kind chat does not accept (MSG-011), or a kind the role cannot carry
+ * an empty text part (checkChatPart), a kind chat does not accept (MSG-011),
+ * or a kind the role cannot carry
  * (MSG-002). `field` names the parts list, e.g. "messages[2].parts". The
  * request encoder runs it on every turn, and encodeResponse on the response's
  * assistant turn. `written` is the input text the caller's encoder writes for
@@ -731,6 +732,7 @@ export function checkTurnParts(
   field: string,
   written: (call: ToolCall) => unknown,
 ): void {
+  parts.forEach((p, j) => checkChatPart(p, `${field}[${j}]`));
   checkPartKinds("chat", parts, field);
   const allowed = ROLE_PARTS[role] ?? [];
   parts.forEach((p, j) => {

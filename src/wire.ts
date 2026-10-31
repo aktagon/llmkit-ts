@@ -10,6 +10,7 @@ import { base64ToBytes, bytesToBase64 } from "./image.ts";
 import { compactJson, JsonText, writeJson } from "./json_text.ts";
 import { checkProviderTurn, extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
 import { ValidationError } from "./errors.ts";
+import { checkChatPart } from "./part_kinds.ts";
 import { PART_KINDS } from "./structs.ts";
 import { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
 
@@ -152,7 +153,11 @@ export function loadHistory(data: string): Message[] {
 function toWireMessage(m: Message, i: number): WireMessage {
   const out: WireMessage = {
     role: m.role,
-    parts: m.parts.map((p, j) => toWirePart(p, `messages[${i}].parts[${j}]`)),
+    parts: m.parts.map((p, j) => {
+      const field = `messages[${i}].parts[${j}]`;
+      checkChatPart(p, field);
+      return toWirePart(p, field);
+    }),
   };
   if (m.providerTurn) {
     out.provider_turn = {
