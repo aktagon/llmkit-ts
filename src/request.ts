@@ -20,7 +20,7 @@ import {
 } from "./providers/options.ts";
 import { fileUploadConfig } from "./providers/upload.ts";
 import { ValidationError } from "./errors.ts";
-import { rawJsonElements, resolveTurns } from "./provider_turn.ts";
+import { checkProviderTurn, rawJsonElements, resolveTurns } from "./provider_turn.ts";
 import type { MiddlewareFn } from "./providers/middleware.ts";
 import type { Provider } from "./types.ts";
 import type {
@@ -742,6 +742,7 @@ function isJSON(text: string): boolean {
 function toInternal(messages: Message[]): Msg[] {
   return messages.map((m, i): Msg => {
     checkTurnParts(m.role, m.parts, `messages[${i}].parts`, requestToolInput);
+    checkProviderTurn(m.providerTurn, `messages[${i}].provider_turn`);
     const projected: PartsMsg = { kind: "parts", role: m.role, parts: m.parts };
     // providerTurn is the same turn in the provider's own serialization. When
     // present it supersedes the parts on the wire while the parts stay what
@@ -866,10 +867,7 @@ function buildGoogleContents(
     // {role, parts} object the contents array takes, so it drops straight in.
     // Its calls still fed idToName above, because a LATER tool result is
     // matched by name against them.
-    if (m.kind === "turn" && m.shape === "ChatGoogle") {
-      const payload = replayedObject(m.wire);
-      if (payload) return payload;
-    }
+    if (m.kind === "turn" && m.shape === "ChatGoogle") return new JsonText(m.wire);
     const role =
       turn.role === "tool" ? "user" : (cfg.roleMappings[turn.role] ?? turn.role);
     return { role, parts: googleParts(turn.parts, idToName, cfg) };
@@ -929,8 +927,8 @@ function buildMessages(
   }
 
   for (const m of msgs) {
-    if (m.kind === "turn" && appendFlatReplayedTurn(out, m, cfg)) continue;
-    out.push(...flatProjectedEntry(unwrap(m), cfg));
+    if (m.kind === "turn") appendFlatReplayedTurn(out, m, cfg);
+    else out.push(...flatProjectedEntry(m, cfg));
   }
 
   return out;
@@ -1024,8 +1022,7 @@ function anthropicContent(parts: Part[], cfg: ProviderSpec): unknown {
 }
 
 // appendFlatReplayedTurn appends a captured assistant turn to a flat-envelope
-// array in whatever container that wire family expects, returning false when the
-// payload cannot be placed so the caller reconstructs instead.
+// array in whatever container that wire family expects.
 //
 // The three families disagree on what assistantTurnPath even points at, which
 // is why this cannot be one push:
@@ -1044,41 +1041,17 @@ function appendFlatReplayedTurn(
   out: Array<Record<string, unknown> | JsonText>,
   turn: Extract<Msg, { kind: "turn" }>,
   cfg: ProviderSpec,
-): boolean {
+): void {
+  // toInternal has checked the turn is one JSON value of its shape's kind
+  // (checkProviderTurn), so every turn is placed; none is rebuilt from its
+  // parts (HANDOFF-105 F9, owner decision 3).
   if (turn.shape === "ChatAnthropic") {
-    const content = replayedJson(turn.wire);
-    if (!content) return false;
-    out.push({ role: cfg.roleMappings.assistant ?? "assistant", content });
-    return true;
+    out.push({ role: cfg.roleMappings.assistant ?? "assistant", content: new JsonText(turn.wire) });
+  } else if (turn.shape === "ChatResponsesOpenAI") {
+    for (const item of rawJsonElements(turn.wire) ?? []) out.push(new JsonText(item));
+  } else {
+    out.push(new JsonText(turn.wire));
   }
-  if (turn.shape === "ChatResponsesOpenAI") {
-    if (!replayedJson(turn.wire)) return false;
-    const items = rawJsonElements(turn.wire);
-    if (!items) return false;
-    for (const item of items) out.push(new JsonText(item));
-    return true;
-  }
-  const payload = replayedObject(turn.wire);
-  if (!payload) return false;
-  out.push(payload);
-  return true;
-}
-
-// replayedJson is a captured turn's text as a JsonText, or undefined when it is
-// not one JSON value, so the caller reconstructs the turn instead.
-function replayedJson(wire: string): JsonText | undefined {
-  try {
-    return new JsonText(wire);
-  } catch {
-    return undefined;
-  }
-}
-
-// replayedObject is replayedJson for a turn whose container is one object
-// (ChatOpenAI's message, Google's content).
-function replayedObject(wire: string): JsonText | undefined {
-  const payload = replayedJson(wire);
-  return payload?.text.startsWith("{") ? payload : undefined;
 }
 
 // attachToolDefs writes the provider-shaped tool definitions onto the body.
