@@ -20,9 +20,8 @@ import { APIError, ValidationError } from "../errors.ts";
 import { applyCaching, checkCacheTTL } from "../caching.ts";
 import { decodeResponseRaw } from "../response.ts";
 import {
-  encodeBody,
+  encodeChat,
   executeRequest,
-  prepareRequest,
   resolveChatProtocol,
   type SendOptions,
 } from "../request.ts";
@@ -158,7 +157,7 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
   // Throws ValidationError(field:"protocol") before any network call when the
   // token is unknown or the provider does not expose it.
   const effCfg = resolveChatProtocol(cfg, b._protocol);
-  const request = prepareRequest(provider, effCfg, built);
+  const { request, body, headers } = encodeChat(provider, effCfg, built);
 
   const baseEvent: Event = {
     op: "llm_request",
@@ -171,7 +170,6 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
   const start = performance.now();
 
   try {
-    const { body, headers } = encodeBody(provider.name, effCfg, request);
     if (options.caching) {
       await applyCaching(body, provider, effCfg, request.model, options);
     }

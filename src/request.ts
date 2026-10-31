@@ -152,13 +152,36 @@ export function encodeRequest(
       `provider "${provider}" does not support wire shape "${chatWireShape}"`,
     );
   }
-  const req = prepareRequest({ name: provider as ProviderName, apiKey: "" }, cfg, request);
-  const { body, headers } = encodeBody(provider as ProviderName, cfg, req);
+  const chat = encodeChat({ name: provider as ProviderName, apiKey: "" }, cfg, request);
   return {
-    path: requestPath(cfg, req.model),
-    headers,
-    body: new TextEncoder().encode(writeJson(body)),
+    path: requestPath(cfg, chat.request.model),
+    headers: chat.headers,
+    body: new TextEncoder().encode(writeJson(chat.body)),
   };
+}
+
+/** ChatRequest is a chat request that passed every check. */
+export interface ChatRequest {
+  request: PreparedRequest;
+  body: Record<string, unknown>;
+  headers: Record<string, string>;
+}
+
+/**
+ * encodeChat is the one validation step of a chat call: prepareRequest, then
+ * encodeBody, which checks every part. Text, stream, the Agent (each turn),
+ * batch (each item) and encodeRequest all run it before anything else, so a
+ * request that fails a check never reaches middleware (HANDOFF-105 F11, owner
+ * decision 1).
+ */
+export function encodeChat(
+  provider: Provider,
+  cfg: ProviderSpec,
+  request: PromptRequest,
+): ChatRequest {
+  const prepared = prepareRequest(provider, cfg, request);
+  const { body, headers } = encodeBody(provider.name, cfg, prepared);
+  return { request: prepared, body, headers };
 }
 
 // requestPath is the endpoint with the model filled in where the wire shape

@@ -16,10 +16,9 @@ import { attachRaw, decodeResponseRaw } from "./response.ts";
 import {
   appendBeta,
   buildAuthHeaders,
-  encodeBody,
-  prepareRequest,
+  encodeChat,
   resolveModel,
-  type PreparedRequest,
+  type ChatRequest,
   type SendOptions,
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
@@ -91,9 +90,9 @@ export async function submitBatch(
       `batching not supported: ${provider.name}`,
     );
   }
-  // The one setup step on every item (RQC-017), before the batch_submit
-  // event: an item with an option the provider does not take fails here.
-  const prepared = requests.map((r) => prepareRequest(provider, cfg, r));
+  // The one validation step on every item (RQC-017), before the
+  // batch_submit event: a bad item fails here (HANDOFF-105 F11).
+  const items = requests.map((r) => encodeChat(provider, cfg, r));
 
   // Every item comes from one builder, so the first item's model is the
   // batch's. An empty batch reports the provider's model.
@@ -101,7 +100,7 @@ export async function submitBatch(
     op: "batch_submit",
     phase: "pre",
     provider: provider.name,
-    model: prepared[0]?.model ?? resolveModel(provider, cfg),
+    model: items[0]?.request.model ?? resolveModel(provider, cfg),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
@@ -113,7 +112,7 @@ export async function submitBatch(
 
     let body: Uint8Array;
     if (bc.inputMode === "FileReferenceInput") {
-      const jsonl = await buildBatchJsonl(prepared, provider, cfg, bc, options);
+      const jsonl = await buildBatchJsonl(items, provider, cfg, bc, options);
       const fileId = await uploadBatchFile(base, jsonl, bc, headers, provider.timeoutMs);
       const payload: Record<string, unknown> = {
         [bc.inputField]: fileId,
@@ -123,7 +122,7 @@ export async function submitBatch(
       body = new TextEncoder().encode(writeJson(payload));
     } else {
       const { payload, betaHeaders } = await buildBatchBody(
-        prepared,
+        items,
         provider,
         cfg,
         bc,
@@ -366,7 +365,7 @@ function batchRequestCount(
 // returns them per request; the batch submit otherwise sends
 // only auth headers).
 async function buildBatchBody(
-  requests: PreparedRequest[],
+  requests: ChatRequest[],
   provider: Provider,
   cfg: ProviderSpec,
   bc: BatchDef,
@@ -378,8 +377,7 @@ async function buildBatchBody(
   const items: Record<string, unknown>[] = [];
   const betaHeaders: Record<string, string> = {};
   for (let i = 0; i < requests.length; i++) {
-    const req = requests[i]!;
-    const { body: reqBody, headers: reqHeaders } = encodeBody(provider.name, cfg, req);
+    const { request: req, body: reqBody, headers: reqHeaders } = requests[i]!;
     if (reqHeaders["anthropic-beta"]) {
       betaHeaders["anthropic-beta"] = appendBeta(
         betaHeaders["anthropic-beta"] ?? "",
@@ -405,7 +403,7 @@ async function buildBatchBody(
 }
 
 async function buildBatchJsonl(
-  requests: PreparedRequest[],
+  requests: ChatRequest[],
   provider: Provider,
   cfg: ProviderSpec,
   bc: BatchDef,
@@ -413,8 +411,7 @@ async function buildBatchJsonl(
 ): Promise<Uint8Array> {
   const lines: string[] = [];
   for (let i = 0; i < requests.length; i++) {
-    const req = requests[i]!;
-    const { body: reqBody } = encodeBody(provider.name, cfg, req);
+    const { request: req, body: reqBody } = requests[i]!;
     if (options.caching) {
       await applyCaching(reqBody, provider, cfg, req.model, options);
     }
