@@ -19,6 +19,7 @@
 // path and returns that substring. It is a scanner, not a parser: it locates
 // where each value ends and never interprets what is inside one.
 
+import { ValidationError } from "./errors.ts";
 import type { ProviderSpec } from "./providers/providers.ts";
 import type { ProviderTurn } from "./structs.ts";
 import type { Msg } from "./request.ts";
@@ -322,4 +323,47 @@ export function resolveTurns(msgs: Msg[], cfg: ProviderSpec): Msg[] {
     }
     return m;
   });
+}
+
+/**
+ * PROVIDER_TURN_KINDS is the JSON kind of a captured assistant turn for each
+ * shape that replays one: the container assistantTurnPath points at.
+ * Anthropic's content is a block array, OpenAI's message an object, Google's
+ * content an object, and Responses' output an item list. ChatBedrock declares
+ * no turn position, so resolveTurns rebuilds its turns and none is checked.
+ */
+const PROVIDER_TURN_KINDS: Record<string, "[" | "{"> = {
+  ChatAnthropic: "[",
+  ChatOpenAI: "{",
+  ChatGoogle: "{",
+  ChatResponsesOpenAI: "[",
+};
+
+/**
+ * checkProviderTurn throws a ValidationError on field when a saved provider
+ * turn's text is not one JSON value of its shape's kind. loadHistory and the
+ * request encoder (toInternal) both run it, so a bad turn fails where it
+ * enters, never by a silent rebuild from its parts (HANDOFF-105 F9, owner
+ * decision 3; ADR-076). A shape that does not replay is not checked:
+ * resolveTurns rebuilds that turn from its parts, as it does for a turn
+ * captured under another shape (ADR-085 RSN-006).
+ */
+export function checkProviderTurn(turn: ProviderTurn | undefined, field: string): void {
+  if (!turn) return;
+  const kind = PROVIDER_TURN_KINDS[turn.wireShape];
+  if (!kind) return;
+  let ok = false;
+  try {
+    JSON.parse(turn.wire);
+    // JSON.parse accepted the text, so it starts with JSON whitespace only.
+    ok = turn.wire.trimStart().startsWith(kind);
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    throw new ValidationError(
+      field,
+      `a ${turn.wireShape} turn's wire is not one JSON ${kind === "[" ? "array" : "object"}`,
+    );
+  }
 }
