@@ -24,9 +24,7 @@ import type { Part, Response, ToolCall } from "./structs.ts";
  * finish reason tells why.
  */
 export function responseText(response: Response): string {
-  let text = "";
-  for (const p of response.parts) if ("text" in p) text += p.text;
-  return text;
+  return partsText(response.parts);
 }
 
 /**
@@ -34,8 +32,27 @@ export function responseText(response: Response): string {
  * sent them, not run. Empty when the model called no tool.
  */
 export function responseToolCalls(response: Response): ToolCall[] {
+  return partsToolCalls(response.parts);
+}
+
+/**
+ * partsText is the text rule of responseText over any turn's parts. The
+ * request encoder reads an assistant turn with it, so the turn carries the
+ * text the response did (owner decision 4, HANDOFF-105 F5, F11).
+ */
+export function partsText(parts: readonly Part[]): string {
+  let text = "";
+  for (const p of parts) if ("text" in p) text += p.text;
+  return text;
+}
+
+/**
+ * partsToolCalls is the tool-call rule of responseToolCalls over any turn's
+ * parts, in order. The request encoder reads a turn's calls with it.
+ */
+export function partsToolCalls(parts: readonly Part[]): ToolCall[] {
   const calls: ToolCall[] = [];
-  for (const p of response.parts) if ("toolCall" in p) calls.push(p.toolCall);
+  for (const p of parts) if ("toolCall" in p) calls.push(p.toolCall);
   return calls;
 }
 
