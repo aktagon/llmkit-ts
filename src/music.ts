@@ -13,6 +13,7 @@ import {
   type MusicWireShape,
   musicGenConfig,
 } from "./providers/music_gen.ts";
+import { writeJson } from "./json_text.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { checkPartKinds } from "./part_kinds.ts";
 import { buildAuthHeaders } from "./request.ts";
@@ -124,7 +125,7 @@ export async function generateMusic(
     const httpResp = await sendHTTP(url, {
       method: "POST",
       headers: { ...authHeaders, "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: writeJson(body),
       signal: options.signal,
     }, provider.timeoutMs);
 

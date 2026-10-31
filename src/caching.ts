@@ -10,6 +10,7 @@ import {
   type ProviderSpec,
   type ProviderName,
 } from "./providers/providers.ts";
+import { writeJson } from "./json_text.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { optIntPath, extractIntPath, extractPath } from "./paths.ts";
 import { mergeCallerHeaders, type SendOptions } from "./request.ts";
@@ -144,7 +145,7 @@ async function applyResource(
     const httpResp = await sendHTTP(createUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify(createBody),
+      body: writeJson(createBody),
       signal: options.signal,
     }, provider.timeoutMs);
     const respText = await httpResp.text();

@@ -5,6 +5,7 @@
 // runtime, a sibling of the ADR-052 baseURL / custom-header overrides; the OTEL
 // semantic-convention bindings live in the generated telemetry_gen module.
 
+import { writeJson } from "./json_text.ts";
 import { ValidationError } from "./errors.ts";
 import { Client } from "./builders/builders.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
@@ -106,7 +107,7 @@ export function buildOTLPTraces(
       },
     ],
   };
-  return JSON.stringify(payload);
+  return writeJson(payload);
 }
 
 function randHex(bytes: number): string {
