@@ -1,8 +1,6 @@
 // Public types for the llmkit TS SDK.
 
 import type { ProviderName } from "./providers/providers.ts";
-import type { MiddlewareFn } from "./providers/middleware.ts";
-import type { File, Message } from "./structs.ts";
 
 //
 // Canonical declarations live at ./structs.ts; these lines keep every
@@ -13,9 +11,13 @@ export type {
   File,
   Message,
   ProviderTurn,
+  Request,
   Response,
+  SafetySetting,
   ToolCall,
+  ToolDefinition,
   ToolResult,
+  WireRequest,
 } from "./structs.ts";
 
 export interface Provider {
@@ -61,27 +63,6 @@ export const Capabilities = {
   Catalogue: "catalogue",
 } as const satisfies Record<string, Capability>;
 
-export interface Request {
-  system?: string;
-  user?: string;
-  messages?: Message[];
-  files?: File[];
-  images?: InputImage[];
-  schema?: string;
-}
-
-/**
- * InputImage references an image attached to a text-generation request
- * (vision input, ADR-060). `url` is a base64 `data:` URI or a plain URL;
- * `detail` is the OpenAI `image_url.detail` hint ("auto" when empty).
- * Distinct from Part's `image(...)` constructor used for image generation.
- */
-export interface InputImage {
-  url: string;
-  mimeType: string;
-  detail: string;
-}
-
 // Usage is GENERATED from the TokenDimension instances (plus the ADR-027
 // cost field) into ./providers/middleware.ts, and re-exported here so the
 // hand-written surface keeps one name for it. It used to be redeclared in this
@@ -101,12 +82,6 @@ export interface SpeechLine {
   speaker: string;
   style: string;
   text: string;
-}
-
-/** Per-category content safety filter for Gemini providers. */
-export interface SafetySetting {
-  category: string;
-  threshold: string;
 }
 
 // Harm category constants
@@ -132,36 +107,9 @@ export const IMAGE_SAFETY_FILTER_BLOCK_SOME = "block_some";
 export const IMAGE_SAFETY_FILTER_BLOCK_MOST = "block_most";
 export const IMAGE_SAFETY_FILTER_BLOCK_ONLY_HIGH = "block_only_high";
 
-export interface PromptOptions {
-  signal?: AbortSignal;
-  temperature?: number;
-  topP?: number;
-  topK?: number;
-  maxTokens?: number;
-  stopSequences?: string[];
-  seed?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  thinkingBudget?: number;
-  reasoningEffort?: string;
-  caching?: boolean;
-  cacheTTL?: number; // seconds
-  middleware?: MiddlewareFn[];
-  safetySettings?: SafetySetting[];
-  /**
-   * Opt-in: populate Response.raw with the parsed provider response body
-   * (ADR-014). Plumbed by the typed-builder's `.raw()` chain method.
-   */
-  raw?: boolean;
-}
-
 export interface Tool {
   name: string;
   description: string;
   schema: Record<string, unknown>;
   run: (input: Record<string, unknown>) => string | Promise<string>;
-}
-
-export interface AgentOptions extends PromptOptions {
-  maxToolIterations?: number;
 }

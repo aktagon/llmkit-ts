@@ -23,20 +23,24 @@ import {
   streamConfig,
   wireShapeStreamConfig,
   wireShapeStreamFinishReasonPath,
+  wireShapeStreamResponseIdPath,
+  wireShapeStreamResponseModelPath,
 } from "../providers/stream.ts";
 import { APIError, ValidationError } from "../errors.ts";
+import { applyCaching } from "../caching.ts";
 import { extractPath, extractIntPath, optIntPath } from "../paths.ts";
 import {
-  buildRequest as buildLegacyRequest,
   buildAuthHeaders,
   buildUrl,
+  encodeChat,
+  requestPath,
   resolveChatProtocol,
-  validateOptions,
+  type SendOptions,
 } from "../request.ts";
 import { firePost, firePre } from "../middleware.ts";
+import { setFinishReason } from "../response.ts";
 import type { Event } from "../providers/middleware.ts";
 import type {
-  PromptOptions,
   Provider,
   Request as PromptRequest,
   Response as PromptResponse,
@@ -44,6 +48,7 @@ import type {
 import type { Text } from "./builders.ts";
 import { buildPromptArgs } from "./text.ts";
 import { sendHTTP } from "../http.ts";
+import { writeJson } from "../json_text.ts";
 
 // Maximum chunks held in the bridge queue before the producer
 // pauses. Matches Go chan(64) and Python asyncio.Queue(maxsize=64)
@@ -62,6 +67,16 @@ interface StreamUsage {
 interface StreamOutcome {
   usage: StreamUsage;
   finishReason: string;
+  id: string;
+  model: string;
+}
+
+// The ADR-013 locators a stream reads its finish reason, response id and model
+// from (ADR-099 CRF-014). Empty disables a capture.
+interface StreamLocators {
+  finishReason: string;
+  id: string;
+  model: string;
 }
 
 // ADR-013: split `event_name:json.path` into its event prefix and JSON path.
@@ -73,12 +88,23 @@ function parseStreamFinishPath(p: string): [string, string] {
   return ["", p];
 }
 
+// readLocator returns the string at a split locator's path in a frame of its
+// event, or "" when the frame does not match or carries no value there.
+function readLocator(
+  [event, path]: [string, string],
+  parsed: unknown,
+  currentEvent: string,
+): string {
+  if (!path || (event !== "" && event !== currentEvent)) return "";
+  return extractPath(parsed, path);
+}
+
 async function runStream(
   provider: Provider,
   request: PromptRequest,
   protocol: string,
   onChunk: (text: string) => void | Promise<void>,
-  options: PromptOptions = {},
+  options: SendOptions = {},
 ): Promise<PromptResponse> {
   const baseCfg = PROVIDERS[provider.name];
   if (!baseCfg) {
@@ -95,9 +121,17 @@ async function runStream(
   // protocol.
   const shapeStreamCfg = wireShapeStreamConfig(cfg.chatWireShape);
   const streamCfg = shapeStreamCfg ?? streamConfig(provider.name);
-  const finishReasonPath = shapeStreamCfg
-    ? wireShapeStreamFinishReasonPath(cfg.chatWireShape)
-    : cfg.streamFinishReasonPath;
+  const locators: StreamLocators = shapeStreamCfg
+    ? {
+        finishReason: wireShapeStreamFinishReasonPath(cfg.chatWireShape),
+        id: wireShapeStreamResponseIdPath(cfg.chatWireShape),
+        model: wireShapeStreamResponseModelPath(cfg.chatWireShape),
+      }
+    : {
+        finishReason: cfg.streamFinishReasonPath,
+        id: cfg.streamResponseIdPath,
+        model: cfg.streamResponseModelPath,
+      };
   if (!streamCfg) {
     throw new ValidationError(
       "provider",
@@ -105,20 +139,24 @@ async function runStream(
     );
   }
 
-  validateOptions(provider.name, options);
+  const { request: prepared, body, headers: content } = encodeChat(provider, cfg, request);
 
   const baseEvent: Event = {
     op: "llm_request",
     phase: "pre",
     provider: provider.name,
-    model: provider.model || cfg.defaultModel,
+    model: prepared.model,
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
   const start = performance.now();
 
   try {
-    const body = buildLegacyRequest(provider, request, cfg, options);
+    // The stream body carries the same caching as the one-shot body (Go's
+    // promptStream; HANDOFF-105 R3b).
+    if (options.caching) {
+      await applyCaching(body, provider, cfg, prepared.model, options);
+    }
     if (streamCfg.param) {
       body[streamCfg.param] =
         streamCfg.paramValue === "true" ? true : streamCfg.paramValue;
@@ -127,15 +165,17 @@ async function runStream(
     if (streamCfg.usageOptIn) {
       body.stream_options = { include_usage: true };
     }
-    const headers = buildAuthHeaders(provider, cfg);
+    const headers = { ...buildAuthHeaders(provider, cfg), ...content };
     const baseUrl = provider.baseUrl || cfg.baseUrl;
-    const endpoint = streamCfg.endpoint || cfg.endpoint;
+    const endpoint = streamCfg.endpoint
+      ? streamCfg.endpoint.replaceAll("{model}", prepared.model)
+      : requestPath(cfg, prepared.model);
     const url = buildUrl(baseUrl + endpoint, provider, cfg);
 
     const httpResp = await sendHTTP(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
-      body: JSON.stringify(body),
+      body: writeJson(body),
       signal: options.signal,
     }, provider.timeoutMs);
 
@@ -155,15 +195,16 @@ async function runStream(
     const outcome = await consumeSSE(
       httpResp.body,
       streamCfg,
-      finishReasonPath,
+      locators,
       async (text) => {
         chunks.push(text);
         await onChunk(text);
       },
     );
 
+    const text = chunks.join("");
     const result: PromptResponse = {
-      text: chunks.join(""),
+      parts: text ? [{ text }] : [],
       // Only the two dimensions a stream frame can carry. The other four are
       // not reported on this path — padding them with zeroes claimed four
       // measurements that were never made (ADR-081).
@@ -172,7 +213,15 @@ async function runStream(
         output: outcome.usage.output,
       },
     };
-    if (outcome.finishReason) result.finishReason = outcome.finishReason;
+    // The same table as the one-shot body (ADR-099 CRF-008). The stream keeps
+    // no body, so a fused value (CRF-007) cannot be told apart and decodes to
+    // "other".
+    if (outcome.finishReason) {
+      setFinishReason(result, cfg.chatWireShape, outcome.finishReason, undefined);
+    }
+    if (outcome.id) result.id = outcome.id;
+    if (outcome.model) result.model = outcome.model;
+    result.chatWireShape = cfg.chatWireShape;
     firePost(options.middleware, {
       ...baseEvent,
       usage: result.usage,
@@ -192,14 +241,18 @@ async function runStream(
 async function consumeSSE(
   body: ReadableStream<Uint8Array>,
   cfg: StreamDef,
-  finishReasonPath: string,
+  locators: StreamLocators,
   emit: (text: string) => void | Promise<void>,
 ): Promise<StreamOutcome> {
   // Nothing is reported until a usage frame arrives; a 0/0 seed claimed both
   // dimensions were reported before the first byte (ADR-081 AVAIL-001).
   const usage: StreamUsage = {};
-  const [finishEvent, finishJSONPath] = parseStreamFinishPath(finishReasonPath);
+  const finishLoc = parseStreamFinishPath(locators.finishReason);
+  const idLoc = parseStreamFinishPath(locators.id);
+  const modelLoc = parseStreamFinishPath(locators.model);
   let finishReason = "";
+  let id = "";
+  let model = "";
   const reader = body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
@@ -217,7 +270,7 @@ async function consumeSSE(
     if (await processBuffer()) stopped = true;
   }
 
-  return { usage, finishReason };
+  return { usage, finishReason, id, model };
 
   async function processBuffer(): Promise<boolean> {
     let newlineIdx = buffer.indexOf("\n");
@@ -261,14 +314,10 @@ async function consumeSSE(
     // ADR-013: capture stream-time finish-reason BEFORE the event-level done
     // break, so a finish locator that names the done event still sees its
     // body. (Anthropic's locator is message_delta:delta.stop_reason.)
-    if (finishJSONPath) {
-      if (finishEvent === "" || finishEvent === currentEvent) {
-        const v = extractPath(parsed, finishJSONPath);
-        if (v && v !== "FINISH_REASON_UNSPECIFIED") {
-          finishReason = v;
-        }
-      }
-    }
+    const reason = readLocator(finishLoc, parsed, currentEvent);
+    if (reason && reason !== "FINISH_REASON_UNSPECIFIED") finishReason = reason;
+    id = readLocator(idLoc, parsed, currentEvent) || id;
+    model = readLocator(modelLoc, parsed, currentEvent) || model;
 
     if (cfg.usesEventTypes && cfg.doneEvent && currentEvent === cfg.doneEvent)
       return true;
@@ -319,7 +368,7 @@ export class TextStream implements AsyncIterable<string> {
   #provider: Provider;
   #request: PromptRequest;
   #protocol: string;
-  #options: PromptOptions;
+  #options: SendOptions;
   #resp: PromptResponse | null = null;
   #err: Error | null = null;
 

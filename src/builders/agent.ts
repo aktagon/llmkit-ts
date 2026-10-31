@@ -17,10 +17,11 @@
 // load-bearing contract — without the post-mutation hook, forks
 // would silently share their parent's accumulated history.
 
-import { Agent as LegacyAgent } from "../agent.ts";
+import { Agent as LegacyAgent, type AgentSendOptions } from "../agent.ts";
+import { checkCacheTTL } from "../caching.ts";
 import type { ProviderName } from "../providers/providers.ts";
-import type { Message, ToolCall, ToolResult } from "../structs.ts";
-import type { AgentOptions, Provider, Response } from "../types.ts";
+import type { Message, ToolDefinition } from "../structs.ts";
+import type { Provider, Request, Response, Tool } from "../types.ts";
 import type { Agent } from "./builders.ts";
 
 export class AgentState {
@@ -30,46 +31,63 @@ export class AgentState {
   }
 }
 
+// toolDefinitions keeps what the request sends of each tool: its name,
+// description and schema (ADR-098 RQC-018).
+function toolDefinitions(tools: Tool[]): ToolDefinition[] {
+  return tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    schema: t.schema,
+  }));
+}
+
+// initAgent constructs the underlying agent from the chained config: the
+// Request each turn sends, the tools, and the send options. The builder's
+// model goes into Request.model, so the provider carries none. A TTL that is
+// not positive whole seconds throws (checkCacheTTL) and leaves no state.
 function initAgent(b: Agent): AgentState {
+  checkCacheTTL(b._cacheTTL);
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
     headers: b.client.provider.headers,
     timeoutMs: b.client.provider.timeoutMs,
   };
-  if (b._model) provider.model = b._model;
   if (b.client.provider.baseUrl) provider.baseUrl = b.client.provider.baseUrl;
 
-  const options: AgentOptions = {};
-  if (b._maxTokens !== undefined) options.maxTokens = b._maxTokens;
-  if (b._temperature !== undefined) options.temperature = b._temperature;
-  if (b._topP !== undefined) options.topP = b._topP;
-  if (b._topK !== undefined) options.topK = b._topK;
+  const request: Request = {};
+  if (b._model) request.model = b._model;
+  if (b._system) request.system = b._system;
+  if (b._tools.length > 0) request.tools = toolDefinitions(b._tools);
+  if (b._maxTokens !== undefined) request.maxTokens = b._maxTokens;
+  if (b._temperature !== undefined) request.temperature = b._temperature;
+  if (b._topP !== undefined) request.topP = b._topP;
+  if (b._topK !== undefined) request.topK = b._topK;
   if (b._frequencyPenalty !== undefined)
-    options.frequencyPenalty = b._frequencyPenalty;
+    request.frequencyPenalty = b._frequencyPenalty;
   if (b._presencePenalty !== undefined)
-    options.presencePenalty = b._presencePenalty;
-  if (b._seed !== undefined) options.seed = b._seed;
-  if (b._stopSequences.length > 0) options.stopSequences = b._stopSequences;
+    request.presencePenalty = b._presencePenalty;
+  if (b._seed !== undefined) request.seed = b._seed;
+  if (b._stopSequences.length > 0) request.stop = b._stopSequences;
   if (b._thinkingBudget !== undefined)
-    options.thinkingBudget = b._thinkingBudget;
-  if (b._reasoningEffort) options.reasoningEffort = b._reasoningEffort;
+    request.thinkingBudget = b._thinkingBudget;
+  if (b._reasoningEffort !== undefined)
+    request.reasoningEffort = b._reasoningEffort;
+  if (b._safetySettings.length > 0) request.safetySettings = b._safetySettings;
+
+  const options: AgentSendOptions = {};
   if (b._maxToolIterations !== undefined)
     options.maxToolIterations = b._maxToolIterations;
   if (b._caching) options.caching = true;
+  if (b._cacheTTL !== undefined) options.cacheTTL = b._cacheTTL;
   if (b._middleware.length > 0) options.middleware = b._middleware;
-  if (b._safetySettings.length > 0) options.safetySettings = b._safetySettings;
   if (b._raw) options.raw = true;
 
-  const agent = new LegacyAgent(provider, options);
-  if (b._system) agent.setSystem(b._system);
-  for (const t of b._tools) agent.addTool(t);
-  // ADR-020 HIST-007: seed the legacy agent's internal history from
-  // the chain's typed Message list. The internal `tool_result` role
-  // discriminator is restored from the public `tool` role; field
-  // copies are shallow (the inner ToolCall/ToolResult instances are
-  // shared with the chain — per shallow-immutability the chain is
-  // already a clone-of-clone-stem, so no aliasing concern).
+  const agent = new LegacyAgent(provider, request, [...b._tools], options);
+  // ADR-020 HIST-007: seed the legacy agent's history from the chain's
+  // typed Message list. Copies are shallow (the part payloads are shared
+  // with the chain — per shallow-immutability the chain is already a
+  // clone-of-clone-stem, so no aliasing concern).
   if (b._history.length > 0) {
     agent.seedHistory(b._history);
   }
@@ -93,34 +111,24 @@ export function agentReset(b: Agent): void {
   b._state = undefined;
 }
 
-// ADR-020 HIST-004: bot.messages projects the agent's internal
-// history into the public Message shape. Returns an empty readonly
-// array before the first .prompt() call. The outer container is a
-// fresh array (no aliasing); each Message.toolCalls is a fresh
-// shallow copy. The inner ToolCall instances are shared with the
-// agent's runtime state by ADR-020's shallow-immutability rule —
-// treat the returned messages as read-only.
+// ADR-020 HIST-004: bot.messages returns the agent's history. Returns an
+// empty readonly array before the first .prompt() call. The outer array and
+// each Message.parts are fresh copies (no aliasing); the part payloads are
+// shared with the agent's runtime state by ADR-020's shallow-immutability
+// rule — treat the returned messages as read-only. A turn the agent
+// received carries its providerTurn (ADR-085), so save() keeps it.
 export function agentMessages(b: Agent): readonly Message[] {
   if (!b._state) return [];
-  const out: Message[] = [];
-  for (const m of b._state.agent.historyView()) {
-    const role = m.role === "tool_result" ? "tool" : m.role;
-    const toolCalls: ToolCall[] = [];
-    for (const tc of m.toolCalls ?? []) {
-      toolCalls.push({ id: tc.id, name: tc.name, input: tc.input });
-    }
-    const msg: Message = {
-      role,
-      content: m.content ?? "",
-      toolCalls,
-      toolResult: m.toolResult
-        ? ({
-            toolUseId: m.toolResult.toolUseId,
-            content: m.toolResult.content,
-          } as ToolResult)
-        : null,
-    };
-    out.push(msg);
-  }
-  return out;
+  return b._state.agent.historyView();
+}
+
+// HANDOFF-105 F5, owner decision 2: bot.unsavedTurns returns the turns of the
+// last .prompt() call when it failed, in order: the user turn, then each
+// assistant turn and tool result the call made. A failed call leaves the
+// history as it was, so these turns are in no history. Empty after a call that
+// succeeded, after a call rejected before it started, and before the first
+// .prompt() call. Copied as bot.messages is.
+export function agentUnsavedTurns(b: Agent): readonly Message[] {
+  if (!b._state) return [];
+  return b._state.agent.unsavedView();
 }

@@ -11,6 +11,7 @@
  */
 import { anthropic, Client } from "../src/builders/index.ts";
 import type { Tool } from "../src/builders/index.ts";
+import { responseText } from "../src/llmkit.ts";
 
 const add: Tool = {
   name: "add",
@@ -32,7 +33,7 @@ export async function main(c?: Client): Promise<void> {
     .addTool(add)
     .maxToolIterations(5);
   const resp = await bot.prompt("What is 2 + 3?");
-  console.log(resp.text);
+  console.log(responseText(resp));
 }
 
 if (import.meta.main) {

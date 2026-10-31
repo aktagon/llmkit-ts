@@ -7,9 +7,9 @@
 // Phase 4 will move the surface into the main llmkit module once the
 // legacy functional API is deleted.
 
-import type { Capability, SafetySetting, SpeechLine, SpeechSpeaker, Tool } from "../types.ts";
+import type { Capability, SpeechLine, SpeechSpeaker, Tool } from "../types.ts";
 import type { Part } from "../image.ts";
-import type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse } from "../structs.ts";
+import type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Request, Response, SafetySetting, SpeechResponse, ToolCall, ToolDefinition, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse, WireRequest } from "../structs.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { batchConfig } from "../providers/batch.ts";
 import { cachingConfig } from "../providers/caching.ts";
@@ -22,7 +22,7 @@ import { TranscriptionHandle } from "./transcription.ts";
 
 // ADR-072 PXP-006: public struct re-exports derived from GeneratedStruct
 // (top-level-public data interfaces; handle classes value-exported below).
-export type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Response, SpeechResponse, ToolCall, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse, SafetySetting, Tool, Part, MiddlewareFn };
+export type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Request, Response, SafetySetting, SpeechResponse, ToolCall, ToolDefinition, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse, WireRequest, Tool, Part, MiddlewareFn };
 export { BatchHandle, VideoHandle, TranscriptionHandle };
 
 export interface ProviderConfig {
@@ -42,13 +42,13 @@ function clone<T extends object>(b: T): T {
 export const DEFAULT_TIMEOUT_MS = 600000;
 
 import { saveHistory, loadHistory } from "../wire.ts";
-import { agentMessages, agentPrompt, agentReset } from "./agent.ts";
+import { agentMessages, agentPrompt, agentReset, agentUnsavedTurns } from "./agent.ts";
 import { textBatch } from "./batch.ts";
 import { imageGenerate } from "./image.ts";
 import { musicGenerate } from "./music.ts";
 import { speechGenerate } from "./speech.ts";
 import { textStream } from "./stream.ts";
-import { textPrompt } from "./text.ts";
+import { textPrompt, textSetRequest } from "./text.ts";
 import { transcriptionSubmit, transcriptionTranscribe } from "./transcription.ts";
 import { uploadRun } from "./upload.ts";
 import { videoSubmit } from "./video.ts";
@@ -168,6 +168,7 @@ export function zhipu(apiKey: string): Client { return new Client("zhipu", apiKe
 export class Text {
   /** @internal */ client: Client;
   /** @internal */ _middleware: MiddlewareFn[] = [];
+  /** @internal */ _cacheTTL?: number;
   /** @internal */ _caching: boolean = false;
   /** @internal */ _files: File[] = [];
   /** @internal */ _frequencyPenalty?: number;
@@ -178,10 +179,11 @@ export class Text {
   /** @internal */ _presencePenalty?: number;
   /** @internal */ _protocol: string = "";
   /** @internal */ _raw: boolean = false;
-  /** @internal */ _reasoningEffort: string = "";
+  /** @internal */ _reasoningEffort?: string;
+  /** @internal */ _tools: ToolDefinition[] = [];
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _schema: string = "";
-  /** @internal */ _seed?: number;
+  /** @internal */ _seed?: number | bigint;
   /** @internal */ _stopSequences: string[] = [];
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
@@ -192,6 +194,14 @@ export class Text {
   constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
+  /**
+   * Sets how long the cache that Caching creates for this call lives.
+   * Only resource caching (Google) creates a cache and reads it; without it
+   * the provider's default TTL applies. Other providers ignore it. The TTL
+   * is a positive whole number of seconds; any other value fails the call
+   * with a validation error on the TTL.
+   */
+  cacheTTL(seconds: number): Text { const out = clone(this); out._cacheTTL = seconds; return out; }
   caching(): Text { const out = clone(this); out._caching = true; return out; }
   file(id: string): Text { const out = clone(this); out._files = [...out._files, { id, uri: "", name: "", mimeType: "" }]; return out; }  // ordered
   frequencyPenalty(v: number): Text { const out = clone(this); out._frequencyPenalty = v; return out; }
@@ -213,6 +223,15 @@ export class Text {
   protocol(name: string): Text { const out = clone(this); out._protocol = name; return out; }
   raw(): Text { const out = clone(this); out._raw = true; return out; }
   reasoningEffort(level: string): Text { const out = clone(this); out._reasoningEffort = level; return out; }
+  /**
+   * Replaces this call's request with req: its model, system prompt,
+   * messages, tools, schema and options. It drops what the chain set
+   * before it, the text, image and file parts included; a chain method
+   * after it changes its own field. The prompt text, when not empty, is
+   * a final user turn after req's messages. The send settings (caching
+   * and its TTL, middleware, raw) and the protocol are kept.
+   */
+  request(req: Request): Text { const out = clone(this); textSetRequest(out, req); return out; }
   safetySettings(s: SafetySetting[]): Text { const out = clone(this); out._safetySettings = s; return out; }
   schema(s: string): Text { const out = clone(this); out._schema = s; return out; }
   seed(n: number): Text { const out = clone(this); out._seed = n; return out; }
@@ -439,6 +458,7 @@ export class Agent {
   /** @internal */ client: Client;
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _tools: Tool[] = [];
+  /** @internal */ _cacheTTL?: number;
   /** @internal */ _caching: boolean = false;
   /** @internal */ _frequencyPenalty?: number;
   /** @internal */ _history: Message[] = [];
@@ -447,9 +467,9 @@ export class Agent {
   /** @internal */ _model: string = "";
   /** @internal */ _presencePenalty?: number;
   /** @internal */ _raw: boolean = false;
-  /** @internal */ _reasoningEffort: string = "";
+  /** @internal */ _reasoningEffort?: string;
   /** @internal */ _safetySettings: SafetySetting[] = [];
-  /** @internal */ _seed?: number;
+  /** @internal */ _seed?: number | bigint;
   /** @internal */ _stopSequences: string[] = [];
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
@@ -462,6 +482,14 @@ export class Agent {
 
   addMiddleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
   addTool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
+  /**
+   * Sets how long the cache that Caching creates for this call lives.
+   * Only resource caching (Google) creates a cache and reads it; without it
+   * the provider's default TTL applies. Other providers ignore it. The TTL
+   * is a positive whole number of seconds; any other value fails the call
+   * with a validation error on the TTL.
+   */
+  cacheTTL(seconds: number): Agent { const out = clone(this); out._cacheTTL = seconds; out._state = undefined; return out; }
   caching(): Agent { const out = clone(this); out._caching = true; out._state = undefined; return out; }
   frequencyPenalty(v: number): Agent { const out = clone(this); out._frequencyPenalty = v; out._state = undefined; return out; }
   /**
@@ -490,6 +518,7 @@ export class Agent {
   topK(n: number): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
   topP(v: number): Agent { const out = clone(this); out._topP = v; out._state = undefined; return out; }
   get messages(): readonly Message[] { return agentMessages(this); }
+  get unsavedTurns(): readonly Message[] { return agentUnsavedTurns(this); }
 
   save(): string { return saveHistory(this.messages); }
 

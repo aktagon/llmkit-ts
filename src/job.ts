@@ -19,6 +19,7 @@
 
 import { APIError, PollTimeoutError } from "./errors.ts";
 import { extractPath } from "./paths.ts";
+import type { JobFailureCode } from "./providers/batch.ts";
 
 // JobState is the lifecycle state of an async job. PUBLIC because it is what
 // poll() returns (ADR-063 POLL-004). Members are exactly running/succeeded/failed
@@ -27,20 +28,22 @@ import { extractPath } from "./paths.ts";
 // Unknown zero-value would be a public state the library never returns.
 export type JobState = "running" | "succeeded" | "failed";
 
-// JobFailure is the normalized failure detail carried by a failed JobStatus. It
-// is ONE terminal, not a taxonomy (ADR-062): the raw provider status, an optional
-// provider error message, and a timedOut flag.
+// JobFailure is the normalized failure detail carried by a failed JobStatus and
+// by a failed batch item (ADR-099 CRF-015, CRF-016): the typed code, the raw
+// provider status, and an optional provider error message.
 export interface JobFailure {
+  // code is the typed cause. The provider's failure-code table maps status to
+  // it; a status with no entry is "error". The deadline backstop throws
+  // PollTimeoutError instead, so poll() never reports "timeout".
+  code: JobFailureCode;
   // status is the raw provider status string that classified as failure (OpenAI
-  // batch "failed"/"expired"/"cancelled"; AssemblyAI "error"). Empty when the
-  // failure is the engine's deadline backstop firing.
+  // batch "failed"/"expired"/"cancelled"; AssemblyAI "error"; a batch item's
+  // "errored" or "batch_expired"). Empty for "missing" and "timeout".
   status: string;
   // message is the provider error message when the provider reports one
-  // (AssemblyAI's top-level "error"); empty otherwise.
+  // (AssemblyAI's top-level "error", a batch item's error message); empty
+  // otherwise.
   message: string;
-  // timedOut is true iff this failure is the engine's deadline backstop, not a
-  // provider-reported terminal.
-  timedOut: boolean;
 }
 
 // JobStatus is the normalized result of a single poll() (ADR-063 POLL-001): the
@@ -73,6 +76,9 @@ export interface LifecycleConfig {
   // errorValues are the status strings marking terminal failure. An empty set
   // means "no failure terminal" — today's Anthropic-batch behavior.
   errorValues: string[];
+  // failureCodes maps each failure status to its code, from the provider's
+  // failureCodeValue table (ADR-099 CRF-016).
+  failureCodes: Readonly<Partial<Record<string, JobFailureCode>>>;
   // errorMessagePath is the dotted path to a provider error message, surfaced in
   // JobFailure.message. Empty = no message extraction.
   errorMessagePath: string;
@@ -132,9 +138,9 @@ export function classifyByConfig(
   for (const e of lc.errorValues) {
     if (status === e) {
       const failure: JobFailure = {
+        code: lc.failureCodes[status] ?? "error",
         status,
         message: lc.errorMessagePath ? body.status(lc.errorMessagePath) : "",
-        timedOut: false,
       };
       return { state: "failed", failure, rawStatus: status };
     }
