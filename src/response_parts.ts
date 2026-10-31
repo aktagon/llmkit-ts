@@ -155,7 +155,7 @@ function blockArrayPaths(
  * toolCallIDSource says so (Google). The arguments are read per the
  * provider's args format: a JSON string (json_string) or a JSON value (map),
  * whose text in the body is rawArgs. Absent or null arguments, and an empty
- * JSON string, leave input unset: an empty argument set is no input. A block
+ * json_string argument, leave input unset: an empty argument set is no input. A block
  * with no tool name, or arguments that do not decode, is a ValidationError on
  * field "toolCalls": it is not a call the caller can run.
  *
@@ -168,7 +168,8 @@ function blockArrayPaths(
  * between them, the body's layout, as Go's json.Compact does. A map-format
  * argument is read from rawArgs alone, for where it is and what it is: one
  * scan, so the parse cannot name other arguments than the text (HANDOFF-105
- * F8). Its null and "" are no input (owner decision 2).
+ * F8). Its null is no input; its JSON string "" is an argument value, the
+ * text "" (HANDOFF-105 F9, owner decision 2).
  */
 function readToolCall(
   block: Record<string, unknown>,
@@ -185,7 +186,7 @@ function readToolCall(
   if (cfg.toolArgsFormat !== "json_string") {
     if (rawArgs === undefined) return call;
     const text = compactJson(rawArgs);
-    if (text !== "null" && text !== '""') call.input = text;
+    if (text !== "null") call.input = text;
     return call;
   }
   const args = extractRaw(block, toolCfg.argsPath);
