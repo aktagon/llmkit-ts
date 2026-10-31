@@ -183,7 +183,7 @@ export class Text {
   /** @internal */ _tools: ToolDefinition[] = [];
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _schema: string = "";
-  /** @internal */ _seed?: number;
+  /** @internal */ _seed?: number | bigint;
   /** @internal */ _stopSequences: string[] = [];
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
@@ -459,7 +459,7 @@ export class Agent {
   /** @internal */ _raw: boolean = false;
   /** @internal */ _reasoningEffort?: string;
   /** @internal */ _safetySettings: SafetySetting[] = [];
-  /** @internal */ _seed?: number;
+  /** @internal */ _seed?: number | bigint;
   /** @internal */ _stopSequences: string[] = [];
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
