@@ -13,7 +13,7 @@ import {
 import { ValidationError } from "./errors.ts";
 import { extractPath, extractRaw, setWirePath } from "./paths.ts";
 import { compactJson, JsonText } from "./json_text.ts";
-import { extractRawJsonPath } from "./provider_turn.ts";
+import { extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
 import type { Part, Response, ToolCall } from "./structs.ts";
 
 /**
@@ -68,12 +68,15 @@ function blockMatches(
  * call of type "custom". In an array shared with text the marker selects, so
  * a block that matches neither config (a thinking block) is not a part.
  *
- * body is the text raw was parsed from: a map-format argument value is read
- * from it, so input keeps the provider's tokens (readToolCall).
+ * Each block is decoded once, from its own text in body: its marker, name and
+ * id come from that decode, and a map-format argument is read from the same
+ * text, so input keeps the provider's tokens (readToolCall). Before F9 the
+ * blocks came from a parse of the body and the arguments from a second walk of
+ * the body, matched by index, so the two could name different blocks
+ * (HANDOFF-105 F9).
  */
 export function decodeChatParts(
   body: string,
-  raw: unknown,
   provider: string,
   cfg: ProviderSpec,
   chatWireShape: string,
@@ -82,14 +85,15 @@ export function decodeChatParts(
   const toolCfg = TOOL_CALL_RESPONSE_CONFIGS[chatWireShape];
   const parts: Part[] = [];
   if (!textCfg) {
-    const text = extractPath(raw, cfg.responseTextPath);
+    const text = extractPath(JSON.parse(body), cfg.responseTextPath);
     if (text) parts.push({ text });
   }
   for (const path of blockArrayPaths(textCfg, toolCfg)) {
-    const arr = extractRaw(raw, path);
-    if (!Array.isArray(arr)) continue;
+    const blocks = extractRawJsonElements(body, path);
+    if (!blocks) continue;
     const toolsOnly = toolCfg?.blocksPath === path && textCfg?.blocksPath !== path;
-    arr.forEach((elem: unknown, i: number) => {
+    blocks.forEach((blockText: string, i: number) => {
+      const elem: unknown = JSON.parse(blockText);
       const block = isObject(elem) ? elem : undefined;
       if (
         textCfg?.blocksPath === path &&
@@ -109,7 +113,7 @@ export function decodeChatParts(
         blockMatches(block, toolCfg.markerPath, toolCfg.markerValue)
       ) {
         if (!cfg.toolArgsFormat) throw noToolCallConfigError(provider, chatWireShape);
-        const rawArgs = extractRawJsonPath(body, `${path}[${i}].${toolCfg.argsPath}`);
+        const rawArgs = extractRawJsonPath(blockText, toolCfg.argsPath);
         parts.push({ toolCall: readToolCall(block, rawArgs, toolCfg, cfg) });
       }
     });
