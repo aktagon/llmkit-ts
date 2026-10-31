@@ -1,8 +1,11 @@
 // Agent — multi-turn conversations with optional tool calling.
 //
-// @invariant history is mutated only inside chat() and grows append-only;
-//   on a non-2xx response or a max-iterations throw, the partial history
-//   is preserved so callers can inspect what happened.
+// @invariant history is mutated only inside chat(), once, when the call
+//   succeeds. chat() is all-or-nothing (owner decision 4, HANDOFF-105 F4): on
+//   any throw after the call starts — a non-2xx response, a middleware veto,
+//   max iterations — the history is what it was before the call. The error
+//   thrown is the one that stopped the call, and unsavedView() returns the
+//   turns the call made, tool results included (owner decision 2, F5).
 // @invariant tool execution failures never propagate out of the loop —
 //   they are surfaced as `"error: ..."` tool-result content so the LLM
 //   can recover (matches Go behaviour at go/agent.go:189).
@@ -10,113 +13,137 @@
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { accumulateUsage, attachRaw, decodeResponse } from "./response.ts";
-import { matchingBlocks } from "./paths.ts";
+import { responseToolCalls } from "./response_parts.ts";
 import {
-  buildRequest,
+  encodeChat,
   executeRequest,
-  resolveModel,
-  toolCallInput,
-  validateOptions,
+  prepareRequest,
+  toolRunArgs,
+  type PreparedRequest,
+  type SendOptions,
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event } from "./providers/middleware.ts";
 import { applyCaching } from "./caching.ts";
 import type {
-  AgentOptions,
   Provider,
   Request,
   Response as PromptResponse,
   Tool,
   Usage,
 } from "./types.ts";
-import type {
-  Message,
-  ProviderTurn,
-  ToolCall,
-  ToolResult,
-} from "./structs.ts";
-
-interface InternalMessage {
-  role: "user" | "assistant" | "tool_result";
-  content?: string;
-  toolCalls?: ToolCall[];
-  toolResult?: ToolResult;
-  // The turn as the provider serialized it, when this turn came from a provider
-  // (ADR-085). Replayed verbatim on every subsequent request in the run instead of
-  // being rebuilt from the projection above.
-  providerTurn?: ProviderTurn;
-}
+import type { Message, Part, ToolCall } from "./structs.ts";
 
 const DEFAULT_MAX_TOOL_ITERATIONS = 10;
 
+// AgentSendOptions are the Agent's send options plus its loop control
+// (ADR-098 RQC-002).
+export interface AgentSendOptions extends SendOptions {
+  maxToolIterations?: number;
+}
+
 export class Agent {
   private readonly provider: Provider;
-  private readonly options: AgentOptions;
-  private readonly history: InternalMessage[] = [];
-  private tools: Tool[] = [];
-  private system = "";
+  // The Request every turn sends, without its messages: the model, system,
+  // tool definitions and options (ADR-098 RQC-001). The history fills
+  // messages on each turn.
+  private readonly request: Request;
+  // The functions that run the tools, kept beside the Request, which holds
+  // only their definitions (RQC-018).
+  private readonly tools: Tool[];
+  private readonly options: AgentSendOptions;
+  // The public Message list (ADR-100). An assistant turn the loop received
+  // carries its providerTurn (ADR-085) beside its parts, which stay what the
+  // loop reads to run tools; the next request replays the providerTurn.
+  private history: Message[] = [];
+  // The turns of the last call, when it failed; empty after a call that
+  // succeeded (HANDOFF-105 F5, owner decision 2).
+  private unsaved: Message[] = [];
 
-  constructor(provider: Provider, options: AgentOptions = {}) {
+  constructor(
+    provider: Provider,
+    request: Request = {},
+    tools: Tool[] = [],
+    options: AgentSendOptions = {},
+  ) {
     if (!PROVIDERS[provider.name]) {
       throw new ValidationError("provider", `unknown: ${provider.name}`);
     }
     if (!provider.apiKey) {
       throw new ValidationError("apiKey", "required");
     }
-    validateOptions(provider.name, options);
     this.provider = provider;
+    this.request = request;
+    this.tools = tools;
     this.options = options;
   }
 
-  setSystem(system: string): void {
-    this.system = system;
+  // historyView exposes the agent's conversation history to the typed
+  // builder's `bot.messages` reader (ADR-020 HIST-004). The returned array
+  // and each parts array are fresh copies so callers can iterate without
+  // invalidation when the agent appends mid-loop; the part payloads are
+  // shared with runtime state by the shallow-immutability rule documented
+  // on `bot.messages`.
+  historyView(): readonly Message[] {
+    return copyMessages(this.history);
   }
 
-  addTool(tool: Tool): void {
-    this.tools.push(tool);
+  // unsavedView exposes the turns of the last failed call to the typed
+  // builder's `bot.unsavedTurns` reader, copied as historyView copies.
+  unsavedView(): readonly Message[] {
+    return copyMessages(this.unsaved);
   }
 
-  // historyView exposes the agent's internal conversation history to
-  // the typed builder's `bot.messages` reader (ADR-020 HIST-004). The
-  // returned array is a fresh shallow copy so callers can iterate
-  // without invalidation when the agent appends mid-loop; each
-  // InternalMessage's inner arrays are shared with runtime state by
-  // the shallow-immutability rule documented on `bot.messages`.
-  historyView(): readonly InternalMessage[] {
-    return [...this.history];
-  }
-
-  // seedHistory replaces the internal history with a translation of
-  // the public Message list passed via the typed builder's
-  // `bot.history(...)` chain (ADR-020 HIST-007). Mechanical field
-  // copy; the wire `tool` role is restored to the internal
-  // `tool_result` discriminator.
-  seedHistory(messages: readonly import("./structs.ts").Message[]): void {
+  // seedHistory replaces the history with the public Message list passed
+  // via the typed builder's `bot.history(...)` chain (ADR-020 HIST-007). A
+  // turn restored from loadHistory carries its providerTurn back into the
+  // loop, which is what makes cross-process resume (ADR-023) replay rather
+  // than reconstruct.
+  seedHistory(messages: readonly Message[]): void {
     this.history.length = 0;
-    for (const m of messages) {
-      const role =
-        m.role === "tool"
-          ? "tool_result"
-          : (m.role as "user" | "assistant" | "tool_result");
-      const entry: InternalMessage = { role };
-      if (m.content) entry.content = m.content;
-      if (m.toolCalls && m.toolCalls.length > 0) entry.toolCalls = m.toolCalls;
-      if (m.toolResult) entry.toolResult = m.toolResult;
-      // The return leg of toRequest/historyView. A turn restored from loadHistory
-      // carries its payload back into the loop, which is what makes cross-process
-      // resume (ADR-023) replay rather than reconstruct.
-      if (m.providerTurn) entry.providerTurn = m.providerTurn;
-      this.history.push(entry);
-    }
+    this.history.push(...copyMessages(messages));
   }
 
+  // The request is prepared (validated, model resolved) with the user turn
+  // before the turn joins the history, so a rejected request leaves the
+  // history as it was (HANDOFF-105 F3). Every turn of the loop sends the same
+  // Request with a longer history, so one preparation holds for all of them.
+  // Once the call starts it is all-or-nothing (owner decision 4, F4). The call
+  // builds its turns in a list of its own and adds them to the history only
+  // when it succeeds (HANDOFF-105 F5), so bot.messages never shows a running
+  // call's turns. A finished call replaces the history with the history it
+  // started from plus its own turns, as in Go and Rust (HANDOFF-105 F7, owner
+  // decision 3): of two overlapping calls, the one that finishes last wins.
   async chat(message: string): Promise<PromptResponse> {
-    this.history.push({ role: "user", content: message });
-    return this.runToolLoop();
+    this.unsaved = [];
+    const cfg = PROVIDERS[this.provider.name]!;
+    const history = [...this.history];
+    const prepared = prepareRequest(this.provider, cfg, {
+      ...this.request,
+      messages: [...history, { role: "user", parts: textParts(message) }],
+    });
+    // The call's turns start with the user turn prepareRequest returned, as
+    // in Go and Rust: the saved turn is the one the call sends (HANDOFF-105 F6).
+    const turns: Message[] = (prepared.messages ?? []).slice(history.length);
+    let response: PromptResponse;
+    try {
+      response = await this.runToolLoop(cfg, prepared, history, turns);
+    } catch (err) {
+      this.unsaved = turns;
+      throw err;
+    }
+    this.history = [...history, ...turns];
+    return response;
   }
 
-  private async runToolLoop(): Promise<PromptResponse> {
-    const cfg = PROVIDERS[this.provider.name]!;
+  // runToolLoop sends the history and the call's turns so far on each request,
+  // and appends each new turn to turns.
+  private async runToolLoop(
+    cfg: ProviderSpec,
+    prepared: PreparedRequest,
+    history: readonly Message[],
+    turns: Message[],
+  ): Promise<PromptResponse> {
     const maxIters =
       this.options.maxToolIterations ?? DEFAULT_MAX_TOOL_ITERATIONS;
     // Seeded from the first turn, not from zeros: absorbing addition's identity
@@ -124,10 +151,17 @@ export class Agent {
     // nothing (ADR-081 AVAIL-005).
     let totalUsage: Usage | undefined;
 
-    const model = resolveModel(this.provider, cfg);
     const mw = this.options.middleware;
 
     for (let i = 0; i < maxIters; i++) {
+      // The shared encoder (ADR-026 PIPE-001, ADR-098 RQC-001, RQC-017): the
+      // history becomes the Request's messages, and encodeChat checks every
+      // turn before the pre hook fires, as on the Text/batch path.
+      const { request, body, headers } = encodeChat(this.provider, cfg, {
+        ...prepared,
+        messages: [...history, ...turns],
+      });
+      const model = request.model;
       const llmEvent: Event = {
         op: "llm_request",
         phase: "pre",
@@ -138,31 +172,22 @@ export class Agent {
       if (veto) throw veto;
       const llmStart = performance.now();
 
-      let raw: unknown;
       let respText = "";
       let decoded: PromptResponse;
       try {
-        const extraHeaders: Record<string, string> = {};
-        const body = buildRequest(
-          this.provider,
-          this.toRequest(),
-          cfg,
-          this.options,
-          this.tools,
-          extraHeaders,
-        );
         // Caching is a shared request-construction step (ADR-026): applied on
         // every send path by construction, like Text/batch. Before this, a
         // .caching() agent silently paid full input price every turn (BUG-004).
         if (this.options.caching) {
-          await applyCaching(body, this.provider, cfg, this.options);
+          await applyCaching(body, this.provider, cfg, model, this.options);
         }
         const resp = await executeRequest(
           this.provider,
           cfg,
+          model,
           body,
           this.options,
-          extraHeaders,
+          headers,
         );
         if (!resp.ok) {
           throw new APIError(
@@ -172,7 +197,6 @@ export class Agent {
           );
         }
         respText = resp.text;
-        raw = JSON.parse(respText);
         // ADR-076 SYM-004: the tool loop reads through the public codec, so a
         // turn sees the same projection Text.prompt does. Before this it read
         // usage inline and never populated cache or reasoning tokens.
@@ -199,38 +223,24 @@ export class Agent {
         duration: performance.now() - llmStart,
       });
 
-      const calls = extractToolCalls(raw, cfg);
+      // Record the assistant turn as the response's parts: its text and its
+      // tool calls, in the order the provider sent them (owner decision 1,
+      // HANDOFF-105 F4). providerTurn is the same turn as the provider wrote
+      // it, and is what the NEXT request sends (ADR-085). Before F4 the loop
+      // kept only the tool calls of a tool turn, which dropped the model's
+      // text beside them.
+      const assistantTurn: Message = { role: "assistant", parts: [...decoded.parts] };
+      if (decoded.providerTurn) assistantTurn.providerTurn = decoded.providerTurn;
+      turns.push(assistantTurn);
+      const calls = responseToolCalls(decoded);
       if (calls.length === 0) {
-        // The terminal turn is captured too: an agent kept alive for another
-        // chat() replays it like any other, and Response carries it so a caller
-        // running their own loop can thread the turn forward without parsing raw
-        // per provider (ADR-085 § 6).
-        const terminal: InternalMessage = {
-          role: "assistant",
-          content: decoded.text,
-        };
-        if (decoded.providerTurn) terminal.providerTurn = decoded.providerTurn;
-        this.history.push(terminal);
-        const result: PromptResponse = {
-          text: decoded.text,
-          usage: totalUsage ?? {},
-        };
-        if (decoded.providerTurn) result.providerTurn = decoded.providerTurn;
-        if (decoded.finishReason) result.finishReason = decoded.finishReason;
-        if (decoded.finishMessage) result.finishMessage = decoded.finishMessage;
+        // The terminal Response is the decoder's, with the loop's usage
+        // total (ADR-076 SYM-004: one reader).
+        const result: PromptResponse = { ...decoded, usage: totalUsage ?? {} };
         return attachRaw(result, respText, !!this.options.raw);
       }
-
-      // Record the assistant turn. toolCalls is the projection the loop runs
-      // tools from; providerTurn is the same turn as the provider wrote it, and is
-      // what the NEXT request sends (ADR-085). Before this, the turn was rebuilt
-      // from toolCalls alone, which silently dropped any prose the model emitted
-      // alongside the call.
-      const assistantTurn: InternalMessage = { role: "assistant", toolCalls: calls };
-      if (decoded.providerTurn) assistantTurn.providerTurn = decoded.providerTurn;
-      this.history.push(assistantTurn);
       for (const call of calls) {
-        const callArgs = toolCallInput(call);
+        const callArgs = toolRunArgs(call);
         const tool = this.tools.find((t) => t.name === call.name);
         const toolEvent: Event = {
           op: "tool_call",
@@ -262,152 +272,25 @@ export class Agent {
           err: runErr,
           duration: performance.now() - toolStart,
         });
-        this.history.push({
-          role: "tool_result",
-          toolResult: { toolUseId: call.id, content },
+        // One tool turn per result (ADR-100 MSG-009).
+        turns.push({
+          role: "tool",
+          parts: [{ toolResult: { toolUseId: call.id, content } }],
         });
       }
     }
 
     throw new Error(`max tool iterations (${maxIters}) reached`);
   }
-
-  // toRequest projects the agent's internal history onto the public
-  // ADR-020 Message shape so the shared buildRequest (request.ts) constructs
-  // the body — caching, options, tool defs, system placement and message/tool
-  // transforms all run once, identically to the Text/batch paths (ADR-026
-  // PIPE-001/004). This is what closed BUG-006: the agent no longer hand-rolls
-  // a partial body that applied only max_tokens.
-  private toRequest(): Request {
-    const messages: Message[] = this.history.map((m) => {
-      const out: Message = {
-        role: m.role,
-        content: m.content ?? "",
-        toolCalls: m.toolCalls ?? [],
-        toolResult: m.toolResult ?? null,
-      };
-      // ADR-085: the captured turn crosses to the public shape too. Without this,
-      // the turn the SDK holds internally never reaches buildRequest, and
-      // bot.messages/save() serialize a blind copy — retention would work only
-      // for the lifetime of one live Agent.
-      if (m.providerTurn) out.providerTurn = m.providerTurn;
-      return out;
-    });
-    const request: Request = { messages };
-    if (this.system) request.system = this.system;
-    return request;
-  }
 }
 
-function extractToolCalls(raw: unknown, cfg: ProviderSpec): ToolCall[] {
-  if (cfg.chatWireShape === "ChatBedrock") return extractBedrockToolCalls(raw);
-  if (cfg.chatWireShape === "ChatAnthropic") {
-    return extractAnthropicToolCalls(raw);
-  }
-  if (cfg.chatWireShape === "ChatGoogle") {
-    return extractGoogleToolCalls(raw);
-  }
-  if (cfg.chatWireShape === "ChatOpenAI") {
-    return extractOpenAIToolCalls(raw);
-  }
-  return [];
+// textParts is one text part, or none for empty text: a turn with no parts
+// sends "" as before ADR-100, and matches the other SDKs' agent history.
+function textParts(text: string): Part[] {
+  return text ? [{ text }] : [];
 }
 
-function extractBedrockToolCalls(raw: unknown): ToolCall[] {
-  if (typeof raw !== "object" || raw === null) return [];
-  const output = (raw as Record<string, unknown>).output as
-    | Record<string, unknown>
-    | undefined;
-  const message = output?.message as Record<string, unknown> | undefined;
-  const content = message?.content;
-  if (!Array.isArray(content)) return [];
-  const calls: ToolCall[] = [];
-  for (const block of content) {
-    if (typeof block !== "object" || block === null) continue;
-    const tu = (block as Record<string, unknown>).toolUse as
-      | Record<string, unknown>
-      | undefined;
-    if (!tu) continue;
-    calls.push({
-      id: String(tu.toolUseId ?? ""),
-      name: String(tu.name ?? ""),
-      input: (tu.input as Record<string, unknown>) ?? {},
-    });
-  }
-  return calls;
-}
-
-function extractGoogleToolCalls(raw: unknown): ToolCall[] {
-  if (typeof raw !== "object" || raw === null) return [];
-  const candidates = (raw as Record<string, unknown>).candidates;
-  if (!Array.isArray(candidates) || candidates.length === 0) return [];
-  const cand = candidates[0] as Record<string, unknown> | undefined;
-  const content = cand?.content as Record<string, unknown> | undefined;
-  const parts = content?.parts;
-  if (!Array.isArray(parts)) return [];
-  const calls: ToolCall[] = [];
-  for (const p of parts) {
-    if (typeof p !== "object" || p === null) continue;
-    const fc = (p as Record<string, unknown>).functionCall as
-      | Record<string, unknown>
-      | undefined;
-    if (!fc) continue;
-    calls.push({
-      id: String(fc.name ?? ""),
-      name: String(fc.name ?? ""),
-      input: (fc.args as Record<string, unknown>) ?? {},
-    });
-  }
-  return calls;
-}
-
-// The N=1 proof for matchingBlocks: this is the SAME call the text reader
-// makes, with a different marker value. Before BUG-053 these were two
-// hand-rolled scans over one array that happened to agree; agreement by
-// coincidence is what let text extraction break on thinking blocks while
-// tool-call extraction, scanning the very same array, kept working.
-function extractAnthropicToolCalls(raw: unknown): ToolCall[] {
-  const calls: ToolCall[] = [];
-  for (const b of matchingBlocks(raw, "content", "type", "tool_use")) {
-    calls.push({
-      id: String(b.id ?? ""),
-      name: String(b.name ?? ""),
-      input: (b.input as Record<string, unknown>) ?? {},
-    });
-  }
-  return calls;
-}
-
-function extractOpenAIToolCalls(raw: unknown): ToolCall[] {
-  if (typeof raw !== "object" || raw === null) return [];
-  const choices = (raw as Record<string, unknown>).choices;
-  if (!Array.isArray(choices) || choices.length === 0) return [];
-  const choice = choices[0] as Record<string, unknown> | undefined;
-  const message = choice?.message as Record<string, unknown> | undefined;
-  const tcs = message?.tool_calls;
-  if (!Array.isArray(tcs)) return [];
-  const calls: ToolCall[] = [];
-  for (const tc of tcs) {
-    if (typeof tc !== "object" || tc === null) continue;
-    const tcMap = tc as Record<string, unknown>;
-    const fn = tcMap.function as Record<string, unknown> | undefined;
-    if (!fn) continue;
-    let input: Record<string, unknown> = {};
-    const args = fn.arguments;
-    if (typeof args === "string") {
-      try {
-        input = JSON.parse(args) as Record<string, unknown>;
-      } catch {
-        input = {};
-      }
-    } else if (typeof args === "object" && args !== null) {
-      input = args as Record<string, unknown>;
-    }
-    calls.push({
-      id: String(tcMap.id ?? ""),
-      name: String(fn.name ?? ""),
-      input,
-    });
-  }
-  return calls;
+// copyMessages copies the outer array and each parts array.
+export function copyMessages(messages: readonly Message[]): Message[] {
+  return messages.map((m) => ({ ...m, parts: [...m.parts] }));
 }

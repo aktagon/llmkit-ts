@@ -2,6 +2,7 @@
 
 
 import type { ProviderName } from "./providers.ts";
+import type { JobFailureCode } from "./batch.ts";
 
 // Transcription wire-shape discriminators. Each selects the
 // submit-body build + result-extraction transform.
@@ -18,6 +19,7 @@ export interface TranscriptionDef {
   statusPath: string; // dotted path to the poll status string; async only
   doneStatus: string; // status value marking terminal success; async only
   errorStatus: string; // status value marking terminal failure; async only
+  failureCodes: Readonly<Partial<Record<string, JobFailureCode>>>; // failure status -> code; async only
 }
 
 const TRANSCRIPTION_GEN: Partial<Record<ProviderName, TranscriptionDef>> = {
@@ -32,6 +34,7 @@ const TRANSCRIPTION_GEN: Partial<Record<ProviderName, TranscriptionDef>> = {
     statusPath: "status",
     doneStatus: "completed",
     errorStatus: "error",
+    failureCodes: { "error": "error" },
   },
   openai: {
     wireShape: "TranscriptionOpenAI",
@@ -44,6 +47,7 @@ const TRANSCRIPTION_GEN: Partial<Record<ProviderName, TranscriptionDef>> = {
     statusPath: "",
     doneStatus: "",
     errorStatus: "",
+    failureCodes: {},
   },
 };
 

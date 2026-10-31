@@ -1,3 +1,4 @@
+import { writeJson } from "./json_text.ts";
 import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
   BATCH_REQUEST_ID_PREFIX,
@@ -15,12 +16,13 @@ import { attachRaw, decodeResponseRaw } from "./response.ts";
 import {
   appendBeta,
   buildAuthHeaders,
-  buildRequest,
+  encodeChat,
   resolveModel,
-  validateOptions,
+  type ChatRequest,
+  type SendOptions,
 } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
-import type { Event, MiddlewareFn } from "./providers/middleware.ts";
+import type { Event } from "./providers/middleware.ts";
 import { sendHTTP } from "./http.ts";
 import {
   classifyByConfig,
@@ -35,19 +37,19 @@ import {
 } from "./job.ts";
 import type {
   BatchHandle,
-  PromptOptions,
   Provider,
   Request as PromptRequest,
   Response as PromptResponse,
 } from "./types.ts";
 
-// Sampling/caching fields mirror PromptOptions so chain methods on the
-// typed-builder (max_tokens, temperature, ...) propagate from
-// ``Text.batch(...)`` through to the wire body of every queued request.
-// Per ADR-012 REQ-PROP-003: every helper for ``Text`` MUST read every
-// chain field; previously BatchOptions only carried middleware +
-// pollIntervalMs, so sampling options were silently dropped.
-export interface BatchOptions extends Partial<PromptOptions> {
+// BatchOptions are the poll policy of BatchHandle.wait and poll, plus the
+// response handling (raw). The request-shaping options of every queued request
+// travel on its Request (ADR-098 RQC-001), and submit takes SendOptions.
+export interface BatchOptions {
+  /**
+   * Opt-in: populate each Response.raw with the parsed result line (ADR-014).
+   */
+  raw?: boolean;
   pollIntervalMs?: number;
   /**
    * pollTimeoutMs is the OVERALL poll-loop wall-clock backstop for waitBatch
@@ -61,7 +63,6 @@ export interface BatchOptions extends Partial<PromptOptions> {
    * context.Context — the poll loop rejects with the abort reason when signalled.
    */
   signal?: AbortSignal;
-  middleware?: MiddlewareFn[];
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
@@ -73,7 +74,7 @@ const DEFAULT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 export async function submitBatch(
   provider: Provider,
   requests: PromptRequest[],
-  options: BatchOptions = {},
+  options: SendOptions = {},
 ): Promise<BatchHandle> {
   const cfg = PROVIDERS[provider.name];
   if (!cfg) {
@@ -89,13 +90,17 @@ export async function submitBatch(
       `batching not supported: ${provider.name}`,
     );
   }
-  validateOptions(provider.name, {});
+  // The one validation step on every item (RQC-017), before the
+  // batch_submit event: a bad item fails here (HANDOFF-105 F11).
+  const items = requests.map((r) => encodeChat(provider, cfg, r));
 
+  // Every item comes from one builder, so the first item's model is the
+  // batch's. An empty batch reports the provider's model.
   const baseEvent: Event = {
     op: "batch_submit",
     phase: "pre",
     provider: provider.name,
-    model: resolveModel(provider, cfg),
+    model: items[0]?.request.model ?? resolveModel(provider, cfg),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
@@ -107,17 +112,17 @@ export async function submitBatch(
 
     let body: Uint8Array;
     if (bc.inputMode === "FileReferenceInput") {
-      const jsonl = await buildBatchJsonl(requests, provider, cfg, bc, options);
+      const jsonl = await buildBatchJsonl(items, provider, cfg, bc, options);
       const fileId = await uploadBatchFile(base, jsonl, bc, headers, provider.timeoutMs);
       const payload: Record<string, unknown> = {
         [bc.inputField]: fileId,
         endpoint: bc.endpointPath,
         completion_window: bc.completionWindow,
       };
-      body = new TextEncoder().encode(JSON.stringify(payload));
+      body = new TextEncoder().encode(writeJson(payload));
     } else {
       const { payload, betaHeaders } = await buildBatchBody(
-        requests,
+        items,
         provider,
         cfg,
         bc,
@@ -130,7 +135,7 @@ export async function submitBatch(
       for (const [k, v] of Object.entries(betaHeaders)) {
         headers[k] = k === "anthropic-beta" ? appendBeta(headers[k] ?? "", v) : v;
       }
-      body = new TextEncoder().encode(JSON.stringify(payload));
+      body = new TextEncoder().encode(writeJson(payload));
     }
 
     const createUrl = base + bc.lifecycle.createEndpoint;
@@ -276,6 +281,7 @@ function newBatchAdapter(
     statusPath: lifecycle.pollingStatusPath,
     doneValues: nonEmptyValues(lifecycle.pollingDoneValue),
     errorValues: lifecycle.pollingErrorValues,
+    failureCodes: lifecycle.pollingFailureCodes,
     errorMessagePath: "",
     pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
     pollTimeoutMs: options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS,
@@ -355,15 +361,15 @@ function batchRequestCount(
 
 // Returns the batch payload plus the contract-bearing anthropic-beta values the
 // per-request bodies require (files-api / structured output), composed across
-// items, so the caller can attach them to the batch CREATE request (buildRequest
-// collects them into headersOut per request; the batch submit otherwise sends
+// items, so the caller can attach them to the batch CREATE request (encodeBody
+// returns them per request; the batch submit otherwise sends
 // only auth headers).
 async function buildBatchBody(
-  requests: PromptRequest[],
+  requests: ChatRequest[],
   provider: Provider,
   cfg: ProviderSpec,
   bc: BatchDef,
-  options: BatchOptions,
+  options: SendOptions,
 ): Promise<{
   payload: Record<string, unknown>;
   betaHeaders: Record<string, string>;
@@ -371,9 +377,7 @@ async function buildBatchBody(
   const items: Record<string, unknown>[] = [];
   const betaHeaders: Record<string, string> = {};
   for (let i = 0; i < requests.length; i++) {
-    const req = requests[i]!;
-    const reqHeaders: Record<string, string> = {};
-    const reqBody = buildRequest(provider, req, cfg, options, [], reqHeaders);
+    const { request: req, body: reqBody, headers: reqHeaders } = requests[i]!;
     if (reqHeaders["anthropic-beta"]) {
       betaHeaders["anthropic-beta"] = appendBeta(
         betaHeaders["anthropic-beta"] ?? "",
@@ -381,7 +385,7 @@ async function buildBatchBody(
       );
     }
     if (options.caching) {
-      await applyCaching(reqBody, provider, cfg, options);
+      await applyCaching(reqBody, provider, cfg, req.model, options);
     }
     if (bc.itemBodyField) {
       items.push({
@@ -399,21 +403,20 @@ async function buildBatchBody(
 }
 
 async function buildBatchJsonl(
-  requests: PromptRequest[],
+  requests: ChatRequest[],
   provider: Provider,
   cfg: ProviderSpec,
   bc: BatchDef,
-  options: BatchOptions,
+  options: SendOptions,
 ): Promise<Uint8Array> {
   const lines: string[] = [];
   for (let i = 0; i < requests.length; i++) {
-    const req = requests[i]!;
-    const reqBody = buildRequest(provider, req, cfg, options);
+    const { request: req, body: reqBody } = requests[i]!;
     if (options.caching) {
-      await applyCaching(reqBody, provider, cfg, options);
+      await applyCaching(reqBody, provider, cfg, req.model, options);
     }
     lines.push(
-      JSON.stringify({
+      writeJson({
         custom_id: `${BATCH_REQUEST_ID_PREFIX}${i}`,
         method: "POST",
         url: bc.endpointPath,
@@ -473,7 +476,7 @@ interface BatchSlot {
 //
 // With a request count there are exactly count slots, and an id at or above the
 // count follows them. Without one, slots run to the highest index seen. An index
-// with no line reads BATCH_SLOT_MISSING. Lines whose id has another form (a batch
+// with no line is a failed item whose cause code is BATCH_SLOT_MISSING. Lines whose id has another form (a batch
 // created outside llmkit) follow the indexed slots in file order, across sources
 // in source order. A line that is not JSON cannot be placed and is skipped.
 //
@@ -525,17 +528,26 @@ export function parseBatchResults(
   }
 
   const out: PromptResponse[] = slots.map(
-    (slot) => slot?.resp ?? { text: "", usage: {}, finishReason: BATCH_SLOT_MISSING },
+    (slot) =>
+      slot?.resp ?? {
+        parts: [],
+        usage: {},
+        state: "failed",
+        cause: { code: BATCH_SLOT_MISSING, status: "", message: "" },
+      },
   );
   return out.concat(unkeyed);
 }
 
 // parseBatchResultLine decodes one result line. The line succeeded when the value
 // at bc.resultStatusPath is one of bc.resultSuccessValues (any value when the
-// provider declares no status path) and its body decodes. Every other line
-// becomes a failed Response: empty text, the first reason path that resolves as
-// finishReason (BATCH_SLOT_ERROR when none does) and the first message path that
-// resolves as finishMessage.
+// provider declares no status path) and its body decodes; its state is
+// "succeeded". Every other line becomes a failed item (ADR-099 CRF-015): empty
+// text, no finish reason or message, state "failed", and a cause whose status is
+// the first reason path that resolves, whose code is that status's entry in
+// bc.resultFailureCodes (BATCH_SLOT_ERROR when it has none), and whose message is
+// the first message path that resolves. A line that succeeded but whose body
+// does not decode keeps the decode error as its message (HANDOFF-105 F5).
 function parseBatchResultLine(
   provider: string,
   line: string,
@@ -546,6 +558,7 @@ function parseBatchResultLine(
   const signalled =
     !bc.resultStatusPath ||
     bc.resultSuccessValues.includes(extractPath(wrapper, bc.resultStatusPath));
+  let message = firstPath(wrapper, bc.resultMessagePaths);
   if (signalled) {
     // VERBATIM, not parse-navigate-re-stringify: the inner body is what ADR-085
     // captures the assistant turn from, and JSON.stringify of a parsed value has
@@ -566,20 +579,26 @@ function parseBatchResultLine(
           innerText,
           raw,
         );
-        return { resp, succeeded: true };
-      } catch {
-        // Not a decodable body: fall through to a failed Response.
+        return { resp: { ...resp, state: "succeeded" }, succeeded: true };
+      } catch (err) {
+        // The provider says the request succeeded, but llmkit cannot read its
+        // body: the item failed here, and the decode error is why.
+        message = err instanceof Error ? err.message : String(err);
       }
     }
   }
 
+  const status = firstPath(wrapper, bc.resultReasonPaths);
   const failed: PromptResponse = {
-    text: "",
+    parts: [],
     usage: {},
-    finishReason: firstPath(wrapper, bc.resultReasonPaths) || BATCH_SLOT_ERROR,
+    state: "failed",
+    cause: {
+      code: bc.resultFailureCodes[status] ?? BATCH_SLOT_ERROR,
+      status,
+      message,
+    },
   };
-  const message = firstPath(wrapper, bc.resultMessagePaths);
-  if (message) failed.finishMessage = message;
   return { resp: attachRaw(failed, line, raw), succeeded: false };
 }
 

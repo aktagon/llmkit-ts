@@ -11,6 +11,7 @@
 import { anthropic, type Client } from "../src/builders/index.ts";
 import type { MiddlewareFn } from "../src/builders/index.ts";
 import type { Event } from "../src/providers/middleware.ts";
+import { responseText } from "../src/llmkit.ts";
 
 interface Price {
   input: number;
@@ -71,7 +72,7 @@ export async function main(c?: Client): Promise<void> {
   const resp = await client.text
     .addMiddleware(cap.middleware, tokenLogger)
     .prompt("What is 2+2? Reply in one word.");
-  console.log("Answer:", resp.text);
+  console.log("Answer:", responseText(resp));
   console.log(`Spent so far: $${cap.total.toFixed(4)} / $${(5.0).toFixed(2)}`);
 }
 

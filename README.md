@@ -36,6 +36,7 @@ The package ships compiled ESM in `dist/` (works in plain Node ESM, Workers, Den
 ## Quick Start
 
 ```ts
+import { responseText } from "@aktagon/llmkit-ts";
 import { anthropic } from "@aktagon/llmkit-ts/builders";
 
 const c = anthropic(process.env.ANTHROPIC_API_KEY!);
@@ -43,7 +44,7 @@ const resp = await c.text
   .system("You are concise.")
   .prompt("Why is the sky blue?");
 
-console.log(resp.text);
+console.log(responseText(resp));
 console.log(resp.usage.input, resp.usage.output);
 ```
 
@@ -84,7 +85,7 @@ const resp = await c.text
   .maxTokens(200)
   .prompt("What is 2+2?");
 
-console.log(resp.text); // "4"
+console.log(responseText(resp)); // "4"
 
 // Every Usage dimension is optional. undefined means the provider did not
 // report the value, which is NOT the same as reporting zero: a provider that
@@ -129,7 +130,7 @@ if (final !== null) {
 ### Agent — tool loop
 
 ```ts
-import type { Tool } from "@aktagon/llmkit-ts";
+import { responseText, type Tool } from "@aktagon/llmkit-ts";
 
 const add: Tool = {
   name: "add",
@@ -150,10 +151,12 @@ const bot = c.agent
   .maxToolIterations(5);
 
 const resp = await bot.prompt("What is 2+3?");
-console.log(resp.text);
+console.log(responseText(resp));
 ```
 
 `*Agent` is **stateful** — repeated `bot.prompt(...)` calls accumulate history. Chain methods (`.system(...)`, `.addTool(...)`) clone and reset state, so a forked builder gets a fresh conversation. `bot.reset()` clears state without dropping chained config.
+
+A `bot.prompt(...)` call that fails leaves the history as it was and throws the error that stopped it, such as an `APIError`. `bot.unsavedTurns` returns the turns that call made, tool results included. The next `bot.prompt(...)` call clears them when it starts, and so do `bot.reset()` and a chain method, whose clone starts with none.
 
 Tool dispatch covers Anthropic `tool_use`, OpenAI `tool_calls`, Google `functionCall`, and Bedrock Converse `toolUse`. Tool errors surface to the model as the result string verbatim — sanitise tool inputs at the source.
 
@@ -329,7 +332,7 @@ const handle = await client.text
     "Translate hello to German",
   );
 const results = await handle.wait();
-results.forEach((r) => console.log(r.text));
+results.forEach((r) => console.log(responseText(r)));
 ```
 
 `c.text.<config>.batch(...prompts)` queues the batch and returns a `BatchHandle` you can persist. Call `handle.wait()` to block until completion, or `handle.poll()` to drive the loop yourself. The blocking one-liner is `(await c.text.batch(...prompts)).wait()`. Both inline (Anthropic) and file-reference (OpenAI two-hop) flows are handled internally.
@@ -393,6 +396,25 @@ Across every `*Text` / `*Agent` builder:
 | Middleware hooks  | `.addMiddleware(...fns)` | See below.                                                                                                                                      |
 | Reasoning effort  | `.reasoningEffort(l)`    | OpenAI o-series, Gemini 2.5+                                                                                                                    |
 | Thinking budget   | `.thinkingBudget(n)`     | Anthropic, Gemini                                                                                                                               |
+
+A `Message` is a role plus an ordered list of parts. A user turn takes text, image and file parts; an assistant turn takes text and tool call parts; a tool turn takes tool result parts. Any turn can carry an image:
+
+```typescript
+const resp = await c.text
+  .history(
+    {
+      role: "user",
+      parts: [
+        { text: "What is in this image?" },
+        { image: { mimeType: "image/png", bytes: png } },
+      ],
+    },
+    { role: "assistant", parts: [{ text: "A single white pixel." }] },
+  )
+  .prompt("What color is that pixel?");
+```
+
+A tool call part carries `input`, the arguments as the JSON text the provider sent; `toolCallInput(call)` parses it. The request, `encodeResponse` and `saveHistory` write that text as it is, so key order, escapes and an integer past 2^53 are not changed.
 
 Sampling hyperparameters (`.topP`, `.topK`, `.seed`, `.frequencyPenalty`, `.presencePenalty`, `.stopSequences`) are validated per provider; unsupported options throw `ValidationError` rather than silently dropping.
 
@@ -498,11 +520,13 @@ const msgs = loadHistory(data);
 ```
 
 The output is a JSON document with a `_v` integer envelope plus a
-`messages` array. The version is tracked through
-`WIRE_SCHEMA_VERSION`; the in-memory `Message` schema may evolve
-additively under one version (new optional fields work on older
-readers), but a renamed, removed, or retyped field requires a `_v`
-bump and a migrator.
+`messages` array. Each message is a role plus its parts, and image
+bytes are inline base64. The version is tracked through
+`WIRE_SCHEMA_VERSION`, currently 2. New optional fields may arrive
+under one version and still load on older readers. A renamed, removed,
+or retyped field requires a `_v` bump. `loadHistory` rejects a version
+1 document with `UnsupportedWireVersionError`. There is no migrator, so
+rebuild such a history from your own records.
 
 `saveHistory` / `loadHistory` are the ONLY guaranteed-stable
 serialization path. Direct `JSON.stringify` on a `Message` produces

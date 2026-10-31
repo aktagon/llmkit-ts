@@ -14,6 +14,7 @@ import {
   type SpeechModelDef,
   speechGenConfig,
 } from "./providers/speech_gen.ts";
+import { writeJson } from "./json_text.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
@@ -98,7 +99,7 @@ export async function generateSpeech(
     const httpResp = await sendHTTP(url, {
       method: "POST",
       headers: { ...authHeaders, "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: writeJson(body),
       signal: options.signal,
     }, provider.timeoutMs);
 

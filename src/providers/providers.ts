@@ -75,6 +75,190 @@ export const RESPONSE_TEXT_CONFIGS: Record<string, ResponseTextConfig> = {
   ChatGoogle: { blocksPath: "candidates[0].content.parts", markerPath: "text", markerValue: "", valuePath: "text" },
 };
 
+// ToolCallResponseConfig locates the tool calls inside a chat response of one
+// wire family; decodeResponse reads and encodeResponse writes through it. The
+// marker semantics are ResponseTextConfig's. idPath is empty where the family
+// carries no id on the wire (Google): the id is derived from the tool name on
+// read, and nothing is written.
+export interface ToolCallResponseConfig {
+  blocksPath: string;
+  markerPath: string;
+  markerValue: string;
+  idPath: string;
+  namePath: string;
+  argsPath: string;
+}
+
+// Keyed by chat wire shape. A shape ABSENT from this map has no modelled
+// tool-call response shape (ChatResponsesOpenAI).
+export const TOOL_CALL_RESPONSE_CONFIGS: Readonly<Record<string, ToolCallResponseConfig>> = {
+  ChatAnthropic: { blocksPath: "content", markerPath: "type", markerValue: "tool_use", idPath: "id", namePath: "name", argsPath: "input" },
+  ChatBedrock: { blocksPath: "output.message.content", markerPath: "toolUse", markerValue: "", idPath: "toolUse.toolUseId", namePath: "toolUse.name", argsPath: "toolUse.input" },
+  ChatGoogle: { blocksPath: "candidates[0].content.parts", markerPath: "functionCall", markerValue: "", idPath: "", namePath: "functionCall.name", argsPath: "functionCall.args" },
+  ChatOpenAI: { blocksPath: "choices[0].message.tool_calls", markerPath: "type", markerValue: "function", idPath: "id", namePath: "function.name", argsPath: "function.arguments" },
+};
+
+const WIRE_SHAPE_RESPONSE_ID_PATHS: Record<string, string> = {
+  ChatAnthropic: "id",
+  ChatBedrock: "",
+  ChatGoogle: "responseId",
+  ChatOpenAI: "id",
+  ChatResponsesOpenAI: "id",
+};
+
+/** Where a chat wire shape carries the response id (ADR-099 CRF-013). Read for
+ * a call on a shape other than the provider's default; the default shape
+ * reaches ProviderSpec.responseIdPath. */
+export function wireShapeResponseIdPath(chatWireShape: string): string {
+  return WIRE_SHAPE_RESPONSE_ID_PATHS[chatWireShape] ?? "";
+}
+
+const WIRE_SHAPE_RESPONSE_MODEL_PATHS: Record<string, string> = {
+  ChatAnthropic: "model",
+  ChatBedrock: "",
+  ChatGoogle: "modelVersion",
+  ChatOpenAI: "model",
+  ChatResponsesOpenAI: "model",
+};
+
+/** Where a chat wire shape carries the reported model, read like
+ * wireShapeResponseIdPath. */
+export function wireShapeResponseModelPath(chatWireShape: string): string {
+  return WIRE_SHAPE_RESPONSE_MODEL_PATHS[chatWireShape] ?? "";
+}
+
+/**
+ * FinishReason is why a chat response stopped, in one vocabulary shared by
+ * every provider (ADR-099 CRF-001). Response.finishReason holds one; the
+ * provider's own string is in Response.providerFinishReason.
+ *
+ * - content_filter: The provider withheld or cut the output because its content filter flagged it.
+ * - length: The response reached the output-token limit set in the request.
+ * - other: Any wire value with no entry in the table (CRF-011). The provider's string is kept verbatim.
+ * - stop: The model reached a natural stop point or a caller-provided stop sequence.
+ * - tool_calls: The model stopped to call one or more tools.
+ */
+export type FinishReason = "content_filter" | "length" | "other" | "stop" | "tool_calls";
+
+/**
+ * FinishReasonEntry is one row of a chat wire shape's finish-reason table
+ * (ADR-099 CRF-004): a provider wire value and the canonical value it means.
+ * detailPath and detailValue are set only when the wire value fuses two
+ * canonical values; the entry then matches only when the field at detailPath
+ * holds detailValue (CRF-007). preferred marks the one entry per canonical
+ * value that encoding writes (CRF-005).
+ */
+export interface FinishReasonEntry {
+  readonly wireValue: string;
+  readonly detailPath: string;
+  readonly detailValue: string;
+  readonly canonical: FinishReason;
+  readonly preferred: boolean;
+}
+
+const WIRE_SHAPE_FINISH_REASONS: Readonly<Partial<Record<string, readonly FinishReasonEntry[]>>> = {
+  ChatAnthropic: [
+    { wireValue: "end_turn", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+    { wireValue: "max_tokens", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "refusal", detailPath: "", detailValue: "", canonical: "content_filter", preferred: true },
+    { wireValue: "stop_sequence", detailPath: "", detailValue: "", canonical: "stop", preferred: false },
+    { wireValue: "tool_use", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: true },
+  ],
+  ChatBedrock: [
+    { wireValue: "end_turn", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+    { wireValue: "max_tokens", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "stop_sequence", detailPath: "", detailValue: "", canonical: "stop", preferred: false },
+    { wireValue: "tool_use", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: true },
+  ],
+  ChatGoogle: [
+    { wireValue: "BLOCKLIST", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
+    { wireValue: "MAX_TOKENS", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "PROHIBITED_CONTENT", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
+    { wireValue: "RECITATION", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
+    { wireValue: "SAFETY", detailPath: "", detailValue: "", canonical: "content_filter", preferred: true },
+    { wireValue: "SPII", detailPath: "", detailValue: "", canonical: "content_filter", preferred: false },
+    { wireValue: "STOP", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+  ],
+  ChatOpenAI: [
+    { wireValue: "content_filter", detailPath: "", detailValue: "", canonical: "content_filter", preferred: true },
+    { wireValue: "function_call", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: false },
+    { wireValue: "length", detailPath: "", detailValue: "", canonical: "length", preferred: true },
+    { wireValue: "stop", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+    { wireValue: "tool_calls", detailPath: "", detailValue: "", canonical: "tool_calls", preferred: true },
+  ],
+  ChatResponsesOpenAI: [
+    { wireValue: "completed", detailPath: "", detailValue: "", canonical: "stop", preferred: true },
+    { wireValue: "incomplete", detailPath: "incomplete_details.reason", detailValue: "content_filter", canonical: "content_filter", preferred: true },
+    { wireValue: "incomplete", detailPath: "incomplete_details.reason", detailValue: "max_output_tokens", canonical: "length", preferred: true },
+  ],
+};
+
+/**
+ * The finish-reason table of a chat wire shape, empty when the shape declares
+ * none. A wire value with no entry is "other" (CRF-011).
+ */
+export function wireShapeFinishReasons(chatWireShape: string): readonly FinishReasonEntry[] {
+  return WIRE_SHAPE_FINISH_REASONS[chatWireShape] ?? [];
+}
+
+const WIRE_SHAPE_FINISH_REASON_FALLBACKS: Readonly<
+  Partial<Record<string, Readonly<Partial<Record<FinishReason, string>>>>>
+> = {
+  ChatAnthropic: { other: "end_turn" },
+  ChatBedrock: { content_filter: "end_turn", other: "end_turn" },
+  ChatGoogle: { other: "OTHER", tool_calls: "STOP" },
+  ChatOpenAI: { other: "stop" },
+  ChatResponsesOpenAI: { other: "completed", tool_calls: "completed" },
+};
+
+/**
+ * The wire value encodeResponse writes for a canonical finish reason the
+ * shape's table has no entry for (owner decision 1, HANDOFF-105 F1), or
+ * undefined when the shape declares none for it. Decode never reads it.
+ */
+export function wireShapeFinishReasonFallback(
+  chatWireShape: string,
+  reason: FinishReason,
+): string | undefined {
+  return WIRE_SHAPE_FINISH_REASON_FALLBACKS[chatWireShape]?.[reason];
+}
+
+const WIRE_SHAPE_RESPONSE_CREATED_PATHS: Record<string, string> = {
+  ChatAnthropic: "",
+  ChatBedrock: "",
+  ChatGoogle: "",
+  ChatOpenAI: "created",
+  ChatResponsesOpenAI: "created_at",
+};
+
+/** Where a one-shot body of a chat wire shape carries its creation time in Unix
+ * seconds, "" when the shape's bodies carry none (owner decision 4). */
+export function wireShapeResponseCreatedPath(chatWireShape: string): string {
+  return WIRE_SHAPE_RESPONSE_CREATED_PATHS[chatWireShape] ?? "";
+}
+
+/**
+ * A field every response body of a chat wire shape carries with the same
+ * value (shapeFixedValue, owner decision 4).
+ */
+export interface FixedValue {
+  readonly path: string;
+  readonly value: string | number;
+}
+
+const WIRE_SHAPE_FIXED_VALUES: Readonly<Partial<Record<string, readonly FixedValue[]>>> = {
+  ChatOpenAI: [
+    { path: "choices[0].index", value: 0 },
+    { path: "choices[0].message.role", value: "assistant" },
+    { path: "object", value: "chat.completion" },
+  ],
+};
+
+/** The fixed values encodeResponse writes for a chat wire shape, sorted by path. */
+export function wireShapeFixedValues(chatWireShape: string): readonly FixedValue[] {
+  return WIRE_SHAPE_FIXED_VALUES[chatWireShape] ?? [];
+}
+
 // ProviderSpec is HOW the library talks to a provider [PRIVATE]: the
 // internal wire/transform spec consumed only by the runtime. Volatile;
 // not exported from the package barrel.
@@ -96,6 +280,8 @@ export interface ProviderSpec {
   chatWireShape: string;
   chatProtocols: ChatProtocol[];
   roleMappings: Record<string, string>;
+  /** Wire role -> canonical role, read by decodeRequest only (decodeOnly). */
+  decodeRoleMappings: Record<string, string>;
   usageInputPath: string;
   usageOutputPath: string;
   usageCostPath: string;
@@ -105,6 +291,10 @@ export interface ProviderSpec {
   finishMessagePath: string;
   streamFinishReasonPath: string;
   streamFinishMessagePath: string;
+  responseIdPath: string;
+  responseModelPath: string;
+  streamResponseIdPath: string;
+  streamResponseModelPath: string;
   wrapsOptionsIn: string;
   safetySettingsWirePath: string;
   modelInBody: boolean;
@@ -117,16 +307,20 @@ export interface ProviderSpec {
   regionEnvVar: string;
   serviceName: string;
   toolParamsWireField: string;
+  toolArgsFormat: string;
+  toolIdSource: string;
 }
 
-export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
+export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
+  Object.create(null) as Record<ProviderName, ProviderSpec>,
+  {
   ai21: {
     name: "ai21",
     baseUrl: "https://api.ai21.com",
     endpoint: "/v1/chat/completions",
     defaultModel: "jamba-1.5-large",
     envVar: "AI21_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -145,6 +339,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -154,6 +350,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -166,6 +366,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   anthropic: {
     name: "anthropic",
@@ -190,6 +392,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       assistant: "assistant",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.input_tokens",
     usageOutputPath: "usage.output_tokens",
     usageCostPath: "",
@@ -199,6 +403,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "message_delta:delta.stop_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "message_start:message.id",
+    streamResponseModelPath: "message_start:message.model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -211,6 +419,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "map",
+    toolIdSource: "id_field",
   },
   assemblyai: {
     name: "assemblyai",
@@ -232,6 +442,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "",
     usageOutputPath: "",
     usageCostPath: "",
@@ -241,6 +453,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "",
     streamFinishMessagePath: "",
+    responseIdPath: "",
+    responseModelPath: "",
+    streamResponseIdPath: "",
+    streamResponseModelPath: "",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: false,
@@ -253,6 +469,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   azure: {
     name: "azure",
@@ -260,7 +478,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/openai/deployments/{model}/chat/completions?api-version=2024-10-21",
     defaultModel: "gpt-4o",
     envVar: "AZURE_OPENAI_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "HeaderAPIKey",
     authHeader: "api-key",
@@ -279,6 +497,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -288,6 +508,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: false,
@@ -300,6 +524,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   bedrock: {
     name: "bedrock",
@@ -307,7 +533,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/model/{model}/converse",
     defaultModel: "anthropic.claude-sonnet-4-20250514-v1:0",
     envVar: "AWS_ACCESS_KEY_ID",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "output.message.content[0].text",
     authScheme: "SigV4",
     authHeader: "",
@@ -324,15 +550,21 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       assistant: "assistant",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.inputTokens",
     usageOutputPath: "usage.outputTokens",
     usageCostPath: "",
     usageCostScale: 1.0,
     reasoningTokensPath: "",
-    finishReasonPath: "",
+    finishReasonPath: "stopReason",
     finishMessagePath: "",
     streamFinishReasonPath: "",
     streamFinishMessagePath: "",
+    responseIdPath: "",
+    responseModelPath: "",
+    streamResponseIdPath: "",
+    streamResponseModelPath: "",
     wrapsOptionsIn: "inferenceConfig",
     safetySettingsWirePath: "",
     modelInBody: false,
@@ -345,6 +577,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "AWS_REGION",
     serviceName: "bedrock",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "map",
+    toolIdSource: "id_field",
   },
   cerebras: {
     name: "cerebras",
@@ -352,7 +586,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "gpt-oss-120b",
     envVar: "CEREBRAS_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -371,6 +605,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -380,6 +616,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -392,6 +632,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   cohere: {
     name: "cohere",
@@ -399,7 +641,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "command-r-plus",
     envVar: "COHERE_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -418,6 +660,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -427,6 +671,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -439,6 +687,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   deepseek: {
     name: "deepseek",
@@ -446,7 +696,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "deepseek-chat",
     envVar: "DEEPSEEK_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -465,6 +715,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -474,6 +726,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -486,6 +742,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   doubao: {
     name: "doubao",
@@ -493,7 +751,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/chat/completions",
     defaultModel: "doubao-1.5-pro-32k-250115",
     envVar: "ARK_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -512,6 +770,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -521,6 +781,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -533,6 +797,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   ernie: {
     name: "ernie",
@@ -540,7 +806,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/chat/completions",
     defaultModel: "ernie-4.0-8k",
     envVar: "QIANFAN_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -559,6 +825,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -568,6 +836,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -580,6 +852,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   fireworks: {
     name: "fireworks",
@@ -587,7 +861,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "accounts/fireworks/models/gpt-oss-120b",
     envVar: "FIREWORKS_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -606,6 +880,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -615,6 +891,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -627,6 +907,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   google: {
     name: "google",
@@ -634,7 +916,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1beta/models/{model}:generateContent",
     defaultModel: "gemini-2.5-flash",
     envVar: "GOOGLE_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "candidates[0].content.parts[0].text",
     authScheme: "QueryParamKey",
     authHeader: "",
@@ -651,6 +933,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       assistant: "model",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usageMetadata.promptTokenCount",
     usageOutputPath: "usageMetadata.candidatesTokenCount",
     usageCostPath: "",
@@ -660,6 +944,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "candidates[0].finishMessage",
     streamFinishReasonPath: "candidates[0].finishReason",
     streamFinishMessagePath: "",
+    responseIdPath: "responseId",
+    responseModelPath: "modelVersion",
+    streamResponseIdPath: "responseId",
+    streamResponseModelPath: "modelVersion",
     wrapsOptionsIn: "generationConfig",
     safetySettingsWirePath: "safetySettings",
     modelInBody: false,
@@ -672,6 +960,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parametersJsonSchema",
+    toolArgsFormat: "map",
+    toolIdSource: "function_name",
   },
   grok: {
     name: "grok",
@@ -679,7 +969,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "grok-3-fast",
     envVar: "XAI_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -697,6 +987,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       tool: "tool",
       user: "user",
+    },
+    decodeRoleMappings: {
     },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
@@ -707,6 +999,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -719,6 +1015,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   groq: {
     name: "groq",
@@ -726,7 +1024,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "openai/gpt-oss-120b",
     envVar: "GROQ_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -745,6 +1043,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -754,6 +1054,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -766,6 +1070,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   inworld: {
     name: "inworld",
@@ -787,6 +1093,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "",
     usageOutputPath: "",
     usageCostPath: "",
@@ -796,6 +1104,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "",
     streamFinishMessagePath: "",
+    responseIdPath: "",
+    responseModelPath: "",
+    streamResponseIdPath: "",
+    streamResponseModelPath: "",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -808,6 +1120,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   jan: {
     name: "jan",
@@ -815,7 +1129,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "",
     envVar: "JAN_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -834,6 +1148,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -843,6 +1159,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -855,6 +1175,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   llamacpp: {
     name: "llamacpp",
@@ -862,7 +1184,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "",
     envVar: "LLAMACPP_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -881,6 +1203,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -890,6 +1214,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -902,6 +1230,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   lmstudio: {
     name: "lmstudio",
@@ -909,7 +1239,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "",
     envVar: "LM_STUDIO_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -928,6 +1258,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -937,6 +1269,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -949,6 +1285,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   minimax: {
     name: "minimax",
@@ -956,7 +1294,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/text/chatcompletion_v2",
     defaultModel: "MiniMax-Text-01",
     envVar: "MINIMAX_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -975,6 +1313,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -984,6 +1324,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -996,6 +1340,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   mistral: {
     name: "mistral",
@@ -1003,7 +1349,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "mistral-large-latest",
     envVar: "MISTRAL_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1022,6 +1368,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1031,6 +1379,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1043,6 +1395,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   moonshot: {
     name: "moonshot",
@@ -1050,7 +1404,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "kimi-k2.6",
     envVar: "MOONSHOT_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1069,6 +1423,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1078,6 +1434,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1090,6 +1450,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   ollama: {
     name: "ollama",
@@ -1097,7 +1459,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "",
     envVar: "OLLAMA_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1116,6 +1478,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1125,6 +1489,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1137,6 +1505,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   openai: {
     name: "openai",
@@ -1144,7 +1514,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "gpt-4o-2024-08-06",
     envVar: "OPENAI_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1164,6 +1534,9 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+      developer: "system",
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1173,6 +1546,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1185,6 +1562,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   openrouter: {
     name: "openrouter",
@@ -1192,7 +1571,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "openai/gpt-4o",
     envVar: "OPENROUTER_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1211,6 +1590,9 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+      developer: "system",
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "usage.cost",
@@ -1220,6 +1602,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1232,6 +1618,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   perplexity: {
     name: "perplexity",
@@ -1239,7 +1627,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/chat/completions",
     defaultModel: "sonar-pro",
     envVar: "PERPLEXITY_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1257,6 +1645,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1266,6 +1656,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1278,6 +1672,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   pixverse: {
     name: "pixverse",
@@ -1299,6 +1695,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "",
     usageOutputPath: "",
     usageCostPath: "",
@@ -1308,6 +1706,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "",
     streamFinishMessagePath: "",
+    responseIdPath: "",
+    responseModelPath: "",
+    streamResponseIdPath: "",
+    streamResponseModelPath: "",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1320,6 +1722,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   qwen: {
     name: "qwen",
@@ -1327,7 +1731,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "qwen-plus",
     envVar: "DASHSCOPE_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1346,6 +1750,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1355,6 +1761,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1367,6 +1777,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   recraft: {
     name: "recraft",
@@ -1388,6 +1800,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "",
     usageOutputPath: "",
     usageCostPath: "",
@@ -1397,6 +1811,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "",
     streamFinishMessagePath: "",
+    responseIdPath: "",
+    responseModelPath: "",
+    streamResponseIdPath: "",
+    streamResponseModelPath: "",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1409,6 +1827,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   sambanova: {
     name: "sambanova",
@@ -1416,7 +1836,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "Meta-Llama-3.3-70B-Instruct",
     envVar: "SAMBANOVA_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1435,6 +1855,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1444,6 +1866,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1456,6 +1882,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   together: {
     name: "together",
@@ -1463,7 +1891,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
     envVar: "TOGETHER_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1482,6 +1910,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1491,6 +1921,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1503,6 +1937,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   vertex: {
     name: "vertex",
@@ -1524,6 +1960,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "",
     usageOutputPath: "",
     usageCostPath: "",
@@ -1533,6 +1971,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "",
     streamFinishMessagePath: "",
+    responseIdPath: "",
+    responseModelPath: "",
+    streamResponseIdPath: "",
+    streamResponseModelPath: "",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: false,
@@ -1545,6 +1987,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   vidu: {
     name: "vidu",
@@ -1566,6 +2010,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     roleMappings: {
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "",
     usageOutputPath: "",
     usageCostPath: "",
@@ -1575,6 +2021,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "",
     streamFinishMessagePath: "",
+    responseIdPath: "",
+    responseModelPath: "",
+    streamResponseIdPath: "",
+    streamResponseModelPath: "",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1587,6 +2037,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   vllm: {
     name: "vllm",
@@ -1594,7 +2046,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "",
     envVar: "VLLM_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1613,6 +2065,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1622,6 +2076,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1634,6 +2092,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
   workersai: {
     name: "workersai",
@@ -1641,7 +2101,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/chat/completions",
     defaultModel: "@cf/meta/llama-3.1-8b-instruct",
     envVar: "CLOUDFLARE_API_TOKEN",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1660,6 +2120,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1669,6 +2131,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1681,6 +2147,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   yi: {
     name: "yi",
@@ -1688,7 +2156,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v1/chat/completions",
     defaultModel: "yi-large",
     envVar: "YI_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1706,6 +2174,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       system: "system",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1715,6 +2185,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1727,6 +2201,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "",
+    toolIdSource: "",
   },
   zhipu: {
     name: "zhipu",
@@ -1734,7 +2210,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     endpoint: "/v4/chat/completions",
     defaultModel: "glm-4-plus",
     envVar: "ZHIPU_API_KEY",
-    defaultMaxTokens: 4096,
+    defaultMaxTokens: 0,
     responseTextPath: "choices[0].message.content",
     authScheme: "BearerToken",
     authHeader: "Authorization",
@@ -1753,6 +2229,8 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
       tool: "tool",
       user: "user",
     },
+    decodeRoleMappings: {
+    },
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageCostPath: "",
@@ -1762,6 +2240,10 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     finishMessagePath: "",
     streamFinishReasonPath: "choices[0].finish_reason",
     streamFinishMessagePath: "",
+    responseIdPath: "id",
+    responseModelPath: "model",
+    streamResponseIdPath: "id",
+    streamResponseModelPath: "model",
     wrapsOptionsIn: "",
     safetySettingsWirePath: "",
     modelInBody: true,
@@ -1774,8 +2256,11 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = {
     regionEnvVar: "",
     serviceName: "",
     toolParamsWireField: "parameters",
+    toolArgsFormat: "json_string",
+    toolIdSource: "id_field",
   },
-};
+  } satisfies Record<ProviderName, ProviderSpec>,
+);
 
 export interface StructuredOutputDef {
   formatField: string;

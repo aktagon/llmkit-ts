@@ -8,6 +8,7 @@
  * builder each call.
  */
 import { anthropic, Client } from "../src/builders/index.ts";
+import { responseText } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");
@@ -16,7 +17,7 @@ export async function main(c?: Client): Promise<void> {
     .temperature(0.3)
     .maxTokens(50)
     .prompt("Say hi");
-  console.log(resp.text);
+  console.log(responseText(resp));
   console.log(
     `${resp.usage.input} input tokens, ${resp.usage.output} output tokens`,
   );

@@ -462,3 +462,23 @@ export function wireShapeStreamConfig(chatWireShape: string): StreamDef | undefi
 export function wireShapeStreamFinishReasonPath(chatWireShape: string): string {
   return WIRE_SHAPE_STREAM_FINISH_REASON_PATHS[chatWireShape] ?? "";
 }
+
+const WIRE_SHAPE_STREAM_RESPONSE_ID_PATHS: Record<string, string> = {
+  ChatResponsesOpenAI: "response.completed:response.id",
+};
+
+/** The ADR-013 stream response-id locator read with wireShapeStreamConfig
+ * (ADR-099 CRF-014). */
+export function wireShapeStreamResponseIdPath(chatWireShape: string): string {
+  return WIRE_SHAPE_STREAM_RESPONSE_ID_PATHS[chatWireShape] ?? "";
+}
+
+const WIRE_SHAPE_STREAM_RESPONSE_MODEL_PATHS: Record<string, string> = {
+  ChatResponsesOpenAI: "response.completed:response.model",
+};
+
+/** The ADR-013 stream response-model locator read with wireShapeStreamConfig
+ * (ADR-099 CRF-014). */
+export function wireShapeStreamResponseModelPath(chatWireShape: string): string {
+  return WIRE_SHAPE_STREAM_RESPONSE_MODEL_PATHS[chatWireShape] ?? "";
+}
