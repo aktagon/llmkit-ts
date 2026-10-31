@@ -34,7 +34,7 @@ import { parseCacheUsage } from "./caching.ts";
 import { captureProviderTurn } from "./provider_turn.ts";
 import { ValidationError } from "./errors.ts";
 import { writeJson } from "./json_text.ts";
-import { checkTurnParts, withWireShape } from "./request.ts";
+import { checkTurnParts, servedChatSpec } from "./request.ts";
 import {
   decodeChatParts,
   encodeChatParts,
@@ -59,23 +59,6 @@ import type { Response, Usage } from "./types.ts";
  * chat shape, is a ValidationError on field "chatWireShape", and an unknown
  * provider one on "provider".
  */
-/**
- * Fill in an unspecified wire shape with the provider's DEFAULT chat protocol.
- * 
- * Callers that decode a body they know is Chat Completions — batch result lines,
- * chiefly — pass "" to mean "not the Responses envelope". Harmless while the shape
- * only chose between the Responses arm and the provider's declared paths; NOT
- * harmless once it also selects the TEXT READER, because "" resolved to no config,
- * which is the positional reader BUG-053 removed. Batched Anthropic replies with a
- * leading thinking block decoded to "" long after the send path was fixed.
- * 
- * Resolving here keeps N=1. ADR-055 requires every provider's default protocol to
- * be a Chat Completions family, so this can never resolve INTO the Responses arm.
- */
-function resolveChatWireShape(provider: ProviderName, chatWireShape: string): string {
-  return chatWireShape !== "" ? chatWireShape : PROVIDERS[provider].chatWireShape;
-}
-
 export function decodeResponse(
   provider: ProviderName,
   chatWireShape: string,
@@ -137,26 +120,11 @@ function setCreated(result: Response, raw: unknown, chatWireShape: string): void
 
 /**
  * servedChatWireShape resolves the shape decodeResponse reads (HANDOFF-105 F4)
- * and encodeResponse writes: the named one,
- * or the provider's default when chatWireShape is "". An unknown provider is a
- * ValidationError on field "provider", as in Go. A shape the provider does
- * not serve is a ValidationError on field "chatWireShape", the name
- * encodeRequest uses (owner decision 2, HANDOFF-105 section 3b), and so is a provider that serves no chat shape at
- * all: writing provider paths into another family's body produces a body
- * neither family reads.
+ * and encodeResponse writes, through servedChatSpec, the check encodeRequest
+ * runs.
  */
 function servedChatWireShape(provider: ProviderName, chatWireShape: string): string {
-  if (!PROVIDERS[provider]) {
-    throw new ValidationError("provider", `unknown: ${provider}`);
-  }
-  const shape = resolveChatWireShape(provider, chatWireShape);
-  if (shape === "" || !withWireShape(PROVIDERS[provider], shape)) {
-    throw new ValidationError(
-      "chatWireShape",
-      `provider "${provider}" does not serve chat wire shape "${chatWireShape}"`,
-    );
-  }
-  return shape;
+  return servedChatSpec(provider, chatWireShape).chatWireShape;
 }
 
 /**
