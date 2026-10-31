@@ -632,6 +632,11 @@ export interface VideoHandle {
    * model is the submitted model id, carried so Wait can build a model-templated poll URL (Vertex Veo polls POST /{model}:fetchPredictOperation). Submit sets it from the request; empty for providers whose poll endpoint does not template the model.
    */
   model?: string;
+
+  /**
+   * keepStored is the caller's choice to keep the provider's stored job after Wait has the video. False (the default) makes Wait delete it on providers that store jobs (Gemini Omni); a failed delete returns the video with a VideoDeleteError. Submit copies the builder's KeepStored() flag here; cross-process resume callers set it directly.
+   */
+  keepStored?: boolean;
 }
 
 /**
@@ -644,7 +649,7 @@ export interface VideoResponse {
   videos: VideoData[];
 
   /**
-   * usage holds token consumption metrics for the video-generation call. No verified provider reports a video usage axis yet; the dimensions stay unreported unless a provider surfaces counts (ADR-034 OQ-3). Unreported is not zero.
+   * usage holds token consumption metrics for the video-generation call, read at the provider config's video usage paths (Gemini Omni: input, output and reasoning tokens). Providers that report no counts leave every dimension unreported (ADR-034 OQ-3). Unreported is not zero.
    */
   usage: Usage;
 
