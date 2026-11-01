@@ -30,7 +30,7 @@ import { lastInteractionOutputItem } from "../speech.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
 import type { Part } from "../image.ts";
-import { lookupModel, statedFalseBlocks } from "../model_lookup.ts";
+import { catalogueHint, lookupModel, offList, statedFalseBlocks, withHint } from "../model_lookup.ts";
 import type { MediaRef } from "../structs.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
@@ -348,8 +348,38 @@ export async function videoSubmit(
       err: err instanceof Error ? err : new Error(String(err)),
       duration: performance.now() - start,
     });
-    throw err;
+    throw withHint(
+      err,
+      videoHint(model, imageCount, b._lastFrame, b._referenceImages.length, b._duration, b._resolution, b._aspectRatio),
+    );
   }
+}
+
+// videoHint names the stated facts of a listed video model the request
+// contradicts, in this order in every SDK: image-to-video, last frame,
+// reference images, maximum duration, resolution, aspect ratio (ADR-102
+// MPT-008). An unlisted model (undefined) and an unknown fact give none.
+// Mirrors go/video.go.
+function videoHint(
+  model: VideoModelDef | undefined,
+  imageCount: number,
+  lastFrame: MediaRef | undefined,
+  referenceImages: number,
+  durationSeconds: number | bigint,
+  resolution: string,
+  aspectRatio: string,
+): string {
+  if (model === undefined) return "";
+  const facts: string[] = [];
+  if (imageCount > 0 && model.supportsImageToVideo === false) facts.push("no image-to-video");
+  if (lastFrame !== undefined && model.supportsLastFrame === false) facts.push("no last frame");
+  if (referenceImages > 0 && model.supportsReferenceImages === false) facts.push("no reference images");
+  if (model.maxDurationSeconds > 0 && Number(durationSeconds) > model.maxDurationSeconds) {
+    facts.push(`at most ${model.maxDurationSeconds} seconds`);
+  }
+  if (offList(model.resolutions, resolution)) facts.push(`no resolution ${resolution}`);
+  if (offList(model.aspectRatios, aspectRatio)) facts.push(`no aspect ratio ${aspectRatio}`);
+  return catalogueHint(model.modelId, facts);
 }
 
 // dispatchVideoSubmit POSTs the submit body per wire shape (never by provider

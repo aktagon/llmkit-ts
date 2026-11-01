@@ -24,7 +24,7 @@ import type { Provider, SafetySetting, Usage } from "./types.ts";
 
 export type { MediaRef } from "./structs.ts";
 import type { MediaRef } from "./structs.ts";
-import { lookupModel, statedFalseBlocks } from "./model_lookup.ts";
+import { catalogueHint, lookupModel, offList, statedFalseBlocks, withHint } from "./model_lookup.ts";
 
 // Part is declared in ./structs.ts (ADR-100 MSG-005) and re-exported here so
 // existing `import { Part } from "./image.ts"` callsites keep working.
@@ -391,8 +391,28 @@ export async function generateImage(
       err: err instanceof Error ? err : new Error(String(err)),
       duration: performance.now() - start,
     });
-    throw err;
+    throw withHint(err, imageHint(model, options, imageCount));
   }
+}
+
+/**
+ * imageHint names the stated facts of a listed image model the request
+ * contradicts, in this order in every SDK: image input, aspect ratio, image
+ * size (ADR-102 MPT-008). An unlisted model (undefined) and an unknown fact
+ * give none. Exported for tests only; the package barrel does not re-export
+ * it.
+ */
+export function imageHint(
+  model: ImageModelDef | undefined,
+  options: ImageOptions,
+  imageCount: number,
+): string {
+  if (model === undefined) return "";
+  const facts: string[] = [];
+  if (imageCount > 0 && model.supportsImageInput === false) facts.push("no image input");
+  if (offList(model.aspectRatios, options.aspectRatio)) facts.push(`no aspect ratio ${options.aspectRatio}`);
+  if (offList(model.imageSizes, options.imageSize)) facts.push(`no image size ${options.imageSize}`);
+  return catalogueHint(model.modelId, facts);
 }
 
 // Note: gpt-image-* models always return base64-encoded images via
