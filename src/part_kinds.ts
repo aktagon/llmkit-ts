@@ -28,18 +28,33 @@ export function checkPartKinds(
   });
 }
 
+/** PartKey is a key of one Part variant, e.g. "text" or "toolCall". */
+export type PartKey = Part extends infer P ? (P extends unknown ? keyof P : never) : never;
+
 /**
- * partKindOf returns the one kind a part sets, or throws a ValidationError on
- * field for a part that sets none or more than one, an empty text part
- * included: it sets no kind in Go (owner decision 2, HANDOFF-105 F11). It is
- * the one check of a part's shape: checkPartKinds runs it for chat and every
- * other capability, and saveHistory runs it, so a request and a Save reject
- * the same part with the same error (F11, F12).
+ * hasPart reports whether part sets key: its value is not undefined, null or
+ * "". It is the one definition of a set Part key, as in Go, where a nil
+ * pointer or an empty string is an unset variant. partKindOf and every
+ * encoder read a part by it, so they pick the same variant (HANDOFF-111).
+ */
+export function hasPart<K extends PartKey>(part: Part, key: K): part is Extract<Part, Record<K, unknown>> {
+  const value = (part as Record<string, unknown>)[key];
+  return value !== undefined && value !== null && value !== "";
+}
+
+/**
+ * partKindOf returns the one kind a part sets (hasPart), or throws a
+ * ValidationError on field for a part that sets none or more than one: an
+ * empty text, lyrics or audio_url part sets none (owner decision 2,
+ * HANDOFF-105 F11; HANDOFF-111). It is the one check of a part's shape:
+ * checkPartKinds runs it for chat and every other capability, and
+ * saveHistory runs it, so a request and a Save reject the same part with the
+ * same error (F11, F12).
  */
 export function partKindOf(part: Part, field: string): string {
-  const kinds = Object.keys(part).flatMap((key) => PART_KINDS[key] ?? []);
+  const kinds = partKinds(part);
   const [kind, ...rest] = kinds;
-  if (kind === undefined || ("text" in part && part.text === "")) {
+  if (kind === undefined) {
     throw new ValidationError(field, "empty part");
   }
   if (rest.length > 0) {
@@ -48,8 +63,21 @@ export function partKindOf(part: Part, field: string): string {
   return kind;
 }
 
-/** partKind is the variant name of a part checkPartKinds accepted. */
-export function partKind(part: Part): string {
-  const key = Object.keys(part).find((k) => k in PART_KINDS);
-  return key === undefined ? "" : PART_KINDS[key]!;
+/**
+ * partKinds names every kind part sets (hasPart), in variant order. A valid
+ * part sets exactly one. Mirror of Go's Part.partKinds.
+ */
+export function partKinds(part: Part): string[] {
+  return (Object.keys(PART_KINDS) as PartKey[]).flatMap((key) =>
+    hasPart(part, key) ? [PART_KINDS[key]!] : [],
+  );
+}
+
+/**
+ * isText reports whether part is a text part: it sets text and no other
+ * kind (ADR-100 MSG-006). Mirror of Go's Part.isText.
+ */
+export function isText(part: Part): part is { text: string } {
+  const kinds = partKinds(part);
+  return kinds.length === 1 && kinds[0] === "text";
 }

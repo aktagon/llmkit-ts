@@ -1,8 +1,7 @@
 // Music generation runtime — mirror of go/music.go (ADR-033).
 //
 // Pre-flight validation (model required; each part exactly one of text or
-// lyrics; image parts rejected; lyrics rejected on instrumental-only models)
-// runs before any HTTP call. Dispatch branches on mgCfg.wireShape, which fully
+// lyrics; image parts rejected) runs before any HTTP call. Dispatch branches on mgCfg.wireShape, which fully
 // determines the request body, the response audio path, AND the byte encoding
 // (base64 for Vertex/Gemini, hex for MiniMax).
 
@@ -15,7 +14,7 @@ import {
 } from "./providers/music_gen.ts";
 import { writeJson } from "./json_text.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { checkPartKinds } from "./part_kinds.ts";
+import { checkPartKinds, hasPart } from "./part_kinds.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
@@ -73,11 +72,6 @@ export async function generateMusic(
 
   const parts = normalizeMusicParts(request);
   checkPartKinds("music_generation", parts);
-  parts.forEach((part, i) => {
-    if (("text" in part && !part.text) || ("lyrics" in part && !part.lyrics)) {
-      throw new ValidationError(`parts[${i}]`, "empty part");
-    }
-  });
 
   const mgCfg = musicGenConfig(provider.name);
   if (!mgCfg) {
@@ -220,9 +214,9 @@ function buildVertexMusicBody(parts: Part[]): Record<string, unknown> {
 function buildGeminiMusicBody(parts: Part[]): Record<string, unknown> {
   const wire: Array<Record<string, unknown>> = [];
   for (const p of parts) {
-    if ("lyrics" in p && p.lyrics) {
+    if (hasPart(p, "lyrics")) {
       wire.push({ text: p.lyrics });
-    } else if ("text" in p) {
+    } else if (hasPart(p, "text")) {
       wire.push({ text: p.text });
     }
   }
@@ -256,14 +250,14 @@ function buildMinimaxMusicBody(
 
 function joinPromptText(parts: Part[]): string {
   return parts
-    .filter((p): p is { text: string } => "text" in p && !!p.text)
+    .filter((p): p is { text: string } => hasPart(p, "text"))
     .map((p) => p.text)
     .join("\n");
 }
 
 function joinLyricsText(parts: Part[]): string {
   return parts
-    .filter((p): p is { lyrics: string } => "lyrics" in p && !!p.lyrics)
+    .filter((p): p is { lyrics: string } => hasPart(p, "lyrics"))
     .map((p) => p.lyrics)
     .join("\n");
 }
