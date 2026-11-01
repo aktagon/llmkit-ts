@@ -273,10 +273,6 @@ export async function videoSubmit(
           `${b._model} is a text-to-video-only model and does not accept image parts`,
         );
       }
-      return;
-    }
-    if (!hasPart(part, "text")) {
-      throw new ValidationError(`parts[${i}]`, "must have text set");
     }
   });
   const imageCount = parts.filter((p) => hasPart(p, "image")).length;
