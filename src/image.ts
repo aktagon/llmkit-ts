@@ -24,7 +24,7 @@ import type { Provider, SafetySetting, Usage } from "./types.ts";
 
 export type { MediaRef } from "./structs.ts";
 import type { MediaRef } from "./structs.ts";
-import { lookupModel } from "./model_lookup.ts";
+import { lookupModel, statedFalseBlocks } from "./model_lookup.ts";
 
 // Part is declared in ./structs.ts (ADR-100 MSG-005) and re-exported here so
 // existing `import { Part } from "./image.ts"` callsites keep working.
@@ -146,7 +146,7 @@ export async function generateImage(
   // ADR-102 MPT-006 G5: a listed model's aspect ratios and sizes are hints,
   // not blocks. The provider answers an off-list value.
   const imageCount = parts.filter((p) => hasPart(p, "image")).length;
-  validateImageArity(model, imageCount);
+  validateImageArity(imgCfg, model, imageCount);
 
   // ADR-096: the request's parts pick the wire request; a config with no
   // variant for those inputs cannot send it.
@@ -564,16 +564,18 @@ function joinTextParts(parts: Part[]): string {
 /**
  * validateImageArity rejects image parts the model does not take.
  * BUG-096: both limits are llmkit wire facts per model. maxInputImages 0
- * means no llmkit limit; the provider decides volume. An unlisted model
- * (undefined) has no limits, so the caller's image parts are sent
- * (decision 009).
+ * means no llmkit limit; the provider decides volume. A stated-false
+ * supportsImageInput blocks only on a config that ignores Image (ADR-102
+ * MPT-006 G6). An unlisted model (undefined) has no limits, so the caller's
+ * image parts are sent (decision 009).
  */
 export function validateImageArity(
+  cfg: ImageGenDef,
   model: ImageModelDef | undefined,
   imageCount: number,
 ): void {
   if (model === undefined) return;
-  if (imageCount > 0 && !model.supportsImageInput) {
+  if (imageCount > 0 && statedFalseBlocks(cfg.ignoresUnsupported, "Image", model.supportsImageInput)) {
     throw new ValidationError("parts", `${model.modelId} takes no image parts`);
   }
   if (model.maxInputImages > 0 && imageCount > model.maxInputImages) {
