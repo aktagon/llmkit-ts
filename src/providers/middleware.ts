@@ -43,6 +43,8 @@ export interface Event {
   provider: string;
   // Always set.
   model: string;
+  // Set on the pre and post events of image, speech, music, video, chat, stream, agent and batch: true when the catalogue does not list Model for Provider, so the per-model checks did not run (ADR-102 MPT-002). Internal-only: not an OTEL attribute.
+  modelUnlisted?: boolean;
   // Only set when Op=tool_call. Internal-only.
   tool?: string;
   // Only set when Op=tool_call, Phase=pre. Mutation by middleware is observed by the tool. Internal-only.
