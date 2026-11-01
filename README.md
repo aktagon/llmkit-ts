@@ -296,10 +296,6 @@ Control content filtering for Gemini providers. `safetySettings` applies to text
 generation, streaming, agents, and Gemini image generation. On a non-Gemini
 provider it throws a `ValidationError`.
 
-`safetyFilter` is deprecated. It served Vertex Imagen, which Google shut down;
-every provider now throws a `ValidationError` for it. It will be removed in the
-next major version.
-
 ### Upload — Path or Bytes
 
 ```ts
