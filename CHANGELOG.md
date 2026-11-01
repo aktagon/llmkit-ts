@@ -46,10 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"timeout"` or `"missing"`. `poll()` reports it too: an OpenAI batch whose
   status is `expired` has code `"expired"`, and `cancelled` has
   `"cancelled"`. The poll deadline still throws `PollTimeoutError`.
-- **BREAKING — `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR` are
-  `JobFailureCode` values.** They are the `cause.code` of an item with no
-  result line and of a failure the provider gives no known status for. They
-  were `finishReason` strings. `JobFailureCode` is exported from the package
+- `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR` are `JobFailureCode` values:
+  the `cause.code` of an item with no result line and of a failure the
+  provider gives no known status for. `JobFailureCode` is exported from the package
   root.
 - Batch items carry `id` and `model` from the provider's response body.
 - **BREAKING — `Request` has no `user` field.** Put the final prompt as the
@@ -109,8 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `text.cacheTTL(seconds)` and `agent.cacheTTL(seconds)` set how long the
   cache that `.caching()` creates lives. Google resource caching sends it on the cache-create request;
   without it, Google's default TTL (3600 s) applies. Other providers ignore
-  it. Since the removal of `PromptOptions.cacheTTL`, no chat call could set a
-  TTL. The TTL is positive whole seconds: `0`, `-5`, `1.5`, `NaN` and
+  it. Before, no chat call could set a TTL. The TTL is positive whole seconds: `0`, `-5`, `1.5`, `NaN` and
   `Infinity` fail the call with a `ValidationError` on field `cacheTTL`.
 - `encodeRequest(provider, chatWireShape, request)` encodes a chat request
   for a provider's wire shape and returns a `WireRequest`: the path with the
@@ -134,10 +132,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bigint`, below it a `number`. On a runtime that gives `JSON.parse` no
   number source text, such a value is rejected, never rounded. Other wire
   shapes throw on field `chatWireShape`.
-
-- `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR`: the finish reasons of a batch slot with no result, and of a
-  failed slot the provider gave no reason for. Compare against them instead
-  of typing the strings.
 
 - **Streaming with the Responses protocol.** A stream with `.protocol("responses")`
   now posts to `/v1/responses` and reads its events: text deltas, the finish
@@ -172,7 +166,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `models.live()`, which is removed. The synchronous `models.list()` and
   `models.get(id)`, which read a list compiled into the SDK, are removed. Use
   `client.models.provider(p).get(id)` to look up one model. Vertex and
-  Bedrock still report `ErrModelsNotSupported` in `LiveResult.errors`.
+  Bedrock still report a `ProviderError` with `kind` `"not_supported"` in
+  `LiveResult.errors`.
 - **Each client caches the live model list for one hour.** A repeat
   `models.list()` or `provider(p).list()` within the hour makes no HTTP
   call, and `provider(p).get(id)` answers from the cached list when it holds
@@ -344,10 +339,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose carried input matches your request from `variants` instead of the
   removed fields.
 
-- **Vertex Imagen is text-to-image only.** Image parts and a mask on a
-  Vertex image request are now rejected before the request is sent. Google's
-  reference documents no reference-image field for these models.
-
 - **A mask is accepted only on an OpenAI request with reference images.** A
   mask on any other image request is rejected before the request is sent.
 
@@ -412,23 +403,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JSON.parse's `SyntaxError`.
 
 - **OpenAI batch failures show the provider's error.** Waiting on an OpenAI
-  batch now also reads its error file. A failed request's finish reason is the
-  provider's error code (for example `batch_expired`), and its finish message
+  batch now also reads its error file. A failed request's `cause.status` is the
+  provider's error code (for example `batch_expired`), and its `cause.message`
   is the provider's error message.
 - **A batch result succeeds only when the provider says it did.** A result line
   with a failure status and an empty body reads as failed, not as a success
   with empty text.
 - **A batch returns one response per prompt, even when the last one has no
   result.** The list length comes from the batch's request count, so a missing
-  last request keeps its slot and reads `missing`.
+  last request keeps its slot, with `cause.code` `"missing"`.
 - **Batch results are matched to prompts by request id, not by line order.**
   Providers return batch results in any order, and a failed request used to be
   dropped, so later answers moved up one place. Waiting on a batch now returns
   one response per prompt, at the prompt's index. A failed request keeps its
-  slot with empty text, the provider's result status as the finish reason
-  (`errored`, `expired`, `canceled`, or `error`) and the provider's error
-  message as the finish message. A request with no result reads finish reason
-  `missing`. Results for request ids this SDK did not assign follow in file
+  slot with empty text, `state` `"failed"`, the provider's result status in
+  `cause.status` (`errored`, `expired`, `canceled`, or `error`) and the provider's
+  error message in `cause.message`. A request with no result has `cause.code`
+  `"missing"`. Results for request ids this SDK did not assign follow in file
   order.
 
 - **Anthropic streams report the finish reason.** It was read from the
