@@ -112,6 +112,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an array (Anthropic, Responses) or an array where it replays an object
   (OpenAI Chat Completions, Google). Such a turn used to be rebuilt from the
   message's parts, or sent as it was.
+- **BREAKING — an empty `lyrics` or `audioUrl` part is a `ValidationError`**
+  with "empty part", on `parts[i]` at request and on `messages[i].parts[j]`
+  in `saveHistory`, as in Go. Both used to be accepted.
+- **BREAKING — a Part key is set when its value is not `undefined`, `null`
+  or `""`,** as in Go. Every check and encoder reads a part's kind this way.
+  A part with an extra key set to `undefined` or `null`, such as
+  `{ text: "hi", image: undefined }`, is accepted as its one set kind; it
+  used to be rejected as setting two kinds. A part whose `text` is
+  `undefined` is rejected as "empty part". The "sets X and Y" message lists
+  the kinds in variant order, not key order.
+- **BREAKING — `responseText` counts a part's text only when text is its one
+  kind.** `{ parts: [{ text: "a", toolCall }] }` gives `""`; it used to give
+  `"a"`. The request encoder reads an assistant turn's text the same way. A
+  user turn `{ text: "", toolCall }` and an assistant turn
+  `{ text: "", toolResult }` fail the role check; they used to pass as text
+  parts.
+- **BREAKING — behavior changes whose commits carry no `!`.** ADR-044
+  VER-001 now counts a change that rejects input the SDK used to accept, or
+  that changes a value callers already get, as breaking (owner, 2026-10-31,
+  HANDOFF-111). These HANDOFF-105 commits made such a change without the
+  marker:
+  - `bd7f0adc`: U+2028 and U+2029 are written as ` ` and ` ` in
+    every key and string the SDK writes. They used to be written as the
+    characters.
+  - `04ad8ba7`: a provider's `"input": ""` in an Anthropic, Google or
+    Bedrock reply decodes as the `input` `'""'`. It used to decode as no
+    input.
+  - `fd6a32bc`: U+2028 and U+2029 inside a provider's own text, such as a
+    tool call's arguments or a replayed turn, are written as escapes. They
+    used to be sent as the characters.
+  - `74e2124b`: an empty text part in a chat request or in `saveHistory` is
+    a `ValidationError`. A chat request used to send `content: ""`. In
+    `saveHistory`, a part with no kind threw a `TypeError`, and a part with
+    two kinds was saved with one.
+  - `cd07e5fd`: `encodeRequest` throws a `ValidationError` on
+    `chatWireShape` for a provider with no chat wire shape, such as
+    `assemblyai`. It used to return a chat body.
+  - `11f74c83`: an empty text part in an image, music, video or
+    transcription request is a `ValidationError`. These requests used to
+    send it.
 
 ### Added
 
