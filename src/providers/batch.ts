@@ -1,7 +1,7 @@
 // Code generated — DO NOT EDIT.
 
 
-import type { ProviderName } from "./providers";
+import type { ProviderName } from "./providers.ts";
 
 // Batch contract constants shared by every SDK (ADR-091).
 
