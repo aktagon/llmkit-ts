@@ -40,6 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MiddlewareOp` (`Event.op`) and `MiddlewarePhase` (`Event.phase`) are
   type-only exports. `Providers` is the configured-provider class, and the
   lowercase `providers` namespace stays the keyless roster.
+- **`ErrModelsNotSupported`, `ErrModelsUnavailable` and `ErrModelsScope` are
+  exported.** The catalogue calls throw them. Test a caught error with
+  `err instanceof ErrModelsNotSupported`.
+- **The package root exports every builder and handle a caller reaches.**
+  `Speech`, `Transcription`, `Video` and `BatchHandle` are value exports.
+  `ProviderConfig` (the type of `client.provider`), `VideoWaitOptions` and
+  `TranscriptionWaitOptions` (what the handles' `wait` takes) are type-only
+  exports.
 
 - **`Response.created`.** The Unix time the provider reports, read from
   `created` (Chat Completions) or `created_at` (Responses); absent when the
@@ -341,7 +349,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{ text: "", toolResult }` fail the role check; they used to pass as text
   parts.
 
-- **A mask is accepted only on an OpenAI request with reference images.** A
+- **BREAKING — a mask is accepted only on an OpenAI request with reference images.** A
   mask on any other image request is rejected before the request is sent.
 
 - **BREAKING — image input limits are per model, and the provider-level count is gone.**
@@ -375,7 +383,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **Vertex image generation removed.** Google shut down the Imagen endpoints.
+- **BREAKING — Vertex image generation removed.** Google shut down the Imagen endpoints.
   Image generation on Vertex now fails with a validation error before any
   request is sent. Vertex music and video are unchanged, and the Vertex default
   model is now `lyria-002`.
@@ -396,9 +404,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `ImageOptions`, `MusicOptions` and `SpeechOptions` are no
   longer exported.** No exported function took them. Set the same options on
   the `Image`, `Music` and `Speech` builders.
-- **Google video generation removed.** Google shut down the Gemini API Veo
+- **BREAKING — Google video generation removed.** Google shut down the Gemini API Veo
   preview models. Video generation on the `google` provider now fails before
   any request is sent. Veo stays available on Vertex.
+- **BREAKING — `ImageRequest`, `MusicRequest` and `SpeechRequest` are no
+  longer exported.** No exported function took them. Build each request on
+  the `Image`, `Music` and `Speech` builders.
+- **BREAKING — the `@aktagon/llmkit-ts/builders` entry point is removed.**
+  Import from `@aktagon/llmkit-ts`, which exports every name a caller
+  reaches. `DEFAULT_TIMEOUT_MS` is gone: no exported signature names it, and
+  a client still waits 600000 ms by default.
 
 ### Fixed
 
