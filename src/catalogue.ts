@@ -11,7 +11,7 @@ import type { ModelInfo } from "./structs.ts";
 
 import { Capabilities } from "./types.ts";
 
-/** Compiled-in catalogue, sorted by (provider, id). Walked by Models.list() and Models.get(id). */
+/** Compiled-in catalogue, sorted by (provider, id). The runtime reads its capabilities through ontologyCapabilities. */
 export const compiledInModels: ModelInfo[] = [
   { id: "claude-haiku-4-5-20251001", provider: { name: "anthropic", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling], displayName: "Claude Haiku 4.5", contextWindow: 200000, maxOutput: 64000 },
   { id: "claude-opus-4-5-20251101", provider: { name: "anthropic", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling], displayName: "Claude Opus 4.5", contextWindow: 200000, maxOutput: 64000 },
