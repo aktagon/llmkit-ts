@@ -131,45 +131,9 @@ export type { VideoResponse, VideoData } from "./structs.ts";
 // client.models.list() and client.models.provider(...).list() return, so a
 // consumer can name the type of a catalogue result at the package boundary.
 export type { ModelInfo, LiveResult, ImageHints, VideoHints, SpeechHints } from "./structs.ts";
-// Per-model capability introspection (BUG-011): query the supported models and
-// their advisory caps (maxInputImages, supportsImageToVideo, ...) so a consumer
-// can gate input — e.g. how many seed/reference images a model accepts —
-// before issuing a call. These live in the generated providers module, which
-// is not its own package entry point, so they MUST be re-exported here.
-export { imageGenConfig } from "./providers/image_gen.ts";
-export type {
-  ImageGenDef,
-  ImageModelDef,
-  CarriedInput,
-  ImageRequestShape,
-  RequestVariant,
-  ImageOutputMode,
-} from "./providers/image_gen.ts";
-export { videoGenConfig } from "./providers/video_gen.ts";
-export type {
-  VideoGenDef,
-  VideoModelDef,
-  VideoWireShape,
-  VideoOutputDelivery,
-} from "./providers/video_gen.ts";
-export { musicGenConfig } from "./providers/music_gen.ts";
-export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
-export { speechGenConfig } from "./providers/speech_gen.ts";
-export type { SpeechGenDef, SpeechModelDef } from "./providers/speech_gen.ts";
-// Prompt-caching capability, queryable so a consumer can gate the builder's
-// `.caching()` on real support (it THROWS for a provider with no caching
-// config, e.g. grok — not a no-op). Same introspection pattern as the *GenConfig
-// re-exports above: the config lives in the generated providers module, which is
-// not its own entry point, so it MUST be re-exported here.
-export { cachingConfig } from "./providers/caching.ts";
 // Batch slot values (ADR-091): the finishReason of a batch slot with no result
 // line, and of a failed slot the provider gave no reason for.
 export { BATCH_SLOT_ERROR, BATCH_SLOT_MISSING } from "./providers/batch.ts";
-export type {
-  CachingDef,
-  CachingMode,
-  CachingLifecycle,
-} from "./providers/caching.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
 // (name/envVar/defaultModel/baseUrl) — a projection of provider facts, NOT the
 // internal wire/transform spec. Exposed as the static `providers` namespace
