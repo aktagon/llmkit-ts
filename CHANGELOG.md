@@ -145,6 +145,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING — every request times out after 600 seconds without data.**
+  The client waits at most 600 seconds for the response headers, and for
+  each next chunk of the body. A long stream that keeps sending does not time
+  out. Before, a request waited with no limit. The new `client.timeout(ms)`
+  sets another limit, and `client.timeout(0)` turns it off. A timeout
+  rejects with a `DOMException` named `TimeoutError`.
+
 - **BREAKING — a rejected request for a listed model names the facts it
   contradicts.** When the provider answers 400 or 422, `APIError.hint` names the
   stated facts the request contradicts, for example `catalogue:
@@ -404,10 +411,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `messages[1].parts[0]`, when a tool call's input is not JSON. It threw
   JSON.parse's `SyntaxError`.
 
-- Images and files attached to a prompt after `text.history(...)` are now
-  sent on the last user turn. Before, a call with history dropped them
- .
-
 - **OpenAI batch failures show the provider's error.** Waiting on an OpenAI
   batch now also reads its error file. A failed request's finish reason is the
   provider's error code (for example `batch_expired`), and its finish message
@@ -437,6 +440,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Parallel tool results on AWS Bedrock.** After a reply with several tool
   calls, the agent sent one user message per result, and Bedrock rejected the
   request with 400. The results now go in one user message, in call order.
+
+## [2.2.3] — 2026-10-27
+
+### Fixed
+- `text.history(...).prompt(text)` now sends the images and files attached
+  to the prompt on its last user turn, after the history. Before, they were
+  dropped when a history was set.
+
+## [2.2.2] — 2026-10-15
+
+### Security
+- Transport errors no longer include the request URL, which could contain the API key.
+
+## [2.2.1] — 2026-10-07
+
+### Changed
+- The package ships only the compiled library and its type declarations: no source files and no source maps.
+- Type declarations carry their documentation comments again.
+- The error for a chat protocol on a terminal other than prompt no longer ends with an internal reference.
+
+### Removed
+- 2.1.0 and 2.2.0 are no longer available on npm. Use 2.2.1.
+
+## [2.2.0] — 2026-10-04
+
+### Added
+
+- `decodeResponse(provider, chatWireShape, body)` turns a provider's chat response body into a `Response`, the same way the client reads it. `encodeResponse(provider, chatWireShape, response)` writes a `Response` back into that provider's body shape. Both are pure functions: no client, no key, no network. `encodeResponse` throws for a field it cannot write back faithfully.
+
+### Fixed
+
+- Middleware now runs for speech generation and transcription requests, as the new `speech_generation` and `transcription` operations, and its pre phase can veto them. For transcription it runs on the sync and async calls, not on waits or polls.
+- OpenAI Responses protocol: gpt-5 and o-series models now send the output-token cap as `max_output_tokens`. They sent `max_completion_tokens`, which the Responses API rejects with HTTP 400.
+- Anthropic requests no longer send `anthropic-beta: files-api-2025-04-14`. The Files API left beta, and with that header an upload returned the older response shape, without `expires_at`.
 
 ## [2.1.0] — 2026-07-20
 
