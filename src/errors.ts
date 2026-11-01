@@ -1,12 +1,19 @@
 import type { VideoResponse } from "./structs.ts";
 
 export class APIError extends Error {
+  /**
+   * @param hint names the stated catalogue facts a rejected request for a
+   * listed model contradicts, for example "catalogue: heygen/heygen-video-1
+   * lists no last frame". Set only on a 400 or 422 reply. When set, `message` is
+   * the provider's text, then "; " and the hint.
+   */
   constructor(
     public readonly statusCode: number,
     message: string,
     public readonly retryable: boolean = false,
+    public readonly hint?: string,
   ) {
-    super(message);
+    super(hint ? `${message}; ${hint}` : message);
     this.name = "APIError";
   }
 }
