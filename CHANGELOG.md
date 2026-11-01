@@ -7,6 +7,142 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-11-01
+
+### Added
+
+- **`ModelInfo` carries what the SDK's catalogue states about a model.**
+  `ModelInfo.image`, `video` and `speech` are set for a model the SDK lists
+  for that capability, and `undefined` otherwise. `ImageHints` holds the
+  aspect ratios, sizes and whether the model takes image parts. `VideoHints`
+  holds the resolutions, aspect ratios, maximum duration in seconds, and
+  whether the model takes a seed image, a last frame or reference images.
+  `SpeechHints` holds whether the model takes a speech style. Each support
+  fact is an optional `boolean`: `undefined` when no source states it. The
+  values are hints: a request outside them is still sent.
+- **`Event.modelUnlisted` marks a model the SDK does not list.** Image,
+  speech, music, video, chat, stream, agent and batch set it on their pre and
+  post middleware events. It is true when the SDK's model list does not hold
+  the model for that provider, so no per-model check ran before the request
+  was sent. It is not a telemetry attribute.
+
+- **`Response.created`.** The Unix time the provider reports, read from
+  `created` (Chat Completions) or `created_at` (Responses); absent when the
+  provider reports none.
+- **`Response.toolCalls`.** `text.request` sends `req.tools` and returns the
+  model's tool calls in `toolCalls` without running them.
+- **BREAKING — `finishReason` on `ImageResponse`, `MusicResponse`,
+  `SpeechResponse` and `VideoResponse` is renamed `providerFinishReason`.**
+  The value is unchanged: the provider's string, verbatim.
+- **BREAKING — a batch item reports its outcome in `state` and `cause`.**
+  Each `Response` from `BatchHandle.wait` or `poll` has `state` `"succeeded"`
+  or `"failed"`. A failed item has a `cause` (`JobFailure`) and no
+  `finishReason` or `finishMessage`: the provider's failure status
+  (`"errored"`, `"batch_expired"`, an error code) moved from `finishReason` to
+  `cause.status`, and its error message from `finishMessage` to
+  `cause.message`. Branch on `item.state === "failed"`.
+- **BREAKING — `JobFailure.timedOut` is replaced by `JobFailure.code`.**
+  `code` is a `JobFailureCode`: `"error"`, `"expired"`, `"cancelled"`,
+  `"timeout"` or `"missing"`. `poll()` reports it too: an OpenAI batch whose
+  status is `expired` has code `"expired"`, and `cancelled` has
+  `"cancelled"`. The poll deadline still throws `PollTimeoutError`.
+- **BREAKING — `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR` are
+  `JobFailureCode` values.** They are the `cause.code` of an item with no
+  result line and of a failure the provider gives no known status for. They
+  were `finishReason` strings. `JobFailureCode` is exported from the package
+  root.
+- Batch items carry `id` and `model` from the provider's response body.
+- **BREAKING — `Request` has no `user` field.** Put the final prompt as the
+  last user turn of `messages`. The `ToolDefinition` (name, description and
+  input schema of a tool) and `SafetySetting` types are exported from the
+  package root.
+- **BREAKING — `Part` has eight variants, and the audio keys are renamed.**
+  `Part` is `{ text } | { image } | { file } | { toolCall } | { toolResult } |
+  { lyrics } | { audioUrl } | { audio }`. A public audio URL moved from
+  `{ audio: string }` to `{ audioUrl: string }`, and local audio bytes moved
+  from `{ audioBytes: MediaRef }` to `{ audio: MediaRef }`. The `audio(url)`
+  and `audioBytes(mime, raw)` constructors keep their names and return the new
+  shapes. A `switch` over every `Part` key must handle `file`, `toolCall` and
+  `toolResult`.
+- Image, music, video and transcription reject a part kind they do not accept,
+  before any HTTP call, with a `ValidationError` that names the kind, for
+  example `parts[1]: image generation does not accept tool_call parts`. Image
+  generation used to ignore a lyrics or audio part.
+- The `WireRequest` type (the path, content headers and body of a chat
+  request) is exported from the package root.
+- **BREAKING — `PromptOptions` and `AgentOptions` are removed.** No public
+  function took them. Every option of a chat call is a field of `Request`
+  or a builder method (`.temperature(0.7)`).
+- **BREAKING — `BatchHandle.wait` and `poll` take only `raw`,
+  `pollIntervalMs`, `pollTimeoutMs` and `signal`.** Their options type no
+  longer lists the sampling options, `caching` or `middleware`, which these
+  methods never read. Set them on the `Text` builder before `.batch(...)`.
+- **BREAKING — batch rejects an option the provider does not take**, with a
+  `ValidationError`, before any HTTP call. It used to send it.
+- **BREAKING — a request with no turn fails** with a `ValidationError` on
+  field `messages`, before any HTTP call. It used to be sent.
+- `.reasoningEffort("")` sets an empty effort: it is validated and sent like
+  any other value. It used to be dropped. Unset sends none.
+- A stream sends the request's content headers, such as the
+  `anthropic-beta` that structured output needs. It used to drop them.
+- Text, stream, the Agent and batch put the builder's model in
+  `Request.model`. A Google resource cache is created for that model.
+- **BREAKING — a chat request without max tokens sends none, except to
+  Anthropic.** Every request used to carry `max_tokens: 4096` (or the
+  provider's key for it) when you set none, so a long answer was cut at 4096
+  tokens. Now the provider's own default applies. The Anthropic Messages API
+  rejects a request without `max_tokens`, so an Anthropic request still sends
+  4096 when you set none. To keep a cap, set it: `.maxTokens(4096)`.
+
+- `response.id` and `response.model` carry the response id and the model the
+  provider reports. `prompt`, `stream`, the agent and `decodeResponse` fill
+  them, and `encodeResponse` writes them back. Each is `undefined` when the
+  response carries none, as on Bedrock. `model` can differ from the requested
+  model: OpenAI returns the dated snapshot, and Google returns the served
+  version.
+- `text.request(req)` sets the whole `Request` on the text builder: its model, system
+  prompt, messages, tools, schema and options. It replaces what the chain set
+  before it, the text, image and file parts included; a chain method after it
+  changes its own field. A request from `decodeRequest` is sent unchanged by
+  `.prompt("")`. Caching, its TTL, middleware, `raw` and
+  `protocol` are kept.
+- `text.cacheTTL(seconds)` and `agent.cacheTTL(seconds)` set how long the
+  cache that `.caching()` creates lives. Google resource caching sends it on the cache-create request;
+  without it, Google's default TTL (3600 s) applies. Other providers ignore
+  it. Since the removal of `PromptOptions.cacheTTL`, no chat call could set a
+  TTL. The TTL is positive whole seconds: `0`, `-5`, `1.5`, `NaN` and
+  `Infinity` fail the call with a `ValidationError` on field `cacheTTL`.
+- `encodeRequest(provider, chatWireShape, request)` encodes a chat request
+  for a provider's wire shape and returns a `WireRequest`: the path with the
+  model filled in, the content headers, and the JSON body. It needs no key
+  and makes no network call. An empty `chatWireShape` selects the provider's
+  default. A provider with no chat wire shape, such as `assemblyai`, throws a
+  `ValidationError` on `chatWireShape`.
+- `decodeRequest(provider, chatWireShape, wire)` decodes an OpenAI Chat
+  Completions request into a `Request`, the inverse of `encodeRequest`. It
+  reads the model, a leading system turn, user and assistant turns with text
+  content, and every option the provider takes. `max_tokens` and
+  `max_completion_tokens` both set `maxTokens`. A bare-string `stop` is a
+  one-item list, `"stream": false` is ignored, and a `developer` turn is the
+  system turn for OpenAI and OpenRouter, whose APIs define that role; other
+  providers reject it on the turn's role. An integer option takes an
+  integral number in any notation, such as `4096.0`, and rejects a fraction.
+  A number out of range, such as `1e999`, fails on its own field. Any other field, such as `"stream": true`, `tools`, `response_format` or a content list, throws a
+  `ValidationError` that names it, for example `messages[1].tool_calls`.
+  Every integer option (`max_tokens`, `top_k`, `thinking_budget`, `seed`) is
+  read exactly over the 64-bit range: past `Number.MAX_SAFE_INTEGER` it is a
+  `bigint`, below it a `number`. On a runtime that gives `JSON.parse` no
+  number source text, such a value is rejected, never rounded. Other wire
+  shapes throw on field `chatWireShape`.
+
+- `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR`: the finish reasons of a batch slot with no result, and of a
+  failed slot the provider gave no reason for. Compare against them instead
+  of typing the strings.
+
+- **Streaming with the Responses protocol.** A stream with `.protocol("responses")`
+  now posts to `/v1/responses` and reads its events: text deltas, the finish
+  status and token usage. It used to fail validation.
+
 ### Changed
 
 - **BREAKING — a rejected request for a listed model names the facts it
@@ -191,166 +327,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{ text: "", toolResult }` fail the role check; they used to pass as text
   parts.
 
-### Added
-
-- **`ModelInfo` carries what the SDK's catalogue states about a model.**
-  `ModelInfo.image`, `video` and `speech` are set for a model the SDK lists
-  for that capability, and `undefined` otherwise. `ImageHints` holds the
-  aspect ratios, sizes and whether the model takes image parts. `VideoHints`
-  holds the resolutions, aspect ratios, maximum duration in seconds, and
-  whether the model takes a seed image, a last frame or reference images.
-  `SpeechHints` holds whether the model takes a speech style. Each support
-  fact is an optional `boolean`: `undefined` when no source states it. The
-  values are hints: a request outside them is still sent.
-- **`Event.modelUnlisted` marks a model the SDK does not list.** Image,
-  speech, music, video, chat, stream, agent and batch set it on their pre and
-  post middleware events. It is true when the SDK's model list does not hold
-  the model for that provider, so no per-model check ran before the request
-  was sent. It is not a telemetry attribute.
-
-- **`Response.created`.** The Unix time the provider reports, read from
-  `created` (Chat Completions) or `created_at` (Responses); absent when the
-  provider reports none.
-- **`Response.toolCalls`.** `text.request` sends `req.tools` and returns the
-  model's tool calls in `toolCalls` without running them.
-- **BREAKING — `finishReason` on `ImageResponse`, `MusicResponse`,
-  `SpeechResponse` and `VideoResponse` is renamed `providerFinishReason`.**
-  The value is unchanged: the provider's string, verbatim.
-- **BREAKING — a batch item reports its outcome in `state` and `cause`.**
-  Each `Response` from `BatchHandle.wait` or `poll` has `state` `"succeeded"`
-  or `"failed"`. A failed item has a `cause` (`JobFailure`) and no
-  `finishReason` or `finishMessage`: the provider's failure status
-  (`"errored"`, `"batch_expired"`, an error code) moved from `finishReason` to
-  `cause.status`, and its error message from `finishMessage` to
-  `cause.message`. Branch on `item.state === "failed"`.
-- **BREAKING — `JobFailure.timedOut` is replaced by `JobFailure.code`.**
-  `code` is a `JobFailureCode`: `"error"`, `"expired"`, `"cancelled"`,
-  `"timeout"` or `"missing"`. `poll()` reports it too: an OpenAI batch whose
-  status is `expired` has code `"expired"`, and `cancelled` has
-  `"cancelled"`. The poll deadline still throws `PollTimeoutError`.
-- **BREAKING — `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR` are
-  `JobFailureCode` values.** They are the `cause.code` of an item with no
-  result line and of a failure the provider gives no known status for. They
-  were `finishReason` strings. `JobFailureCode` is exported from the package
-  root.
-- Batch items carry `id` and `model` from the provider's response body.
-- **BREAKING — `Request` has no `user` field.** Put the final prompt as the
-  last user turn of `messages`. The `ToolDefinition` (name, description and
-  input schema of a tool) and `SafetySetting` types are exported from the
-  package root.
-- **BREAKING — `Part` has eight variants, and the audio keys are renamed.**
-  `Part` is `{ text } | { image } | { file } | { toolCall } | { toolResult } |
-  { lyrics } | { audioUrl } | { audio }`. A public audio URL moved from
-  `{ audio: string }` to `{ audioUrl: string }`, and local audio bytes moved
-  from `{ audioBytes: MediaRef }` to `{ audio: MediaRef }`. The `audio(url)`
-  and `audioBytes(mime, raw)` constructors keep their names and return the new
-  shapes. A `switch` over every `Part` key must handle `file`, `toolCall` and
-  `toolResult`.
-- Image, music, video and transcription reject a part kind they do not accept,
-  before any HTTP call, with a `ValidationError` that names the kind, for
-  example `parts[1]: image generation does not accept tool_call parts`. Image
-  generation used to ignore a lyrics or audio part.
-- The `WireRequest` type (the path, content headers and body of a chat
-  request) is exported from the package root.
-- **BREAKING — `PromptOptions` and `AgentOptions` are removed.** No public
-  function took them. Every option of a chat call is a field of `Request`
-  or a builder method (`.temperature(0.7)`).
-- **BREAKING — `BatchHandle.wait` and `poll` take only `raw`,
-  `pollIntervalMs`, `pollTimeoutMs` and `signal`.** Their options type no
-  longer lists the sampling options, `caching` or `middleware`, which these
-  methods never read. Set them on the `Text` builder before `.batch(...)`.
-- **BREAKING — batch rejects an option the provider does not take**, with a
-  `ValidationError`, before any HTTP call. It used to send it.
-- **BREAKING — a request with no turn fails** with a `ValidationError` on
-  field `messages`, before any HTTP call. It used to be sent.
-- `.reasoningEffort("")` sets an empty effort: it is validated and sent like
-  any other value. It used to be dropped. Unset sends none.
-- A stream sends the request's content headers, such as the
-  `anthropic-beta` that structured output needs. It used to drop them.
-- Text, stream, the Agent and batch put the builder's model in
-  `Request.model`. A Google resource cache is created for that model.
-- **BREAKING — a chat request without max tokens sends none, except to
-  Anthropic.** Every request used to carry `max_tokens: 4096` (or the
-  provider's key for it) when you set none, so a long answer was cut at 4096
-  tokens. Now the provider's own default applies. The Anthropic Messages API
-  rejects a request without `max_tokens`, so an Anthropic request still sends
-  4096 when you set none. To keep a cap, set it: `.maxTokens(4096)`.
-
-### Added
-
-- `response.id` and `response.model` carry the response id and the model the
-  provider reports. `prompt`, `stream`, the agent and `decodeResponse` fill
-  them, and `encodeResponse` writes them back. Each is `undefined` when the
-  response carries none, as on Bedrock. `model` can differ from the requested
-  model: OpenAI returns the dated snapshot, and Google returns the served
-  version.
-- `text.request(req)` sets the whole `Request` on the text builder: its model, system
-  prompt, messages, tools, schema and options. It replaces what the chain set
-  before it, the text, image and file parts included; a chain method after it
-  changes its own field. A request from `decodeRequest` is sent unchanged by
-  `.prompt("")`. Caching, its TTL, middleware, `raw` and
-  `protocol` are kept.
-- `text.cacheTTL(seconds)` and `agent.cacheTTL(seconds)` set how long the
-  cache that `.caching()` creates lives. Google resource caching sends it on the cache-create request;
-  without it, Google's default TTL (3600 s) applies. Other providers ignore
-  it. Since the removal of `PromptOptions.cacheTTL`, no chat call could set a
-  TTL. The TTL is positive whole seconds: `0`, `-5`, `1.5`, `NaN` and
-  `Infinity` fail the call with a `ValidationError` on field `cacheTTL`.
-- `encodeRequest(provider, chatWireShape, request)` encodes a chat request
-  for a provider's wire shape and returns a `WireRequest`: the path with the
-  model filled in, the content headers, and the JSON body. It needs no key
-  and makes no network call. An empty `chatWireShape` selects the provider's
-  default. A provider with no chat wire shape, such as `assemblyai`, throws a
-  `ValidationError` on `chatWireShape`.
-- `decodeRequest(provider, chatWireShape, wire)` decodes an OpenAI Chat
-  Completions request into a `Request`, the inverse of `encodeRequest`. It
-  reads the model, a leading system turn, user and assistant turns with text
-  content, and every option the provider takes. `max_tokens` and
-  `max_completion_tokens` both set `maxTokens`. A bare-string `stop` is a
-  one-item list, `"stream": false` is ignored, and a `developer` turn is the
-  system turn for OpenAI and OpenRouter, whose APIs define that role; other
-  providers reject it on the turn's role. An integer option takes an
-  integral number in any notation, such as `4096.0`, and rejects a fraction.
-  A number out of range, such as `1e999`, fails on its own field. Any other field, such as `"stream": true`, `tools`, `response_format` or a content list, throws a
-  `ValidationError` that names it, for example `messages[1].tool_calls`.
-  Every integer option (`max_tokens`, `top_k`, `thinking_budget`, `seed`) is
-  read exactly over the 64-bit range: past `Number.MAX_SAFE_INTEGER` it is a
-  `bigint`, below it a `number`. On a runtime that gives `JSON.parse` no
-  number source text, such a value is rejected, never rounded. Other wire
-  shapes throw on field `chatWireShape`.
-
-### Fixed
-
-- `agent.prompt(...)` leaves the history unchanged when it rejects the
-  request, for example an option the provider does not take. The rejected
-  user turn used to stay in the history, so the next prompt sent two user
-  turns.
-- A provider name such as `toString` or `constructor` is an unknown
-  provider: `encodeRequest`, `decodeRequest`, `encodeResponse` and the agent
-  throw a `ValidationError` on field `provider`. The provider table was a
-  plain object, so these names found `Object.prototype`'s members and failed
-  later with a `TypeError`, or not at all.
-- `text.caching().stream(...)` applies prompt caching, as `prompt` does. A
-  stream used to send its body without caching: no `cache_control` for
-  Anthropic and no cache for Google.
-- `saveHistory` throws a `ValidationError` that names the part, for example
-  `messages[1].parts[0]`, when a tool call's input is not JSON. It threw
-  JSON.parse's `SyntaxError`.
-
-## [3.0.0] — 2026-10-27
-
-### Added
-
-- `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR`: the finish reasons of a batch slot with no result, and of a
-  failed slot the provider gave no reason for. Compare against them instead
-  of typing the strings.
-
-- **Streaming with the Responses protocol.** A stream with `.protocol("responses")`
-  now posts to `/v1/responses` and reads its events: text deltas, the finish
-  status and token usage. It used to fail validation.
-
-### Changed
-
 - **BREAKING — image and video configs list request variants.**
   `ImageGenDef.inputMode`, `genEndpoint`, `editEndpoint`, the `ImageInputMode`
   type and `VideoGenDef.genEndpoint` are removed. Each config now has `variants:
@@ -411,6 +387,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   any request is sent. Veo stays available on Vertex.
 
 ### Fixed
+
+- `agent.prompt(...)` leaves the history unchanged when it rejects the
+  request, for example an option the provider does not take. The rejected
+  user turn used to stay in the history, so the next prompt sent two user
+  turns.
+- A provider name such as `toString` or `constructor` is an unknown
+  provider: `encodeRequest`, `decodeRequest`, `encodeResponse` and the agent
+  throw a `ValidationError` on field `provider`. The provider table was a
+  plain object, so these names found `Object.prototype`'s members and failed
+  later with a `TypeError`, or not at all.
+- `text.caching().stream(...)` applies prompt caching, as `prompt` does. A
+  stream used to send its body without caching: no `cache_control` for
+  Anthropic and no cache for Google.
+- `saveHistory` throws a `ValidationError` that names the part, for example
+  `messages[1].parts[0]`, when a tool call's input is not JSON. It threw
+  JSON.parse's `SyntaxError`.
 
 - Images and files attached to a prompt after `text.history(...)` are now
   sent on the last user turn. Before, a call with history dropped them
