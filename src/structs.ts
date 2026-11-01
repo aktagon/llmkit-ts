@@ -115,7 +115,7 @@ export interface ImageResponse {
 }
 
 /**
- * LiveResult is returned by c.Models.Live(ctx) — the aggregated cross-provider live result. Partial success is the documented normal case: per-provider failures land in Errors while everything that succeeded lands in Models.
+ * LiveResult is returned by c.Models.List(ctx) — the aggregated cross-provider live result. Partial success is the documented normal case: per-provider failures land in Errors while everything that succeeded lands in Models.
  */
 export interface LiveResult {
   /**
@@ -184,27 +184,27 @@ export interface ModelInfo {
   capabilities: Capability[];
 
   /**
-   * displayName is the human-readable name when the provider supplies one (Anthropic display_name, Google displayName). Empty when the provider's wire shape does not carry one or for compiled-in entries.
+   * displayName is the human-readable name when the provider supplies one (Anthropic display_name, Google displayName). Empty when the provider's wire shape does not carry one.
    */
   displayName?: string;
 
   /**
-   * description is the provider's free-text description (Google description). Empty for providers that do not publish a description field and for compiled-in entries.
+   * description is the provider's free-text description (Google description). Empty for providers that do not publish a description field.
    */
   description?: string;
 
   /**
-   * contextWindow is the maximum input token count when published (Anthropic max_input_tokens, Google inputTokenLimit). Zero when the provider does not publish it (OpenAI-shape cohort) or for compiled-in entries without a curated value.
+   * contextWindow is the maximum input token count when published (Anthropic max_input_tokens, Google inputTokenLimit). Zero when the provider does not publish it (OpenAI-shape cohort).
    */
   contextWindow?: number;
 
   /**
-   * maxOutput is the maximum output token count when published (Anthropic max_tokens, Google outputTokenLimit). Zero when the provider does not publish it or for compiled-in entries.
+   * maxOutput is the maximum output token count when published (Anthropic max_tokens, Google outputTokenLimit). Zero when the provider does not publish it.
    */
   maxOutput?: number;
 
   /**
-   * created is the Unix-timestamp creation time when the provider publishes one (Anthropic created_at parsed to Unix, OpenAI created). Zero for compiled-in entries and providers that do not publish it.
+   * created is the Unix-timestamp creation time when the provider publishes one (Anthropic created_at parsed to Unix, OpenAI created). Zero for providers that do not publish it.
    */
   created?: number;
 
