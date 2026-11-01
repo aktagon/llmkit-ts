@@ -20,7 +20,7 @@ import {
 } from "../providers/transcription_gen.ts";
 import { writeJson } from "../json_text.ts";
 import { APIError, ValidationError } from "../errors.ts";
-import { checkPartKinds } from "../part_kinds.ts";
+import { checkPartKinds, hasPart } from "../part_kinds.ts";
 import { sendHTTP } from "../http.ts";
 import { encodeMultipart } from "../multipart.ts";
 import {
@@ -476,13 +476,13 @@ function normalizeAudioBytesPart(parts: Part[]): MediaRef {
   checkPartKinds("transcription", parts);
   let ref: MediaRef | undefined;
   parts.forEach((part, i) => {
-    if ("audioUrl" in part) {
+    if (hasPart(part, "audioUrl")) {
       throw new ValidationError(
         `parts[${i}]`,
         "synchronous transcription accepts inline audio bytes only (audioBytes); a remote audio URL is not supported",
       );
     }
-    if ("audio" in part) ref = part.audio;
+    if (hasPart(part, "audio")) ref = part.audio;
   });
   if (parts.length !== 1 || !ref) {
     throw new ValidationError(
@@ -597,8 +597,8 @@ function normalizeAudioPart(parts: Part[]): {
   let url = "";
   let bytes: Uint8Array | undefined;
   for (const part of parts) {
-    if ("audioUrl" in part) url = part.audioUrl;
-    if ("audio" in part) bytes = part.audio.bytes;
+    if (hasPart(part, "audioUrl")) url = part.audioUrl;
+    if (hasPart(part, "audio")) bytes = part.audio.bytes;
   }
   return { url, bytes };
 }

@@ -30,6 +30,7 @@ import type { Event } from "../providers/middleware.ts";
 import type { Provider, Request, Response } from "../types.ts";
 import type { Message, Part } from "../structs.ts";
 import type { Text } from "./builders.ts";
+import { hasPart } from "../part_kinds.ts";
 
 /**
  * Translates a chained Text builder + final prompt text into the
@@ -49,9 +50,9 @@ export function buildPromptArgs(
   const turn: Part[] = b._files.map((file) => ({ file }));
   const textSegments: string[] = [];
   for (const p of b._parts) {
-    if ("text" in p) {
-      if (p.text) textSegments.push(p.text);
-    } else if ("image" in p) {
+    if (hasPart(p, "text")) {
+      textSegments.push(p.text);
+    } else if (hasPart(p, "image")) {
       turn.push(p);
     }
   }

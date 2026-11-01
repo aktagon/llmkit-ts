@@ -13,7 +13,7 @@ import {
 } from "./providers/image_gen.ts";
 import { writeJson } from "./json_text.ts";
 import { APIError, ValidationError } from "./errors.ts";
-import { checkPartKinds } from "./part_kinds.ts";
+import { checkPartKinds, hasPart } from "./part_kinds.ts";
 import { partsCarry, selectRequestVariant } from "./request_variant.ts";
 import { sendHTTP } from "./http.ts";
 import { extractIntPath, optIntPath } from "./paths.ts";
@@ -145,7 +145,7 @@ export async function generateImage(
   const { model } = lookupModel(imgCfg.models, request.model);
   // ADR-102 MPT-006 G5: a listed model's aspect ratios and sizes are hints,
   // not blocks. The provider answers an off-list value.
-  const imageCount = parts.filter((p) => "image" in p).length;
+  const imageCount = parts.filter((p) => hasPart(p, "image")).length;
   validateImageArity(model, imageCount);
 
   // ADR-096: the request's parts pick the wire request; a config with no
@@ -437,7 +437,7 @@ function buildOpenAIEditFormData(
   }
   let idx = 0;
   for (const part of parts) {
-    if ("image" in part) {
+    if (hasPart(part, "image")) {
       const mime = part.image.mimeType || "image/png";
       const ext =
         mime === "image/jpeg"
@@ -493,7 +493,7 @@ function buildXAIBody(
   }
   const refs: Array<{ url: string }> = [];
   for (const p of parts) {
-    if ("image" in p) {
+    if (hasPart(p, "image")) {
       const mime = p.image.mimeType || "image/png";
       const dataURL = `data:${mime};base64,${bytesToBase64(p.image.bytes)}`;
       refs.push({ url: dataURL });
@@ -542,7 +542,7 @@ function buildRecraftGenBody(
 function imageURLContentParts(parts: Part[]): Array<Record<string, unknown>> {
   const refs: Array<Record<string, unknown>> = [];
   for (const p of parts) {
-    if ("image" in p) {
+    if (hasPart(p, "image")) {
       const mime = p.image.mimeType || "image/png";
       refs.push({
         type: "image_url",
@@ -555,7 +555,7 @@ function imageURLContentParts(parts: Part[]): Array<Record<string, unknown>> {
 
 function joinTextParts(parts: Part[]): string {
   return parts
-    .filter((p): p is { text: string } => "text" in p && !!p.text)
+    .filter((p): p is { text: string } => hasPart(p, "text"))
     .map((p) => p.text)
     .join("\n");
 }
@@ -607,14 +607,14 @@ function buildImageBody(
 ): Record<string, unknown> {
   const wire: Array<Record<string, unknown>> = [];
   for (const p of parts) {
-    if ("image" in p) {
+    if (hasPart(p, "image")) {
       wire.push({
         inlineData: {
           mimeType: p.image.mimeType,
           data: bytesToBase64(p.image.bytes),
         },
       });
-    } else if ("text" in p) {
+    } else if (hasPart(p, "text")) {
       wire.push({ text: p.text });
     }
   }
