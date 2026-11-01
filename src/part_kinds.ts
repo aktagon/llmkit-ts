@@ -30,16 +30,21 @@ export function checkPartKinds(
 
 /**
  * partKindOf returns the one kind a part sets, or throws a ValidationError on
- * field for a part that sets none or more than one, an empty text part
- * included: it sets no kind in Go (owner decision 2, HANDOFF-105 F11). It is
- * the one check of a part's shape: checkPartKinds runs it for chat and every
- * other capability, and saveHistory runs it, so a request and a Save reject
- * the same part with the same error (F11, F12).
+ * field for a part that sets none or more than one. A key whose value is the
+ * empty string sets no kind, as in Go, where the empty string is an unset
+ * string variant: an empty text, lyrics or audio_url part is an empty part
+ * (owner decision 2, HANDOFF-105 F11; HANDOFF-111). It is the one check of a
+ * part's shape: checkPartKinds runs it for chat and every other capability,
+ * and saveHistory runs it, so a request and a Save reject the same part with
+ * the same error (F11, F12).
  */
 export function partKindOf(part: Part, field: string): string {
-  const kinds = Object.keys(part).flatMap((key) => PART_KINDS[key] ?? []);
+  const values = part as Record<string, unknown>;
+  const kinds = Object.keys(part).flatMap((key) =>
+    values[key] === "" ? [] : (PART_KINDS[key] ?? []),
+  );
   const [kind, ...rest] = kinds;
-  if (kind === undefined || ("text" in part && part.text === "")) {
+  if (kind === undefined) {
     throw new ValidationError(field, "empty part");
   }
   if (rest.length > 0) {
