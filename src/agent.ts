@@ -33,6 +33,7 @@ import type {
   Usage,
 } from "./types.ts";
 import type { Message, Part, ToolCall } from "./structs.ts";
+import { chatModelListed } from "./model_lookup.ts";
 
 const DEFAULT_MAX_TOOL_ITERATIONS = 10;
 
@@ -167,6 +168,7 @@ export class Agent {
         phase: "pre",
         provider: this.provider.name,
         model,
+        modelUnlisted: !chatModelListed(this.provider.name, model),
       };
       const veto = firePre(mw, llmEvent);
       if (veto) throw veto;

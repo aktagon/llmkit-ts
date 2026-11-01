@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING — `models.list()` lists models live, and the compiled-in list
+  is gone.** `client.models.list()` calls each configured provider's models
+  endpoint and resolves to a `LiveResult`: the models from every provider
+  that answered, plus a per-provider `errors` map. It takes the place of
+  `models.live()`, which is removed. The synchronous `models.list()` and
+  `models.get(id)`, which read a list compiled into the SDK, are removed. Use
+  `client.models.provider(p).get(id)` to look up one model. Vertex and
+  Bedrock still report `ErrModelsNotSupported` in `LiveResult.errors`.
+- **Each client caches the live model list for one hour.** A repeat
+  `models.list()` or `provider(p).list()` within the hour makes no HTTP
+  call, and `provider(p).get(id)` answers from the cached list when it holds
+  the id. A failed call is not cached. Each list is kept per provider, base URL
+  and API key, so a call sent to another endpoint or with another key
+  makes its own request. The new `models.fresh()` makes the
+  call again and refills the cache; it carries through `provider(p)`. Sends
+  never read the cache. A list served from the cache fires no middleware
+  event.
 - **BREAKING — video and image support facts have three states.**
   `VideoModelDef.supportsImageToVideo`, `supportsLastFrame` and
   `supportsReferenceImages`, and `ImageModelDef.supportsImageInput`, are
@@ -162,6 +179,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parts.
 
 ### Added
+
+- **`Event.modelUnlisted` marks a model the SDK does not list.** Image,
+  speech, music, video, chat, stream, agent and batch set it on their pre and
+  post middleware events. It is true when the SDK's model list does not hold
+  the model for that provider, so no per-model check ran before the request
+  was sent. It is not a telemetry attribute.
 
 - **`Response.created`.** The Unix time the provider reports, read from
   `created` (Chat Completions) or `created_at` (Responses); absent when the

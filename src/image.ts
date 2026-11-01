@@ -142,7 +142,7 @@ export async function generateImage(
     );
   }
   // ADR-102 MPT-001: an unlisted model (undefined) skips the per-model checks.
-  const { model } = lookupModel(imgCfg.models, request.model);
+  const { model, listed } = lookupModel(imgCfg.models, request.model);
   // ADR-102 MPT-006 G5: a listed model's aspect ratios and sizes are hints,
   // not blocks. The provider answers an off-list value.
   const imageCount = parts.filter((p) => hasPart(p, "image")).length;
@@ -271,6 +271,7 @@ export async function generateImage(
     phase: "pre",
     provider: provider.name,
     model: request.model,
+    modelUnlisted: !listed,
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;

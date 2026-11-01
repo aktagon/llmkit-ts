@@ -1,16 +1,16 @@
 /**
  * Model catalogue + provider lookup.
  *
- * Demonstrates the c.models and c.providers surface (ADR-019). Three modes:
+ * Demonstrates the c.models and c.providers surface (ADR-019). Three parts:
  *
- * 1. Compiled-in catalogue — synchronous, no HTTP. List, filter by
- *
+ * 1. Live list — list() fans out to each configured provider's /v1/models
+ *    endpoint. The client caches each provider's list in memory for one
+ *    hour; fresh() makes the call again and refills it.
  * 2. Providers namespace — configured (have credentials + a /v1/models
  *    endpoint) and supported (every provider the SDK was built with).
- * 3. Live + scoped HTTP — opt into provider /v1/models endpoints for
- *    the freshest catalogue. live() fans out across configured providers;
- *    provider(p).list() hits one. raw() additionally populates
- *    ModelInfo.raw with the provider-native record.
+ * 3. Scoped — provider(p).get(id) answers from the cached list when it
+ *    holds the id; provider(p).list() lists one provider. raw()
+ *    additionally populates ModelInfo.raw with the provider-native record.
  *
  * Run: ANTHROPIC_API_KEY=sk-... bun run examples/catalogue.ts
  */
@@ -22,29 +22,28 @@ import * as providers from "../src/providers/provider_info.ts";
 export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");
 
-  // 1. Compiled-in catalogue.
-  const all = client.models.list();
-  console.log(`compiled-in non-empty: ${all.length > 0}`);
+  // 1. Live list, cached for one hour.
+  const live = await client.models.list();
+  console.log(`live models: ${live.models.length}`);
 
-  const info = client.models.get("claude-opus-4-7");
-  const ctxPos = info !== undefined && (info.contextWindow ?? 0) > 0;
-  console.log(`claude-opus-4-7 context > 0: ${ctxPos}`);
+  const chat = await client.models.withCapability(Capabilities.ChatCompletion).list();
+  console.log(`chat-capable non-empty: ${chat.models.length > 0}`);
 
-  const chat = client.models.withCapability(Capabilities.ChatCompletion).list();
-  console.log(`chat-capable non-empty: ${chat.length > 0}`);
+  const fresh = await client.models.fresh().list();
+  console.log(`fresh models: ${fresh.models.length}`);
 
   // 2. Providers namespace.
   const configured = client.providers.list().map((p) => p.slug);
   console.log(`configured: [${configured.join(", ")}]`);
   console.log(`supported >= 1: ${providers.list().length > 0}`);
 
-  // 3. Live + scoped HTTP.
+  // 3. Scoped to one provider.
   const p: Provider = {
     name: "anthropic",
     apiKey: process.env.ANTHROPIC_API_KEY ?? "sk-test",
   };
-  const live = await client.models.live();
-  console.log(`live models: ${live.models.length}`);
+  const info = await client.models.provider(p).get("claude-opus-4-7");
+  console.log(`claude-opus-4-7 context > 0: ${(info.contextWindow ?? 0) > 0}`);
 
   const scoped = await client.models.provider(p).list();
   console.log(`scoped list: ${scoped.length}`);

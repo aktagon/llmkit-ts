@@ -4,7 +4,6 @@
 import type { Capability, Provider } from "./types.ts";
 import type { LiveResult, ModelInfo, ProviderError } from "./structs.ts";
 import {
-  compiledInModels,
   catalogueByProvider,
   ontologyCapabilities,
   type CatalogueConfig,
@@ -63,27 +62,15 @@ export function classifyCatalogueError(err: unknown): string {
 
 /** Return the records whose capabilities array contains c; no filter when
  *  c is unset. Always a fresh array. The single capability predicate
- *  (HANDOFF-036 A4): shared by the compiled-in path (catalogueFilter),
- *  the scoped live list (catalogueRunList), and — through it — the live
- *  aggregate. get stays an unfiltered point lookup by id. */
+ *  (HANDOFF-036 A4): shared by the scoped live list (catalogueRunList)
+ *  and — through it — the live aggregate. get stays an unfiltered point
+ *  lookup by id. */
 export function applyCapFilter(
   models: ModelInfo[],
   c: Capability | undefined,
 ): ModelInfo[] {
   if (!c) return [...models];
   return models.filter((m) => m.capabilities.includes(c));
-}
-
-/** Walk the compiled-in slice through the shared capability predicate.
- *  Returns a fresh array so callers cannot mutate the module-level
- *  constant. */
-export function catalogueFilter(c: Capability | undefined): ModelInfo[] {
-  return applyCapFilter(compiledInModels, c);
-}
-
-/** Linear scan over the compiled-in slice. Returns undefined on miss. */
-export function catalogueLookup(id: string): ModelInfo | undefined {
-  return compiledInModels.find((m) => m.id === id);
 }
 
 /** Fan out per-provider live calls and aggregate into LiveResult.
@@ -105,11 +92,7 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
   const errors: Record<string, ProviderError> = {};
 
   const results = await Promise.allSettled(
-    configured.map(async (p) => {
-      const { ScopedModels } = await import("./builders/catalogue.ts");
-      const scoped = new ScopedModels(models.client, p, models.capFilter);
-      return scoped.list();
-    }),
+    configured.map((p) => models.provider(p).list()),
   );
 
   for (let i = 0; i < results.length; i++) {
@@ -134,15 +117,45 @@ export async function catalogueRunLive(models: Models): Promise<LiveResult> {
   return { models: all, errors };
 }
 
-/** Single-provider live HTTP. Paginates per the catalogue config until
- *  the parser reports no next cursor, then enriches each record with
- *
- *  capFilter (withCapability composes with provider(p).list() —
- *  HANDOFF-036 A4; get stays an unfiltered point lookup by id).
- *  Middleware fires once per call (not per page). */
+/**
+ *  capability slice and filtered by the chain's capFilter
+ *  (withCapability composes with provider(p).list() — HANDOFF-036 A4;
+ *  get stays an unfiltered point lookup by id). A list younger than one
+ *  hour comes from the client's cache unless fresh() is set (ADR-102
+ *  MPT-005); otherwise the live call runs and a successful result
+ *  refills the cache. */
 export async function catalogueRunList(
   scoped: ScopedModels,
 ): Promise<ModelInfo[]> {
+  let records = cachedRecords(scoped);
+  if (!records) {
+    records = await fetchList(scoped);
+    scoped.client._modelCache.put(cacheKey(scoped), records);
+  }
+  return applyCapFilter(enrich(scoped, records), scoped.capFilter);
+}
+
+/** The provider's cached records, unless the chain asked for a fresh call. */
+function cachedRecords(scoped: ScopedModels): ParsedModelRecord[] | undefined {
+  if (scoped.freshFlag) return undefined;
+  return scoped.client._modelCache.get(cacheKey(scoped));
+}
+
+/** Names the cached list by the provider and the base URL and API key the
+ *  live call is sent with (owner, 2026-11-01): the scoped target carries
+ *  them, so a target with another key or endpoint never reads a list
+ *  fetched for the first one. The key stays in memory only. */
+function cacheKey(scoped: ScopedModels): string {
+  const pcfg = PROVIDERS[scoped.target.name as ProviderName];
+  const base = scoped.target.baseUrl || pcfg?.baseUrl || "";
+  return `${scoped.target.name}\u0000${base}\u0000${scoped.target.apiKey}`;
+}
+
+/** Single-provider live HTTP. Paginates per the catalogue config until
+ *  the parser reports no next cursor. Middleware fires once per call (not
+ *  per page). A list served from the cache makes no call and fires no
+ *  event. */
+async function fetchList(scoped: ScopedModels): Promise<ParsedModelRecord[]> {
   const cfg = catalogueByProvider[scoped.target.name];
   if (!cfg) throw new ErrModelsNotSupported();
   const pcfg = PROVIDERS[scoped.target.name as ProviderName];
@@ -190,10 +203,12 @@ export async function catalogueRunList(
   });
 
   if (caught) throw caught;
-  return applyCapFilter(enrich(scoped, records), scoped.capFilter);
+  return records;
 }
 
-/** Single-provider live model fetch. URL shapes pinned in plan 025
+/** One model record by id. A fresh cached list that holds the id answers
+ *  without a call (ADR-102 MPT-005); otherwise the live point lookup
+ *  runs. URL shapes pinned in plan 025
  *  (Anthropic /v1/models/{id}, OpenAI /v1/models/{id}, Google
  *  /v1beta/models/{id} — the parser strips models/ from the response,
  *  the URL itself uses the bare id). Vertex + Bedrock surface
@@ -202,6 +217,8 @@ export async function catalogueRunGet(
   scoped: ScopedModels,
   id: string,
 ): Promise<ModelInfo> {
+  const hit = cachedRecords(scoped)?.find((r) => r.id === id);
+  if (hit) return enrich(scoped, [hit])[0]!;
   const cfg = catalogueByProvider[scoped.target.name];
   if (!cfg) throw new ErrModelsNotSupported();
   if (
@@ -396,7 +413,8 @@ function enrich(
       created: rec.created ?? 0,
     };
     if (scoped.rawFlag) {
-      info.raw = rec.raw;
+      // A copy: the record may be the cached one, which other calls read.
+      info.raw = structuredClone(rec.raw);
     }
     return info;
   });

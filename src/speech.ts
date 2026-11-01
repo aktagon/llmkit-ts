@@ -76,7 +76,7 @@ export async function generateSpeech(
     );
   }
   // ADR-102 MPT-001: an unlisted model (undefined) is sent as given.
-  const { model } = lookupModel(sgCfg.models, request.model);
+  const { model, listed } = lookupModel(sgCfg.models, request.model);
   validateSpeechModel(request, sgCfg, model);
 
   const baseEvent: Event = {
@@ -84,6 +84,7 @@ export async function generateSpeech(
     phase: "pre",
     provider: provider.name,
     model: request.model,
+    modelUnlisted: !listed,
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;

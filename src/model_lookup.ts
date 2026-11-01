@@ -1,3 +1,6 @@
+import { ontologyCapabilities } from "./catalogue.ts";
+import { Capabilities } from "./types.ts";
+
 // lookupModel finds modelId in one capability's compiled catalogue (ADR-102
 // MPT-001, G4). It never throws: an unlisted model returns undefined and
 // listed false. The caller then sends the request with the fields the caller
@@ -21,6 +24,15 @@ export function fallbackMime<M extends { outputMime: string }>(
   model: M | undefined,
 ): string {
   return (model ?? models[0])?.outputMime ?? "";
+}
+
+// chatModelListed is the catalogue lookup for chat, stream, agent and batch
+// (ADR-102 MPT-002): true when the compiled catalogue lists modelId as a chat
+// model of provider. It never throws; the chat send path runs no per-model
+// check, so the answer only marks the middleware event. Mirrors
+// go/model_lookup.go.
+export function chatModelListed(provider: string, modelId: string): boolean {
+  return ontologyCapabilities[provider]?.[modelId]?.includes(Capabilities.ChatCompletion) ?? false;
 }
 
 // statedFalseBlocks reports whether a listed model's support fact rejects
