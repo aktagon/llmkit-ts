@@ -22,10 +22,26 @@ export function selectRequestVariant(
   if (!variant) {
     throw new ValidationError(
       "parts",
-      `${provider} has no ${carries.join("+")} request`,
+      `${provider} has no ${carriedInputWords(carries)} request`,
     );
   }
   return variant;
+}
+
+/**
+ * The carried inputs in the words an error message uses; the constant names
+ * are internal (ADR-103 PUB-005).
+ */
+const CARRIED_INPUT_NAMES: Record<CarriedInput, string> = {
+  TextOnly: "text-only",
+  WithReferenceImages: "reference image",
+  WithSeedFrame: "seed frame",
+  WithLastFrame: "last frame",
+};
+
+/** carriedInputWords names carries in words, such as "seed frame and last frame". */
+function carriedInputWords(carries: CarriedInput[]): string {
+  return carries.map((c) => CARRIED_INPUT_NAMES[c]).join(" and ");
 }
 
 /**
