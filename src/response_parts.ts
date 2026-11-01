@@ -15,7 +15,7 @@ import { extractPath, extractRaw, setWirePath } from "./paths.ts";
 import { compactJson, JsonText } from "./json_text.ts";
 import { extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
 import type { Part, Response, ToolCall } from "./structs.ts";
-import { hasPart } from "./part_kinds.ts";
+import { hasPart, isText } from "./part_kinds.ts";
 
 /**
  * responseText is the response text: the text parts joined with no separator,
@@ -43,7 +43,7 @@ export function responseToolCalls(response: Response): ToolCall[] {
  */
 export function partsText(parts: readonly Part[]): string {
   let text = "";
-  for (const p of parts) if (hasPart(p, "text")) text += p.text;
+  for (const p of parts) if (isText(p)) text += p.text;
   return text;
 }
 

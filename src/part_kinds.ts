@@ -52,9 +52,7 @@ export function hasPart<K extends PartKey>(part: Part, key: K): part is Extract<
  * same error (F11, F12).
  */
 export function partKindOf(part: Part, field: string): string {
-  const kinds = (Object.keys(PART_KINDS) as PartKey[]).flatMap((key) =>
-    hasPart(part, key) ? [PART_KINDS[key]!] : [],
-  );
+  const kinds = partKinds(part);
   const [kind, ...rest] = kinds;
   if (kind === undefined) {
     throw new ValidationError(field, "empty part");
@@ -63,4 +61,23 @@ export function partKindOf(part: Part, field: string): string {
     throw new ValidationError(field, `sets ${kinds.join(" and ")}; a part sets exactly one kind`);
   }
   return kind;
+}
+
+/**
+ * partKinds names every kind part sets (hasPart), in variant order. A valid
+ * part sets exactly one. Mirror of Go's Part.partKinds.
+ */
+export function partKinds(part: Part): string[] {
+  return (Object.keys(PART_KINDS) as PartKey[]).flatMap((key) =>
+    hasPart(part, key) ? [PART_KINDS[key]!] : [],
+  );
+}
+
+/**
+ * isText reports whether part is a text part: it sets text and no other
+ * kind (ADR-100 MSG-006). Mirror of Go's Part.isText.
+ */
+export function isText(part: Part): part is { text: string } {
+  const kinds = partKinds(part);
+  return kinds.length === 1 && kinds[0] === "text";
 }

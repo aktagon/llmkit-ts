@@ -736,11 +736,11 @@ const ROLE_PARTS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
- * checkTurnParts throws a ValidationError for a part that sets no kind or two,
- * an empty text, lyrics or audio_url part (HANDOFF-111), or a kind chat does
- * not accept (MSG-011), all three by
- * checkPartKinds as on every capability, and for a kind the role cannot carry
- * (MSG-002). `field` names the parts list, e.g. "messages[2].parts". The
+ * checkTurnParts throws a ValidationError for four kinds of bad part. The
+ * first three come from checkPartKinds, which every capability runs: a part
+ * that sets no kind or two, an empty text, lyrics or audio_url part
+ * (HANDOFF-111), and a kind chat does not accept (MSG-011). The fourth is a
+ * kind the role cannot carry (MSG-002). `field` names the parts list, e.g. "messages[2].parts". The
  * request encoder runs it on every turn, and encodeResponse on the response's
  * assistant turn. `written` is the input text the caller's encoder writes for
  * a tool call (undefined: it writes none), so the check judges the text that
