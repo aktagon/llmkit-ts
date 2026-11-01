@@ -378,7 +378,7 @@ async function dispatchVideoSubmit(
   parts: Part[],
   lastFrame: MediaRef | undefined,
   referenceImages: MediaRef[],
-  durationSeconds: number,
+  durationSeconds: number | bigint,
   aspectRatio: string,
   resolution: string,
 ): Promise<string> {
@@ -1316,13 +1316,21 @@ function validateVideoFrames(
 // already checked each value against the model.
 function setRootVideoOptions(
   body: Record<string, unknown>,
-  durationSeconds: number,
+  durationSeconds: number | bigint,
   aspectRatio: string,
   resolution: string,
 ): void {
   if (durationSeconds > 0) body.duration = durationSeconds;
   if (aspectRatio) body.aspect_ratio = aspectRatio;
   if (resolution) body.resolution = resolution;
+}
+
+// sameInteger reports whether a duration the caller set, a number or a
+// bigint (owner, 2026-11-01, HANDOFF-111), is the integer n. === is false
+// for 0n and 0, and Number() would round a bigint past 2^53. Exported for
+// its unit test; the package barrel does not re-export it.
+export function sameInteger(v: number | bigint, n: number): boolean {
+  return typeof v === "bigint" ? v === BigInt(n) : v === n;
 }
 
 // videoShapeSendsOptions reports whether a video wire shape has body fields
@@ -1347,10 +1355,10 @@ function validateGeminiOmniInputs(
   parts: Part[],
   lastFrame: MediaRef | undefined,
   referenceImages: MediaRef[],
-  durationSeconds: number,
+  durationSeconds: number | bigint,
 ): void {
   if (vgCfg.wireShape !== "VideoGeminiOmni") return;
-  if (durationSeconds !== 0) {
+  if (!sameInteger(durationSeconds, 0)) {
     throw new ValidationError("duration", "Gemini Omni video has no duration field");
   }
   if (parts.some((p) => hasPart(p, "image"))) {
@@ -1383,14 +1391,14 @@ function validateGeminiOmniInputs(
 function validateVideoOptions(
   providerName: string,
   vgCfg: VideoGenDef,
-  durationSeconds: number,
+  durationSeconds: number | bigint,
   aspectRatio: string,
   resolution: string,
   referenceImageCount: number,
 ): void {
   if (!videoShapeSendsOptions(vgCfg.wireShape)) {
     const opts: [string, boolean][] = [
-      ["duration", durationSeconds !== 0],
+      ["duration", !sameInteger(durationSeconds, 0)],
       ["aspect_ratio", aspectRatio !== ""],
       ["resolution", resolution !== ""],
     ];
@@ -1404,7 +1412,7 @@ function validateVideoOptions(
   if (durationSeconds < 0) {
     throw new ValidationError("duration", "must be positive");
   }
-  if (durationSeconds > 0 && referenceImageCount > 0 && durationSeconds !== 8) {
+  if (durationSeconds > 0 && referenceImageCount > 0 && !sameInteger(durationSeconds, 8)) {
     throw new ValidationError("duration", `reference images take 8 seconds, got ${durationSeconds}`);
   }
 }

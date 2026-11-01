@@ -174,7 +174,7 @@ export class Text {
   /** @internal */ _frequencyPenalty?: number;
   /** @internal */ _history: Message[] = [];
   /** @internal */ _parts: Part[] = [];
-  /** @internal */ _maxTokens?: number;
+  /** @internal */ _maxTokens?: number | bigint;
   /** @internal */ _model: string = "";
   /** @internal */ _presencePenalty?: number;
   /** @internal */ _protocol: string = "";
@@ -187,8 +187,8 @@ export class Text {
   /** @internal */ _stopSequences: string[] = [];
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
-  /** @internal */ _thinkingBudget?: number;
-  /** @internal */ _topK?: number;
+  /** @internal */ _thinkingBudget?: number | bigint;
+  /** @internal */ _topK?: number | bigint;
   /** @internal */ _topP?: number;
 
   constructor(client: Client) { this.client = client; }
@@ -217,7 +217,7 @@ export class Text {
    */
   history(...msgs: Message[]): Text { const out = clone(this); out._history = msgs; return out; }
   image(mime: string, data: Uint8Array): Text { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
-  maxTokens(n: number): Text { const out = clone(this); out._maxTokens = n; return out; }
+  maxTokens(n: number | bigint): Text { const out = clone(this); out._maxTokens = n; return out; }
   model(name: string): Text { const out = clone(this); out._model = name; return out; }
   presencePenalty(v: number): Text { const out = clone(this); out._presencePenalty = v; return out; }
   protocol(name: string): Text { const out = clone(this); out._protocol = name; return out; }
@@ -234,13 +234,13 @@ export class Text {
   request(req: Request): Text { const out = clone(this); textSetRequest(out, req); return out; }
   safetySettings(s: SafetySetting[]): Text { const out = clone(this); out._safetySettings = s; return out; }
   schema(s: string): Text { const out = clone(this); out._schema = s; return out; }
-  seed(n: number): Text { const out = clone(this); out._seed = n; return out; }
+  seed(n: number | bigint): Text { const out = clone(this); out._seed = n; return out; }
   stopSequences(...seqs: string[]): Text { const out = clone(this); out._stopSequences = seqs; return out; }
   system(s: string): Text { const out = clone(this); out._system = s; return out; }
   temperature(t: number): Text { const out = clone(this); out._temperature = t; return out; }
   text(s: string): Text { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
-  thinkingBudget(n: number): Text { const out = clone(this); out._thinkingBudget = n; return out; }
-  topK(n: number): Text { const out = clone(this); out._topK = n; return out; }
+  thinkingBudget(n: number | bigint): Text { const out = clone(this); out._thinkingBudget = n; return out; }
+  topK(n: number | bigint): Text { const out = clone(this); out._topK = n; return out; }
   topP(v: number): Text { const out = clone(this); out._topP = v; return out; }
   async prompt(msg: string): Promise<Response> {
     return textPrompt(this, msg);
@@ -260,7 +260,7 @@ export class Image {
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _aspectRatio: string = "";
   /** @internal */ _background: string = "";
-  /** @internal */ _count?: number;
+  /** @internal */ _count?: number | bigint;
   /** @internal */ _parts: Part[] = [];
   /** @internal */ _imageSize: string = "";
   /** @internal */ _includeText: boolean = false;
@@ -283,7 +283,7 @@ export class Image {
    */
   aspectRatio(r: string): Image { const out = clone(this); out._aspectRatio = r; return out; }
   background(s: string): Image { const out = clone(this); out._background = s; return out; }
-  count(n: number): Image { const out = clone(this); out._count = n; return out; }
+  count(n: number | bigint): Image { const out = clone(this); out._count = n; return out; }
   image(mime: string, data: Uint8Array): Image { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   imageSize(s: string): Image { const out = clone(this); out._imageSize = s; return out; }
   includeText(): Image { const out = clone(this); out._includeText = true; return out; }
@@ -396,7 +396,7 @@ export class Video {
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _referenceImages: MediaRef[] = [];
   /** @internal */ _aspectRatio: string = "";
-  /** @internal */ _duration: number = 0;
+  /** @internal */ _duration: number | bigint = 0;
   /** @internal */ _parts: Part[] = [];
   /** @internal */ _keepStored: boolean = false;
   /** @internal */ _lastFrame?: MediaRef;
@@ -424,7 +424,7 @@ export class Video {
    * OpenRouter, Grok and Veo send it. Above the model's maximum, it is rejected
    * before send. With Veo reference images, only 8 is accepted.
    */
-  duration(seconds: number): Video { const out = clone(this); out._duration = seconds; return out; }
+  duration(seconds: number | bigint): Video { const out = clone(this); out._duration = seconds; return out; }
   image(mime: string, data: Uint8Array): Video { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
   /**
    * Keeps the stored video job after Wait has the video. By default Wait
@@ -462,8 +462,8 @@ export class Agent {
   /** @internal */ _caching: boolean = false;
   /** @internal */ _frequencyPenalty?: number;
   /** @internal */ _history: Message[] = [];
-  /** @internal */ _maxTokens?: number;
-  /** @internal */ _maxToolIterations?: number;
+  /** @internal */ _maxTokens?: number | bigint;
+  /** @internal */ _maxToolIterations?: number | bigint;
   /** @internal */ _model: string = "";
   /** @internal */ _presencePenalty?: number;
   /** @internal */ _raw: boolean = false;
@@ -473,8 +473,8 @@ export class Agent {
   /** @internal */ _stopSequences: string[] = [];
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
-  /** @internal */ _thinkingBudget?: number;
-  /** @internal */ _topK?: number;
+  /** @internal */ _thinkingBudget?: number | bigint;
+  /** @internal */ _topK?: number | bigint;
   /** @internal */ _topP?: number;
   /** @internal */ _state?: AgentState;
 
@@ -503,19 +503,19 @@ export class Agent {
    * reconstructing them by hand.
    */
   history(...msgs: Message[]): Agent { const out = clone(this); out._history = msgs; out._state = undefined; return out; }
-  maxTokens(n: number): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
-  maxToolIterations(n: number): Agent { const out = clone(this); out._maxToolIterations = n; out._state = undefined; return out; }
+  maxTokens(n: number | bigint): Agent { const out = clone(this); out._maxTokens = n; out._state = undefined; return out; }
+  maxToolIterations(n: number | bigint): Agent { const out = clone(this); out._maxToolIterations = n; out._state = undefined; return out; }
   model(name: string): Agent { const out = clone(this); out._model = name; out._state = undefined; return out; }
   presencePenalty(v: number): Agent { const out = clone(this); out._presencePenalty = v; out._state = undefined; return out; }
   raw(): Agent { const out = clone(this); out._raw = true; out._state = undefined; return out; }
   reasoningEffort(level: string): Agent { const out = clone(this); out._reasoningEffort = level; out._state = undefined; return out; }
   safetySettings(s: SafetySetting[]): Agent { const out = clone(this); out._safetySettings = s; out._state = undefined; return out; }
-  seed(n: number): Agent { const out = clone(this); out._seed = n; out._state = undefined; return out; }
+  seed(n: number | bigint): Agent { const out = clone(this); out._seed = n; out._state = undefined; return out; }
   stopSequences(...seqs: string[]): Agent { const out = clone(this); out._stopSequences = seqs; out._state = undefined; return out; }
   system(s: string): Agent { const out = clone(this); out._system = s; out._state = undefined; return out; }
   temperature(t: number): Agent { const out = clone(this); out._temperature = t; out._state = undefined; return out; }
-  thinkingBudget(n: number): Agent { const out = clone(this); out._thinkingBudget = n; out._state = undefined; return out; }
-  topK(n: number): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
+  thinkingBudget(n: number | bigint): Agent { const out = clone(this); out._thinkingBudget = n; out._state = undefined; return out; }
+  topK(n: number | bigint): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
   topP(v: number): Agent { const out = clone(this); out._topP = v; out._state = undefined; return out; }
   get messages(): readonly Message[] { return agentMessages(this); }
   get unsavedTurns(): readonly Message[] { return agentUnsavedTurns(this); }
