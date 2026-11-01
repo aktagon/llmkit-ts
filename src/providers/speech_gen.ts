@@ -15,7 +15,7 @@ export interface SpeechModelDef {
   sampleRateHz: number;
   /** Speakers the model takes (1 or 2); undefined = unknown, which sends (decision 009). */
   maxSpeakers?: number;
-  /** Whether the provider accepts a style (style, addStyledLine); undefined = unknown, only false blocks (decision 009). */
+  /** Whether the provider accepts a style (style, addStyledLine); undefined = unknown (decision 009). false blocks only for an option the config's ignoresUnsupported lists. */
   supportsSpeechStyle?: boolean;
 }
 
@@ -34,6 +34,9 @@ export interface SpeechGenDef {
   carriesSpeechStyle: boolean;
   /** The config has a multi-speaker body; false rejects every speaker request (HANDOFF-099). */
   multiSpeaker: boolean;
+  /** Options this provider silently ignores when the model lacks them, from
+   * "Style", "AddStyledLine". Only for these does a model's stated false reject the request. */
+  ignoresUnsupported: string[];
 }
 
 const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
@@ -63,6 +66,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     baseUrl: "",
     carriesSpeechStyle: true,
     multiSpeaker: true,
+    ignoresUnsupported: [],
   },
   grok: {
     wireShape: "SpeechXAI",
@@ -81,6 +85,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     baseUrl: "",
     carriesSpeechStyle: false,
     multiSpeaker: false,
+    ignoresUnsupported: [],
   },
   inworld: {
     wireShape: "SpeechInworld",
@@ -113,6 +118,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     baseUrl: "",
     carriesSpeechStyle: false,
     multiSpeaker: false,
+    ignoresUnsupported: [],
   },
   minimax: {
     wireShape: "SpeechMiniMax",
@@ -152,6 +158,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     baseUrl: "https://api.minimax.io",
     carriesSpeechStyle: false,
     multiSpeaker: false,
+    ignoresUnsupported: [],
   },
   openai: {
     wireShape: "SpeechOpenAI",
@@ -184,6 +191,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     baseUrl: "",
     carriesSpeechStyle: true,
     multiSpeaker: false,
+    ignoresUnsupported: [],
   },
   openrouter: {
     wireShape: "SpeechOpenAI",
@@ -270,6 +278,7 @@ const SPEECH_GEN: Partial<Record<ProviderName, SpeechGenDef>> = {
     baseUrl: "",
     carriesSpeechStyle: false,
     multiSpeaker: false,
+    ignoresUnsupported: ["Style"],
   },
 };
 
