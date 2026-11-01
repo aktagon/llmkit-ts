@@ -7,7 +7,7 @@
  * clone the prototype, so `c.text.system(...)` returns a fresh Text
  * builder each call.
  */
-import { anthropic, Client } from "../src/builders/index.ts";
+import { anthropic, Client } from "../src/llmkit.ts";
 import { responseText } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
