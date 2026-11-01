@@ -125,6 +125,8 @@ export type { VideoResponse, VideoData } from "./structs.ts";
 // client.models.list() and client.models.provider(...).list() return, so a
 // consumer can name the type of a catalogue result at the package boundary.
 export type { ModelInfo, LiveResult, ImageHints, VideoHints, SpeechHints } from "./structs.ts";
+// The value type of LiveResult.errors (ADR-103 PUB-005).
+export type { ProviderError } from "./structs.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
 // (name/envVar/defaultModel/baseUrl) — a projection of provider facts, NOT the
 // internal wire/transform spec. Exposed as the static `providers` namespace
@@ -137,7 +139,9 @@ export type { ProviderInfo } from "./providers/provider_info.ts";
 // Typed provider identity (ADR-040), for consumers annotating providers.parse.
 export type { ProviderName } from "./providers/providers.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
-export type { Event, MiddlewareFn } from "./providers/middleware.ts";
+// Event.op and Event.phase are typed by MiddlewareOp and MiddlewarePhase
+// (ADR-103 PUB-003).
+export type { Event, MiddlewareFn, MiddlewareOp, MiddlewarePhase } from "./providers/middleware.ts";
 // Opt-in telemetry (ADR-054). The value re-export also loads telemetry.ts at
 // runtime so its Client.addTelemetry prototype augmentation is installed.
 export { buildOTLPTraces, httpExport } from "./telemetry.ts";
