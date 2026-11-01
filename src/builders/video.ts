@@ -1330,9 +1330,10 @@ function setRootVideoOptions(
 }
 
 // sameInteger reports whether a duration the caller set, a number or a
-// bigint (HANDOFF-111), is the integer n. === is false for 0n and 0, and
-// Number() would round a bigint past 2^53.
-function sameInteger(v: number | bigint, n: number): boolean {
+// bigint (owner, 2026-11-01, HANDOFF-111), is the integer n. === is false
+// for 0n and 0, and Number() would round a bigint past 2^53. Exported for
+// its unit test; the package barrel does not re-export it.
+export function sameInteger(v: number | bigint, n: number): boolean {
   return typeof v === "bigint" ? v === BigInt(n) : v === n;
 }
 

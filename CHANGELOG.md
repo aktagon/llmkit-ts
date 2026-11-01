@@ -85,7 +85,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bigint`, and every request writes a `bigint` seed as its digits.
   Code that reads `request.seed` as a `number`, such as
   `request.seed + 1`, no longer typechecks; check `typeof` first. The
-  `seed(n)` chain method still takes a `number`.
+  `seed(n)` chain method takes a `number | bigint` too.
+- **BREAKING — every integer the caller writes is `number | bigint`.** Go
+  and Rust take these as 64-bit integers, and a `number` stops at
+  `Number.MAX_SAFE_INTEGER`. An integer the SDK returns, such as
+  `Response.created` or `ModelInfo.contextWindow`, stays a `number`. The
+  widened public types are:
+  - `Request.maxTokens`, `Request.topK` and `Request.thinkingBudget`,
+    beside `Request.seed`.
+  - The chain methods `maxTokens`, `topK`, `thinkingBudget` and `seed` on
+    `Text` and `Agent`, `maxToolIterations` on `Agent`, `count` on `Image`
+    and `duration` on `Video`.
+  - `ImageOptions.count` and `AgentSendOptions.maxToolIterations`.
+
+  Code that reads one of the `Request` fields as a `number`, such as
+  `request.maxTokens + 1`, no longer typechecks; check `typeof` first.
+  Every request writes a `bigint` as its digits.
 - **An empty text part is a `ValidationError` on every request,** naming
   the part, for example `parts[0]`: image, music, video and transcription,
   as chat already did. These requests used to send it. Speech takes no
@@ -204,10 +219,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   integral number in any notation, such as `4096.0`, and rejects a fraction.
   A number out of range, such as `1e999`, fails on its own field. Any other field, such as `"stream": true`, `tools`, `response_format` or a content list, throws a
   `ValidationError` that names it, for example `messages[1].tool_calls`.
-  A `seed` is read exactly over the 64-bit range: past
-  `Number.MAX_SAFE_INTEGER` it is a `bigint`, below it a `number`. Any other
-  integer option past `Number.MAX_SAFE_INTEGER` is rejected rather than
-  rounded. Other wire shapes throw on field `chatWireShape`.
+  Every integer option (`max_tokens`, `top_k`, `thinking_budget`, `seed`) is
+  read exactly over the 64-bit range: past `Number.MAX_SAFE_INTEGER` it is a
+  `bigint`, below it a `number`. On a runtime that gives `JSON.parse` no
+  number source text, such a value is rejected, never rounded. Other wire
+  shapes throw on field `chatWireShape`.
 
 ### Fixed
 

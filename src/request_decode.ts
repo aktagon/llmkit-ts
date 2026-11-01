@@ -199,7 +199,9 @@ const INT64_MAX = 2n ** 63n - 1n;
 // 3, HANDOFF-105 F3). JSON.parse reads 1e999 as Infinity, which is out of
 // range. Every integer option is a value the caller writes, read exactly over
 // the int64 range, as Go and Rust read it: a bigint past 2^53, a number below
-// (F12 for the seed; HANDOFF-111 for max_tokens, top_k and thinking_budget).
+// (HANDOFF-105 F12 for the seed; owner, 2026-10-31, HANDOFF-111 for
+// max_tokens, top_k and thinking_budget; owner, 2026-11-01, HANDOFF-111:
+// inputs only).
 function integerOption(v: unknown): { value: number | bigint } | { problem: string } {
   if (typeof v === "bigint") {
     if (v >= INT64_MIN && v <= INT64_MAX) return { value: v };
