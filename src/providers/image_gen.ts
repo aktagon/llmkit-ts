@@ -35,9 +35,10 @@ export interface ImageModelDef {
    * (e.g. Grok's single-seed slot); 0 = no llmkit limit, the provider
    * decides volume (BUG-011). */
   maxInputImages: number;
-  /** Whether llmkit sends Image Parts for this model; false means the
-   * runtime rejects them (BUG-096). */
-  supportsImageInput: boolean;
+  /** Whether llmkit sends Image Parts for this model (BUG-096); undefined =
+   * unknown (decision 009). false rejects them only when the config's
+   * ignoresUnsupported lists "Image". */
+  supportsImageInput?: boolean;
 }
 
 export interface ImageGenDef {
@@ -50,6 +51,9 @@ export interface ImageGenDef {
   usageReasoningPath: string;
   /** One request per carried input, TextOnly first (ADR-096). */
   variants: RequestVariant[];
+  /** Options this provider silently ignores when the model lacks them, from
+   * "Image". Only for these does a model's stated false reject the request. */
+  ignoresUnsupported: string[];
   models: ImageModelDef[];
 }
 
@@ -64,6 +68,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
       { carries: ["TextOnly"], shape: "InlineParts", endpoint: "" },
       { carries: ["WithReferenceImages"], shape: "InlineParts", endpoint: "" },
     ],
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "gemini-nano-banana-2.1",
@@ -85,6 +90,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
       { carries: ["TextOnly"], shape: "JSONInlineRefs", endpoint: "/v1/images/generations" },
       { carries: ["WithReferenceImages"], shape: "JSONInlineRefs", endpoint: "/v1/images/edits" },
     ],
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "grok-imagine-image-2.0",
@@ -114,6 +120,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
       { carries: ["TextOnly"], shape: "JSONGenerationsOpenAI", endpoint: "/v1/images/generations" },
       { carries: ["WithReferenceImages"], shape: "MultipartForm", endpoint: "/v1/images/edits" },
     ],
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "gpt-image-1",
@@ -175,6 +182,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
       { carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images" },
       { carries: ["WithReferenceImages"], shape: "JSONGenerationsInputRefs", endpoint: "/v1/images" },
     ],
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "bytedance-seed/seedream-4.5",
@@ -291,6 +299,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     variants: [
       { carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images/generations" },
     ],
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "recraftv3",

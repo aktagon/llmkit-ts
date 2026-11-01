@@ -22,3 +22,17 @@ export function fallbackMime<M extends { outputMime: string }>(
 ): string {
   return (model ?? models[0])?.outputMime ?? "";
 }
+
+// statedFalseBlocks reports whether a listed model's support fact rejects
+// option before send (ADR-102 MPT-006 G6, MPT-007). Only a stated false
+// blocks, and only on a config whose provider silently ignores the option
+// (ignored is the config's ignoresUnsupported). Elsewhere the request is sent
+// and the provider answers; an unknown fact (undefined) never blocks
+// (decision 009). Mirrors go/model_lookup.go.
+export function statedFalseBlocks(
+  ignored: readonly string[],
+  option: string,
+  support: boolean | undefined,
+): boolean {
+  return support === false && ignored.includes(option);
+}

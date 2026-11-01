@@ -14,11 +14,12 @@ export type VideoOutputDelivery = "DeliveryDownload" | "DeliveryURL" | "Delivery
 export interface VideoModelDef {
   modelId: string;
   label: string;
-  supportsImageToVideo: boolean;
-  /** Whether lastFrame and addReferenceImage are accepted; false means
-   * the request is rejected before send (BUG-089). */
-  supportsLastFrame: boolean;
-  supportsReferenceImages: boolean;
+  /** Whether image, lastFrame and addReferenceImage are accepted (BUG-089);
+   * undefined = unknown (decision 009). false rejects the request before
+   * send only when the config's ignoresUnsupported lists the option. */
+  supportsImageToVideo?: boolean;
+  supportsLastFrame?: boolean;
+  supportsReferenceImages?: boolean;
   maxDurationSeconds: number;
   outputMime: string;
   resolutions: string[];
@@ -53,6 +54,9 @@ export interface VideoGenDef {
   usageInputPath: string;
   usageOutputPath: string;
   usageReasoningPath: string;
+  /** Options this provider silently ignores when the model lacks them, from
+   * "Image", "LastFrame", "AddReferenceImage". Only for these does a model's stated false reject the request. */
+  ignoresUnsupported: string[];
   models: VideoModelDef[];
 }
 
@@ -73,6 +77,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "amazon.nova-reel-v1:0",
@@ -104,6 +109,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "usage.total_input_tokens",
     usageOutputPath: "usage.total_output_tokens",
     usageReasoningPath: "usage.total_thought_tokens",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "gemini-omni-1.1-flash",
@@ -136,6 +142,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "grok-imagine-video",
@@ -191,6 +198,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "MiniMax-Hailuo-2.3",
@@ -224,6 +232,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "alibaba/wan-3.0",
@@ -363,6 +372,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "v4.5",
@@ -418,6 +428,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "wan2.2-t2v-plus",
@@ -449,6 +460,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "minimax/video-01-director",
@@ -483,6 +495,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "veo-3.1-fast-generate-001",
@@ -550,6 +563,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "viduq1",
@@ -605,6 +619,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    ignoresUnsupported: [],
     models: [
       {
         modelId: "cogvideox-3",
