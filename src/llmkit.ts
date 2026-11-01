@@ -94,7 +94,6 @@ export type { JobFailureCode } from "./providers/batch.ts";
 export type { FinishReason } from "./providers/providers.ts";
 export type { Tool } from "./types.ts";
 export type {
-  ImageRequest,
   ImageResponse,
   ImageData,
   MediaRef,
@@ -111,11 +110,10 @@ export type {
   TranscriptSegment,
 } from "./structs.ts";
 export type {
-  MusicRequest,
   MusicResponse,
   AudioData,
 } from "./music.ts";
-export type { SpeechRequest, SpeechResponse } from "./speech.ts";
+export type { SpeechResponse } from "./speech.ts";
 // Video generation (ADR-034): the async handle class and its result
 // containers, mirroring the other media capabilities so a consumer can name
 // the type of `client.video()...submit(...).wait()`.
@@ -125,6 +123,9 @@ export type { VideoResponse, VideoData } from "./structs.ts";
 // client.models.list() and client.models.provider(...).list() return, so a
 // consumer can name the type of a catalogue result at the package boundary.
 export type { ModelInfo, LiveResult, ImageHints, VideoHints, SpeechHints } from "./structs.ts";
+// The errors the catalogue calls throw (ADR-103 PUB-009), so a caller can
+// test them with instanceof.
+export { ErrModelsNotSupported, ErrModelsUnavailable, ErrModelsScope } from "./models.ts";
 // The value type of LiveResult.errors (ADR-103 PUB-005).
 export type { ProviderError } from "./structs.ts";
 // Client-reachable types a caller could not name (ADR-103 PUB-001):
