@@ -28,20 +28,32 @@ export function checkPartKinds(
   });
 }
 
+/** PartKey is a key of one Part variant, e.g. "text" or "toolCall". */
+export type PartKey = Part extends infer P ? (P extends unknown ? keyof P : never) : never;
+
 /**
- * partKindOf returns the one kind a part sets, or throws a ValidationError on
- * field for a part that sets none or more than one. A key whose value is the
- * empty string sets no kind, as in Go, where the empty string is an unset
- * string variant: an empty text, lyrics or audio_url part is an empty part
- * (owner decision 2, HANDOFF-105 F11; HANDOFF-111). It is the one check of a
- * part's shape: checkPartKinds runs it for chat and every other capability,
- * and saveHistory runs it, so a request and a Save reject the same part with
- * the same error (F11, F12).
+ * hasPart reports whether part sets key: its value is not undefined, null or
+ * "". It is the one definition of a set Part key, as in Go, where a nil
+ * pointer or an empty string is an unset variant. partKindOf and every
+ * encoder read a part by it, so they pick the same variant (HANDOFF-111).
+ */
+export function hasPart<K extends PartKey>(part: Part, key: K): part is Extract<Part, Record<K, unknown>> {
+  const value = (part as Record<string, unknown>)[key];
+  return value !== undefined && value !== null && value !== "";
+}
+
+/**
+ * partKindOf returns the one kind a part sets (hasPart), or throws a
+ * ValidationError on field for a part that sets none or more than one: an
+ * empty text, lyrics or audio_url part sets none (owner decision 2,
+ * HANDOFF-105 F11; HANDOFF-111). It is the one check of a part's shape:
+ * checkPartKinds runs it for chat and every other capability, and
+ * saveHistory runs it, so a request and a Save reject the same part with the
+ * same error (F11, F12).
  */
 export function partKindOf(part: Part, field: string): string {
-  const values = part as Record<string, unknown>;
-  const kinds = Object.keys(part).flatMap((key) =>
-    values[key] === "" ? [] : (PART_KINDS[key] ?? []),
+  const kinds = (Object.keys(PART_KINDS) as PartKey[]).flatMap((key) =>
+    hasPart(part, key) ? [PART_KINDS[key]!] : [],
   );
   const [kind, ...rest] = kinds;
   if (kind === undefined) {
@@ -51,10 +63,4 @@ export function partKindOf(part: Part, field: string): string {
     throw new ValidationError(field, `sets ${kinds.join(" and ")}; a part sets exactly one kind`);
   }
   return kind;
-}
-
-/** partKind is the variant name of a part checkPartKinds accepted. */
-export function partKind(part: Part): string {
-  const key = Object.keys(part).find((k) => k in PART_KINDS);
-  return key === undefined ? "" : PART_KINDS[key]!;
 }
