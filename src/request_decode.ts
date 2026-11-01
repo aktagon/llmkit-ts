@@ -61,9 +61,13 @@ export function decodeRequest(
     );
   }
 
+  const sources: NumberSources = new WeakMap();
   let body: unknown;
   try {
-    body = JSON.parse(new TextDecoder().decode(wire.body), exactIntegers);
+    body = JSON.parse(new TextDecoder().decode(wire.body), function (key, value, context?: { source?: string }) {
+      recordSource(sources, this, key, value, context?.source);
+      return value;
+    });
   } catch {
     body = undefined;
   }
@@ -73,7 +77,7 @@ export function decodeRequest(
 
   const req: Request = {};
   decodeModel(req, cfg, body, wire.path);
-  decodeOptions(req, cfg, body);
+  decodeOptions(req, cfg, body, sources);
   const hasTurns = "messages" in body;
   const turns = body.messages;
   delete body.messages;
@@ -145,7 +149,7 @@ function providerOptionKeys(provider: ProviderName, chatWireShape: string): Map<
 
 // decodeOptions takes each option out of the body, or out of the provider's
 // options container (wrapsOptionsIn), into its Request field (RQC-010).
-function decodeOptions(req: Request, cfg: ProviderSpec, body: JSONObject): void {
+function decodeOptions(req: Request, cfg: ProviderSpec, body: JSONObject, sources: NumberSources): void {
   let container = body;
   let prefix = "";
   if (cfg.wrapsOptionsIn) {
@@ -160,14 +164,14 @@ function decodeOptions(req: Request, cfg: ProviderSpec, body: JSONObject): void 
   const byKey = decodeOptionKeys(cfg.chatWireShape);
   const seen = new Set<OptionKey>();
   for (const key of [...byKey.keys()].sort()) {
-    const taken = takeNested(container, key);
+    const taken = takeNested(container, key, sources);
     if (!taken.found) continue;
     const param = byKey.get(key)!;
     if (seen.has(param)) {
       throw new ValidationError(prefix + key, `sets ${param} a second time`);
     }
     seen.add(param);
-    const problem = setOption(req, param, taken.value);
+    const problem = setOption(req, param, taken.value, taken.source);
     if (problem) throw new ValidationError(prefix + key, problem);
   }
   if (cfg.wrapsOptionsIn) {
@@ -176,18 +180,19 @@ function decodeOptions(req: Request, cfg: ProviderSpec, body: JSONObject): void 
   }
 }
 
-// exactIntegers is the JSON.parse reviver decodeRequest reads the body with.
-// JSON.parse turns an integer past 2^53 into the nearest double, so the
-// reviver returns such an integer as a bigint: read from its source text when
-// that is a literal integer, which keeps it exact, as Go and Rust read it, and
-// from the double for any other notation (1e18), as Go and Rust read that
-// (HANDOFF-105 F12). On a runtime whose reviver gets no source text, the
-// double stays, and integerOption rejects it as out of range, as before.
-function exactIntegers(_key: string, value: unknown, context?: { source?: string }): unknown {
-  if (typeof value !== "number" || !Number.isInteger(value) || Number.isSafeInteger(value)) return value;
-  const source = context?.source;
-  if (source === undefined) return value;
-  return /^-?\d+$/.test(source) ? BigInt(source) : BigInt(value);
+// NumberSources holds the source text of each number in a body, by the
+// object or array that holds it and its key. JSON.parse reads a number as the
+// nearest double, which is not the number past 2^53, so integerOption reads
+// the text instead (owner, 2026-11-01, HANDOFF-111).
+type NumberSources = WeakMap<object, Map<string, string>>;
+
+// recordSource is the JSON.parse reviver's step: it records a number's source
+// text, where the runtime gives the reviver one.
+function recordSource(sources: NumberSources, holder: object, key: string, value: unknown, source?: string): void {
+  if (typeof value !== "number" || source === undefined) return;
+  let keys = sources.get(holder);
+  if (!keys) sources.set(holder, (keys = new Map()));
+  keys.set(key, source);
 }
 
 const INT64_MIN = -(2n ** 63n);
@@ -196,41 +201,65 @@ const INT64_MAX = 2n ** 63n - 1n;
 // integerOption reads an integer option, or returns the problem with its
 // value. JSON has one number type, so an integral number in any notation
 // (4096, 4096.0, 4.096e3) is an integer, and a fraction is not (owner decision
-// 3, HANDOFF-105 F3). JSON.parse reads 1e999 as Infinity, which is out of
-// range. Every integer option is a value the caller writes, read exactly over
-// the int64 range, as Go and Rust read it: a bigint past 2^53, a number below
-// (HANDOFF-105 F12 for the seed; owner, 2026-10-31, HANDOFF-111 for
-// max_tokens, top_k and thinking_budget; owner, 2026-11-01, HANDOFF-111:
-// inputs only).
-function integerOption(v: unknown): { value: number | bigint } | { problem: string } {
-  if (typeof v === "bigint") {
-    if (v >= INT64_MIN && v <= INT64_MAX) return { value: v };
-    return { problem: "is out of range" };
-  }
-  if (typeof v !== "number" || (!Number.isInteger(v) && Number.isFinite(v))) return { problem: "must be an integer" };
+// 3, HANDOFF-105 F3). Every integer option is a value the caller writes, read
+// exactly over the int64 range from its source text, as Go and Rust read it:
+// a bigint past 2^53, a number below (HANDOFF-105 F12; owner, 2026-11-01,
+// HANDOFF-111). On a runtime whose reviver gets no source text, the double is
+// all there is, so a value past 2^53 is out of range, never rounded, and a
+// fraction the double shows is not an integer (owner, 2026-10-31,
+// HANDOFF-111). JSON.parse reads 1e999 as Infinity, which is out of range.
+function integerOption(v: unknown, source: string | undefined): { value: number | bigint } | { problem: string } {
+  if (typeof v !== "number") return { problem: "must be an integer" };
+  if (source !== undefined) return exactInteger(source);
+  if (!Number.isInteger(v) && Number.isFinite(v)) return { problem: "must be an integer" };
   if (!Number.isSafeInteger(v)) return { problem: "is out of range" };
   return { value: v };
 }
 
+const JSON_NUMBER = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/;
+
+// exactInteger reads a JSON number's text as digits times a power of ten,
+// never as a double: 9007199254740993.0 is that integer, and
+// 9007199254740991.5 is a fraction. Go and Rust read the text the same way.
+function exactInteger(source: string): { value: number | bigint } | { problem: string } {
+  const m = JSON_NUMBER.exec(source);
+  if (!m) return { problem: "must be an integer" };
+  const [, sign, whole, fraction = "", exponent = "0"] = m;
+  const digits = (whole! + fraction).replace(/^0+/, "");
+  if (digits === "") return { value: 0 };
+  // A loop, not /0+$/: that regex retries from every zero, quadratic in the
+  // length of the text.
+  let end = digits.length;
+  while (digits[end - 1] === "0") end--;
+  const significant = digits.slice(0, end);
+  // The value is significant * 10^scale. Number() reads an exponent past the
+  // double range as Infinity, which is out of range or a fraction all the same.
+  const scale = Number(exponent) - fraction.length + (digits.length - significant.length);
+  if (scale < 0) return { problem: "must be an integer" };
+  if (significant.length + scale > 19) return { problem: "is out of range" };
+  const n = BigInt(sign + significant) * 10n ** BigInt(scale);
+  if (n < INT64_MIN || n > INT64_MAX) return { problem: "is out of range" };
+  const safe = n >= BigInt(Number.MIN_SAFE_INTEGER) && n <= BigInt(Number.MAX_SAFE_INTEGER);
+  return { value: safe ? Number(n) : n };
+}
+
 // numberOption reads a real-number option, or returns the problem with its
-// value. exactIntegers gives an integer past 2^53 as a bigint; as a real
-// number it is the nearest double, as JSON.parse reads it.
+// value: the nearest double, as JSON.parse reads it.
 function numberOption(v: unknown): { value: number } | { problem: string } {
-  const n = typeof v === "bigint" ? Number(v) : v;
-  if (typeof n !== "number") return { problem: "must be a number" };
-  if (!Number.isFinite(n)) return { problem: "is out of range" };
-  return { value: n };
+  if (typeof v !== "number") return { problem: "must be a number" };
+  if (!Number.isFinite(v)) return { problem: "is out of range" };
+  return { value: v };
 }
 
 // setOption stores one decoded option value in its Request field, the
 // inverse of applyOptions. It returns the problem with the value, if any.
-function setOption(req: Request, param: OptionKey, v: unknown): string | undefined {
+function setOption(req: Request, param: OptionKey, v: unknown, source: string | undefined): string | undefined {
   switch (param) {
     case OptionKeys.MAX_TOKENS:
     case OptionKeys.TOP_K:
     case OptionKeys.THINKING_BUDGET:
     case OptionKeys.SEED: {
-      const read = integerOption(v);
+      const read = integerOption(v, source);
       if ("problem" in read) return read.problem;
       const n = read.value;
       if (param === OptionKeys.MAX_TOKENS) req.maxTokens = n;
@@ -273,18 +302,22 @@ function setOption(req: Request, param: OptionKey, v: unknown): string | undefin
 // takeNested removes the value at a dotted key ("a.b") from m and returns it.
 // A parent object left empty is removed too, so it does not read as an
 // unmodeled field.
-function takeNested(m: JSONObject, key: string): { found: boolean; value?: unknown } {
+function takeNested(
+  m: JSONObject,
+  key: string,
+  sources: NumberSources,
+): { found: boolean; value?: unknown; source?: string } {
   const dot = key.indexOf(".");
   const head = dot < 0 ? key : key.slice(0, dot);
   if (!(head in m)) return { found: false };
   if (dot < 0) {
     const value = m[head];
     delete m[head];
-    return { found: true, value };
+    return { found: true, value, source: sources.get(m)?.get(head) };
   }
   const child = m[head];
   if (!isObject(child)) return { found: false };
-  const out = takeNested(child, key.slice(dot + 1));
+  const out = takeNested(child, key.slice(dot + 1), sources);
   if (out.found && Object.keys(child).length === 0) delete m[head];
   return out;
 }
