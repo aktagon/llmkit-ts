@@ -130,7 +130,7 @@ export async function catalogueRunList(
   let records = cachedRecords(scoped);
   if (!records) {
     records = await fetchList(scoped);
-    scoped.client._modelCache.put(scoped.target.name, records);
+    scoped.client._modelCache.put(cacheKey(scoped), records);
   }
   return applyCapFilter(enrich(scoped, records), scoped.capFilter);
 }
@@ -138,7 +138,17 @@ export async function catalogueRunList(
 /** The provider's cached records, unless the chain asked for a fresh call. */
 function cachedRecords(scoped: ScopedModels): ParsedModelRecord[] | undefined {
   if (scoped.freshFlag) return undefined;
-  return scoped.client._modelCache.get(scoped.target.name);
+  return scoped.client._modelCache.get(cacheKey(scoped));
+}
+
+/** Names the cached list by the provider and the base URL and API key the
+ *  live call is sent with (owner, 2026-11-01): the scoped target carries
+ *  them, so a target with another key or endpoint never reads a list
+ *  fetched for the first one. The key stays in memory only. */
+function cacheKey(scoped: ScopedModels): string {
+  const pcfg = PROVIDERS[scoped.target.name as ProviderName];
+  const base = scoped.target.baseUrl || pcfg?.baseUrl || "";
+  return `${scoped.target.name}\u0000${base}\u0000${scoped.target.apiKey}`;
 }
 
 /** Single-provider live HTTP. Paginates per the catalogue config until
@@ -403,7 +413,8 @@ function enrich(
       created: rec.created ?? 0,
     };
     if (scoped.rawFlag) {
-      info.raw = rec.raw;
+      // A copy: the record may be the cached one, which other calls read.
+      info.raw = structuredClone(rec.raw);
     }
     return info;
   });
