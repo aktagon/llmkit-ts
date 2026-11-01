@@ -1,4 +1,5 @@
 import { ontologyCapabilities } from "./catalogue.ts";
+import { APIError } from "./errors.ts";
 import { Capabilities } from "./types.ts";
 
 // lookupModel finds modelId in one capability's compiled catalogue (ADR-102
@@ -47,4 +48,35 @@ export function statedFalseBlocks(
   support: boolean | undefined,
 ): boolean {
   return support === false && ignored.includes(option);
+}
+
+// catalogueHint names the stated facts of a listed model that a request
+// contradicts (ADR-102 MPT-008), for example "catalogue:
+// heygen/heygen-video-1 lists no last frame, at most 15 seconds". The facts
+// keep the order the caller gives; every SDK uses the same order. No facts
+// give no hint. Mirrors go/model_lookup.go.
+export function catalogueHint(modelId: string, facts: readonly string[]): string {
+  return facts.length === 0 ? "" : `catalogue: ${modelId} lists ${facts.join(", ")}`;
+}
+
+// withHint returns err with hint attached when err is an APIError with
+// status 400 or 422; any other error or status, and an empty hint, return
+// err unchanged (ADR-102 MPT-008; owner, 2026-11-01). Callers attach it
+// before the post middleware event, so middleware sees the error the caller
+// gets. The hinted error is a new APIError whose cause is err, with err's
+// stack. Mirrors go/model_lookup.go.
+export function withHint(err: unknown, hint: string): unknown {
+  if (!hint || !(err instanceof APIError) || (err.statusCode !== 400 && err.statusCode !== 422)) {
+    return err;
+  }
+  const hinted = new APIError(err.statusCode, err.message, err.retryable, hint);
+  hinted.cause = err;
+  hinted.stack = err.stack;
+  return hinted;
+}
+
+// offList reports whether value is set and outside a model's non-empty list.
+// An empty list states no fixed set, so no value is off it.
+export function offList(list: readonly string[], value: string | undefined): boolean {
+  return !!value && list.length > 0 && !list.includes(value);
 }
