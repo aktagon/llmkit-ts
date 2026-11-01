@@ -56,6 +56,7 @@ import type { AgentState } from "./agent.ts";
 import type { TextStream } from "./stream.ts";
 
 import { Models, Providers } from "./catalogue.ts";
+import { ModelCache } from "../model_cache.ts";
 
 export class Client {
   provider: ProviderConfig;
@@ -63,6 +64,9 @@ export class Client {
   // paths without a per-builder middleware seam (the models/catalogue
   // runtime, HANDOFF-036 A3) still fire client hooks.
   /** @internal */ _middleware: MiddlewareFn[] = [];
+  // Each provider's live model list, kept for one hour (ADR-102 MPT-005).
+  // Sends never read it.
+  /** @internal */ _modelCache = new ModelCache();
   text: Text;
   image: Image;
   music: Music;
