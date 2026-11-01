@@ -99,7 +99,6 @@ export type {
   ImageData,
   MediaRef,
   Part,
-  ImageOptions,
 } from "./image.ts";
 // Standalone Part constructors for varargs terminals (transcription, ADR-048).
 export { audio, audioBytes } from "./image.ts";
@@ -115,13 +114,8 @@ export type {
   MusicRequest,
   MusicResponse,
   AudioData,
-  MusicOptions,
 } from "./music.ts";
-export type {
-  SpeechRequest,
-  SpeechResponse,
-  SpeechOptions,
-} from "./speech.ts";
+export type { SpeechRequest, SpeechResponse } from "./speech.ts";
 // Video generation (ADR-034): the async handle class and its result
 // containers, mirroring the other media capabilities so a consumer can name
 // the type of `client.video()...submit(...).wait()`.
