@@ -374,6 +374,7 @@ export class TextStream implements AsyncIterable<string> {
   #resp: PromptResponse | null = null;
   #err: Error | null = null;
 
+  /** @internal */
   constructor(b: Text, msg: string) {
     const { provider, request, options } = buildPromptArgs(b, msg);
     this.#provider = provider;
