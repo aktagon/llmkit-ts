@@ -473,6 +473,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Import from `@aktagon/llmkit-ts`, which exports every name a caller
   reaches. `DEFAULT_TIMEOUT_MS` is gone: no exported signature names it, and
   a client still waits 600000 ms by default.
+- **BREAKING — the builder, catalogue and stream constructors are no longer
+  declared.** `Text`, `Image`, `Music`, `Speech`, `Transcription`, `Video`,
+  `Agent`, `Upload`, `Models`, `ScopedModels`, `Providers` and `TextStream`
+  took the client or builder state. Get each object from the client, such as
+  `client.text`, `client.models.provider(p)` or `client.text.stream(prompt)`.
 
 ### Fixed
 

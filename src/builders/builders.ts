@@ -195,7 +195,7 @@ export class Text {
   /** @internal */ _topK?: number | bigint;
   /** @internal */ _topP?: number;
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   /**
@@ -276,7 +276,7 @@ export class Image {
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _extraFields?: Record<string, unknown> | undefined;
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Image { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   /**
@@ -313,7 +313,7 @@ export class Music {
   /** @internal */ _model: string = "";
   /** @internal */ _raw: boolean = false;
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Music { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   lyrics(s: string): Music { const out = clone(this); out._parts = [...out._parts, { lyrics: s }]; return out; }  // ordered
@@ -336,7 +336,7 @@ export class Speech {
   /** @internal */ _style: string = "";
   /** @internal */ _voice: string = "";
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   /**
    * Appends a line said by a declared speaker. Lines are spoken in call
@@ -373,7 +373,7 @@ export class Transcription {
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _model: string = "";
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Transcription { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Transcription { const out = clone(this); out._model = name; return out; }
@@ -401,7 +401,7 @@ export class Video {
   /** @internal */ _raw: boolean = false;
   /** @internal */ _resolution: string = "";
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Video { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   /**
@@ -477,7 +477,7 @@ export class Agent {
   /** @internal */ _topP?: number;
   /** @internal */ _state?: AgentState;
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
   addTool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
@@ -545,7 +545,7 @@ export class Upload {
   /** @internal */ _mimeType: string = "";
   /** @internal */ _path: string = "";
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Upload { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   bytes(data: Uint8Array): Upload { const out = clone(this); out._bytes = data; return out; }
