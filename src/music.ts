@@ -73,11 +73,6 @@ export async function generateMusic(
 
   const parts = normalizeMusicParts(request);
   checkPartKinds("music_generation", parts);
-  parts.forEach((part, i) => {
-    if (("text" in part && !part.text) || ("lyrics" in part && !part.lyrics)) {
-      throw new ValidationError(`parts[${i}]`, "empty part");
-    }
-  });
 
   const mgCfg = musicGenConfig(provider.name);
   if (!mgCfg) {
