@@ -9,8 +9,6 @@ import type { LiveResult, ModelInfo } from "../structs.ts";
 import type { ProviderInfo } from "../providers/provider_info.ts";
 import type { Client } from "./builders.ts";
 import {
-  catalogueFilter,
-  catalogueLookup,
   catalogueRunLive,
   catalogueRunList,
   catalogueRunGet,
@@ -18,45 +16,43 @@ import {
 import { catalogueProvidersList } from "../providers.ts";
 
 /**
- * Models is the catalogue builder. Chain methods are immutable; list/get
- * walk the compiled-in slice synchronously, live(ctx) fans out HTTP
- * across configured providers, provider(p) returns ScopedModels.
+ * Models is the catalogue builder. Chain methods are immutable; list()
+ * fans out HTTP across configured providers, served from the client's
+ * one-hour model-list cache unless fresh() is set, and provider(p)
+ * returns ScopedModels.
  */
 export class Models {
   /** @internal */ readonly client: Client;
   /** @internal */ readonly capFilter?: Capability;
+  /** @internal */ readonly freshFlag: boolean;
 
-  constructor(client: Client, capFilter?: Capability) {
+  constructor(client: Client, capFilter?: Capability, freshFlag = false) {
     this.client = client;
     this.capFilter = capFilter;
+    this.freshFlag = freshFlag;
   }
 
   /**
-   *  array contains c. Composes with list / live / provider(p).list. */
+   *  array contains c. Composes with list / provider(p).list. */
   withCapability(c: Capability): Models {
-    return new Models(this.client, c);
+    return new Models(this.client, c, this.freshFlag);
+  }
+
+  /** Bypass the client's model-list cache: the live call is made, and a
+   *  successful list refills the cache. Carries through provider(p). */
+  fresh(): Models {
+    return new Models(this.client, this.capFilter, true);
   }
 
   /** Scope the catalogue to a single provider; returns ScopedModels on
    *  which raw(), list(), and get(id) are reachable. */
   provider(p: Provider): ScopedModels {
-    return new ScopedModels(this.client, p, this.capFilter);
+    return new ScopedModels(this.client, p, this.capFilter, false, this.freshFlag);
   }
 
-  /** Returns the compiled-in catalogue, filtered by withCapability when
-   *  set. Sync, no IO. */
-  list(): ModelInfo[] {
-    return catalogueFilter(this.capFilter);
-  }
-
-  /** Returns a compiled-in model by id or undefined when no entry matches. */
-  get(id: string): ModelInfo | undefined {
-    return catalogueLookup(id);
-  }
-
-  /** Fan out HTTP across configured providers and return an aggregated
+  /** The live model list across configured providers: an aggregated
    *  LiveResult. withCapability composes post-fetch. */
-  async live(): Promise<LiveResult> {
+  async list(): Promise<LiveResult> {
     return catalogueRunLive(this);
   }
 }
@@ -71,22 +67,28 @@ export class ScopedModels {
   /** @internal */ readonly target: Provider;
   /** @internal */ readonly capFilter?: Capability;
   /** @internal */ readonly rawFlag: boolean;
+  /** @internal */ readonly freshFlag: boolean;
 
-  constructor(client: Client, target: Provider, capFilter?: Capability, rawFlag = false) {
+  constructor(client: Client, target: Provider, capFilter?: Capability, rawFlag = false, freshFlag = false) {
     this.client = client;
     this.target = target;
     this.capFilter = capFilter;
     this.rawFlag = rawFlag;
+    this.freshFlag = freshFlag;
   }
 
   raw(): ScopedModels {
-    return new ScopedModels(this.client, this.target, this.capFilter, true);
+    return new ScopedModels(this.client, this.target, this.capFilter, true, this.freshFlag);
   }
 
+  /** This provider's model list: from the client's cache when it holds a
+   *  list younger than one hour, otherwise from the live call. */
   async list(): Promise<ModelInfo[]> {
     return catalogueRunList(this);
   }
 
+  /** One model record by id: from the cached list when it is fresh and
+   *  holds the id, otherwise from the live point lookup. */
   async get(id: string): Promise<ModelInfo> {
     return catalogueRunGet(this, id);
   }

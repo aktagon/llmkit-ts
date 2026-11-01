@@ -31,6 +31,7 @@ import type { Provider, Request, Response } from "../types.ts";
 import type { Message, Part } from "../structs.ts";
 import type { Text } from "./builders.ts";
 import { hasPart } from "../part_kinds.ts";
+import { chatModelListed } from "../model_lookup.ts";
 
 /**
  * Translates a chained Text builder + final prompt text into the
@@ -165,6 +166,7 @@ export async function textPrompt(b: Text, msg: string): Promise<Response> {
     phase: "pre",
     provider: provider.name,
     model: request.model,
+    modelUnlisted: !chatModelListed(provider.name, request.model),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
