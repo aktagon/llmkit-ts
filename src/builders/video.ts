@@ -20,7 +20,7 @@ import {
 } from "../providers/video_gen.ts";
 import { writeJson } from "../json_text.ts";
 import { APIError, ValidationError, VideoDeleteError } from "../errors.ts";
-import { checkPartKinds } from "../part_kinds.ts";
+import { checkPartKinds, hasPart } from "../part_kinds.ts";
 import type { CarriedInput, RequestVariant } from "../providers/image_gen.ts";
 import { partsCarry, selectRequestVariant } from "../request_variant.ts";
 import { sendHTTP } from "../http.ts";
@@ -263,7 +263,7 @@ export async function videoSubmit(
 
   checkPartKinds("video_generation", parts);
   parts.forEach((part, i) => {
-    if ("image" in part) {
+    if (hasPart(part, "image")) {
       // Image-to-video seed frame (BUG-010): accepted only by models whose
       // VideoModelDef sets supportsImageToVideo; text-to-video-only models
       // reject it pre-flight rather than silently dropping it at wire time.
@@ -273,13 +273,9 @@ export async function videoSubmit(
           `${b._model} is a text-to-video-only model and does not accept image parts`,
         );
       }
-      return;
-    }
-    if (!("text" in part) || !part.text) {
-      throw new ValidationError(`parts[${i}]`, "must have text set");
     }
   });
-  const imageCount = parts.filter((p) => "image" in p).length;
+  const imageCount = parts.filter((p) => hasPart(p, "image")).length;
   validateVideoFrames(model, imageCount, b._lastFrame, b._referenceImages);
   validateVideoOptions(
     provider.name,
@@ -1229,7 +1225,7 @@ function normalizeVideoParts(parts: Part[]): Part[] {
 
 function joinPromptText(parts: Part[]): string {
   return parts
-    .filter((p): p is { text: string } => "text" in p && !!p.text)
+    .filter((p): p is { text: string } => hasPart(p, "text"))
     .map((p) => p.text)
     .join("\n");
 }
@@ -1241,7 +1237,7 @@ function joinPromptText(parts: Part[]): string {
 // would reintroduce the silent-drop bug.
 function videoSeedImage(parts: Part[]): MediaRef | undefined {
   const images = parts.filter(
-    (p): p is { image: MediaRef } => "image" in p,
+    (p): p is { image: MediaRef } => hasPart(p, "image"),
   );
   if (images.length > 1) {
     throw new ValidationError(
@@ -1365,7 +1361,7 @@ function validateGeminiOmniInputs(
   if (!sameInteger(durationSeconds, 0)) {
     throw new ValidationError("duration", "Gemini Omni video has no duration field");
   }
-  if (parts.some((p) => "image" in p)) {
+  if (parts.some((p) => hasPart(p, "image"))) {
     throw new ValidationError("parts", "Gemini Omni video sends text only, not a seed frame");
   }
   if (lastFrame) {
