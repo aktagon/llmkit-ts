@@ -131,9 +131,6 @@ export type { VideoResponse, VideoData } from "./structs.ts";
 // client.models.list() and client.models.provider(...).list() return, so a
 // consumer can name the type of a catalogue result at the package boundary.
 export type { ModelInfo, LiveResult, ImageHints, VideoHints, SpeechHints } from "./structs.ts";
-// Batch slot values (ADR-091): the finishReason of a batch slot with no result
-// line, and of a failed slot the provider gave no reason for.
-export { BATCH_SLOT_ERROR, BATCH_SLOT_MISSING } from "./providers/batch.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
 // (name/envVar/defaultModel/baseUrl) — a projection of provider facts, NOT the
 // internal wire/transform spec. Exposed as the static `providers` namespace
