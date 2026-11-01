@@ -98,11 +98,6 @@ export interface ImageOptions {
    * background, count) are validated per provider; ExtraFields is not.
    */
   extraFields?: Record<string, unknown>;
-  /** Global image safety threshold. Every image provider throws
-   * ValidationError for it.
-   * Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen shut
-   * down, BUG-101); removed at the next major. */
-  safetyFilter?: string;
   /** Per-category safety thresholds for Google image generation (safetySettings[]).
    * Same wire field as text-gen. ValidationError on non-Google image-gen providers. */
   safetySettings?: SafetySetting[];
@@ -184,11 +179,6 @@ export async function generateImage(
       );
     if (options.count !== undefined)
       throw new ValidationError("count", `not supported by ${provider.name}`);
-    if (options.safetyFilter !== undefined)
-      throw new ValidationError(
-        "safety_filter",
-        `not supported by ${provider.name}; use SafetySettings for text-gen`,
-      );
     // safetySettings valid for InlineParts (Google); wired in buildImageBody
   } else if (shape === "JSONInlineRefs") {
     if (options.quality !== undefined)
@@ -203,22 +193,12 @@ export async function generateImage(
         "background",
         `not supported by ${provider.name}`,
       );
-    if (options.safetyFilter !== undefined)
-      throw new ValidationError(
-        "safety_filter",
-        `not supported by ${provider.name}`,
-      );
     if (options.safetySettings && options.safetySettings.length > 0)
       throw new ValidationError(
         "safety_settings",
         `not supported by ${provider.name}`,
       );
   } else if (shape === "JSONGenerationsOpenAI" || shape === "MultipartForm") {
-    if (options.safetyFilter !== undefined)
-      throw new ValidationError(
-        "safety_filter",
-        `not supported by ${provider.name}`,
-      );
     if (options.safetySettings && options.safetySettings.length > 0)
       throw new ValidationError(
         "safety_settings",
@@ -247,19 +227,13 @@ export async function generateImage(
         "background",
         `not supported by ${provider.name}`,
       );
-    if (options.safetyFilter !== undefined)
-      throw new ValidationError(
-        "safety_filter",
-        `not supported by ${provider.name}`,
-      );
     if (options.safetySettings && options.safetySettings.length > 0)
       throw new ValidationError(
         "safety_settings",
         `not supported by ${provider.name}`,
       );
-  } else if (shape === "JSONPredict" || shape === "") {
-    // No runtime sends JSONPredict (Vertex Imagen removed, BUG-101); "" is the
-    // shape of a video variant, never an image one.
+  } else if (shape === "") {
+    // "" is the shape of a video variant, never an image one.
     throw new Error(`image: unsupported request shape ${shape}`);
   } else {
     const _exhaustive: never = shape;
