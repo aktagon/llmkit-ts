@@ -311,7 +311,7 @@ export interface Request {
   /**
    * maxTokens is the cap on output tokens.
    */
-  maxTokens?: number;
+  maxTokens?: number | bigint;
 
   /**
    * temperature is the sampling temperature.
@@ -326,7 +326,7 @@ export interface Request {
   /**
    * topK is the number of most likely tokens sampled from.
    */
-  topK?: number;
+  topK?: number | bigint;
 
   /**
    * stop are the stop sequences. Empty sets none.
@@ -356,7 +356,7 @@ export interface Request {
   /**
    * thinkingBudget is the token budget for extended thinking.
    */
-  thinkingBudget?: number;
+  thinkingBudget?: number | bigint;
 
   /**
    * safetySettings are the per-category safety filters for Gemini providers. Empty sets none.
