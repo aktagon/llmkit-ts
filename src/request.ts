@@ -33,7 +33,7 @@ import type {
   ToolResult,
   WireRequest,
 } from "./structs.ts";
-import { checkPartKinds, partKind } from "./part_kinds.ts";
+import { checkPartKinds, hasPart, partKindOf } from "./part_kinds.ts";
 import { bytesToBase64 } from "./image.ts";
 import { sendHTTP } from "./http.ts";
 import { partsText, partsToolCalls, toolCallInput, writeToolCall } from "./response_parts.ts";
@@ -737,7 +737,8 @@ const ROLE_PARTS: Readonly<Record<string, readonly string[]>> = {
 
 /**
  * checkTurnParts throws a ValidationError for a part that sets no kind or two,
- * an empty text part, or a kind chat does not accept (MSG-011), all three by
+ * an empty text, lyrics or audio_url part (HANDOFF-111), or a kind chat does
+ * not accept (MSG-011), all three by
  * checkPartKinds as on every capability, and for a kind the role cannot carry
  * (MSG-002). `field` names the parts list, e.g. "messages[2].parts". The
  * request encoder runs it on every turn, and encodeResponse on the response's
@@ -755,13 +756,13 @@ export function checkTurnParts(
   checkPartKinds("chat", parts, field);
   const allowed = ROLE_PARTS[role] ?? [];
   parts.forEach((p, j) => {
-    const kind = partKind(p);
+    const kind = partKindOf(p, `${field}[${j}]`);
     if (!allowed.includes(kind)) {
       throw new ValidationError(`${field}[${j}]`, `${role} turn does not accept ${kind} parts`);
     }
     // input is JSON text (HANDOFF-105 F7, owner decision 2); a caller that
     // still passes a parsed value is told so, not sent "[object Object]".
-    if (!("toolCall" in p)) return;
+    if (!hasPart(p, "toolCall")) return;
     const input = written(p.toolCall);
     if (input !== undefined && (typeof input !== "string" || !isJSON(input))) {
       throw new ValidationError(`${field}[${j}]`, `tool call "${p.toolCall.name}" input is not JSON`);
@@ -813,7 +814,7 @@ function requestMsgs(request: PromptRequest): Msg[] {
 // requestHasFiles reports whether any turn carries a file part.
 function requestHasFiles(request: PromptRequest): boolean {
   return (request.messages ?? []).some((m) =>
-    m.parts.some((p) => "file" in p),
+    m.parts.some((p) => hasPart(p, "file")),
   );
 }
 
@@ -823,7 +824,7 @@ function requestHasFiles(request: PromptRequest): boolean {
 function plainText(parts: Part[]): string | undefined {
   if (parts.length === 0) return "";
   const [only] = parts;
-  if (parts.length === 1 && only && "text" in only) return only.text;
+  if (parts.length === 1 && only && hasPart(only, "text")) return only.text;
   return undefined;
 }
 
@@ -871,8 +872,8 @@ function buildBedrockMessages(
 function bedrockContent(parts: Part[], cfg: ProviderSpec): Array<Record<string, unknown>> {
   if (parts.length === 0) return [{ text: "" }];
   return parts.flatMap((p): Array<Record<string, unknown>> => {
-    if ("file" in p) return [];
-    if ("image" in p) {
+    if (hasPart(p, "file")) return [];
+    if (hasPart(p, "image")) {
       return [
         {
           image: {
@@ -882,12 +883,12 @@ function bedrockContent(parts: Part[], cfg: ProviderSpec): Array<Record<string, 
         },
       ];
     }
-    if ("toolCall" in p) return [requestToolCall(p.toolCall, cfg)];
-    if ("toolResult" in p) {
+    if (hasPart(p, "toolCall")) return [requestToolCall(p.toolCall, cfg)];
+    if (hasPart(p, "toolResult")) {
       const r = p.toolResult;
       return [{ toolResult: { toolUseId: r.toolUseId, content: [{ text: r.content }] } }];
     }
-    return [{ text: "text" in p ? p.text : "" }];
+    return [{ text: hasPart(p, "text") ? p.text : "" }];
   });
 }
 
@@ -923,16 +924,16 @@ function googleParts(
 ): Array<Record<string, unknown>> {
   if (parts.length === 0) return [{ text: "" }];
   return parts.map((p): Record<string, unknown> => {
-    if ("file" in p) {
+    if (hasPart(p, "file")) {
       return { file_data: { file_uri: p.file.uri, mime_type: p.file.mimeType } };
     }
-    if ("image" in p) {
+    if (hasPart(p, "image")) {
       return {
         inline_data: { mime_type: p.image.mimeType, data: bytesToBase64(p.image.bytes) },
       };
     }
-    if ("toolCall" in p) return requestToolCall(p.toolCall, cfg);
-    if ("toolResult" in p) {
+    if (hasPart(p, "toolCall")) return requestToolCall(p.toolCall, cfg);
+    if (hasPart(p, "toolResult")) {
       const r = p.toolResult;
       return {
         functionResponse: {
@@ -941,7 +942,7 @@ function googleParts(
         },
       };
     }
-    return { text: "text" in p ? p.text : "" };
+    return { text: hasPart(p, "text") ? p.text : "" };
   });
 }
 
@@ -986,7 +987,7 @@ function flatProjectedEntry(
   const anthropic = cfg.chatWireShape === "ChatAnthropic";
   const responses = cfg.chatWireShape === "ChatResponsesOpenAI";
   if (m.role === "tool") {
-    const results = m.parts.flatMap((p) => ("toolResult" in p ? [p.toolResult] : []));
+    const results = m.parts.flatMap((p) => (hasPart(p, "toolResult") ? [p.toolResult] : []));
     // Anthropic puts every result in one user message (ADR-100 MSG-009).
     if (anthropic) {
       return [{ role: "user", content: results.map(anthropicToolResultBlock) }];
@@ -1001,9 +1002,9 @@ function flatProjectedEntry(
     // each tool call its own function_call item (ADR-055, BUG-050).
     if (m.parts.length === 0) return [{ role, content: "" }];
     return m.parts.map((p) =>
-      "toolCall" in p
+      hasPart(p, "toolCall")
         ? responsesFunctionCall(p.toolCall)
-        : { role, content: "text" in p ? p.text : "" },
+        : { role, content: hasPart(p, "text") ? p.text : "" },
     );
   }
   // Chat Completions has no order between text and tool calls: the text parts
@@ -1027,11 +1028,11 @@ function openAIContent(parts: Part[]): unknown {
   const text = plainText(parts);
   if (text !== undefined) return text;
   return parts.map((p): Record<string, unknown> => {
-    if ("file" in p) return { type: "file", file: { file_id: p.file.id } };
-    if ("image" in p) {
+    if (hasPart(p, "file")) return { type: "file", file: { file_id: p.file.id } };
+    if (hasPart(p, "image")) {
       return { type: "image_url", image_url: { url: dataURI(p.image), detail: "auto" } };
     }
-    return { type: "text", text: "text" in p ? p.text : "" };
+    return { type: "text", text: hasPart(p, "text") ? p.text : "" };
   });
 }
 
@@ -1041,10 +1042,10 @@ function anthropicContent(parts: Part[], cfg: ProviderSpec): unknown {
   const text = plainText(parts);
   if (text !== undefined) return text;
   return parts.map((p): Record<string, unknown> => {
-    if ("file" in p) {
+    if (hasPart(p, "file")) {
       return { type: "document", source: { type: "file", file_id: p.file.id } };
     }
-    if ("image" in p) {
+    if (hasPart(p, "image")) {
       return {
         type: "image",
         source: {
@@ -1054,8 +1055,8 @@ function anthropicContent(parts: Part[], cfg: ProviderSpec): unknown {
         },
       };
     }
-    if ("toolCall" in p) return requestToolCall(p.toolCall, cfg);
-    return { type: "text", text: "text" in p ? p.text : "" };
+    if (hasPart(p, "toolCall")) return requestToolCall(p.toolCall, cfg);
+    return { type: "text", text: hasPart(p, "text") ? p.text : "" };
   });
 }
 
@@ -1174,7 +1175,7 @@ function checkRequestToolCalls(msgs: Msg[], cfg: ProviderSpec): void {
   if (TOOL_CALL_RESPONSE_CONFIGS[cfg.chatWireShape] && cfg.toolArgsFormat) return;
   msgs.forEach((m, i) => {
     unwrap(m).parts.forEach((p, j) => {
-      if ("toolCall" in p) {
+      if (hasPart(p, "toolCall")) {
         throw new ValidationError(
           `messages[${i}].parts[${j}]`,
           `provider "${cfg.name}" has no tool-call shape on chat wire shape "${cfg.chatWireShape}"`,

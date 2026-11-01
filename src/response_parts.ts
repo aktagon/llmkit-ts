@@ -15,6 +15,7 @@ import { extractPath, extractRaw, setWirePath } from "./paths.ts";
 import { compactJson, JsonText } from "./json_text.ts";
 import { extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
 import type { Part, Response, ToolCall } from "./structs.ts";
+import { hasPart } from "./part_kinds.ts";
 
 /**
  * responseText is the response text: the text parts joined with no separator,
@@ -42,7 +43,7 @@ export function responseToolCalls(response: Response): ToolCall[] {
  */
 export function partsText(parts: readonly Part[]): string {
   let text = "";
-  for (const p of parts) if ("text" in p) text += p.text;
+  for (const p of parts) if (hasPart(p, "text")) text += p.text;
   return text;
 }
 
@@ -52,7 +53,7 @@ export function partsText(parts: readonly Part[]): string {
  */
 export function partsToolCalls(parts: readonly Part[]): ToolCall[] {
   const calls: ToolCall[] = [];
-  for (const p of parts) if ("toolCall" in p) calls.push(p.toolCall);
+  for (const p of parts) if (hasPart(p, "toolCall")) calls.push(p.toolCall);
   return calls;
 }
 
@@ -269,10 +270,10 @@ export function encodeChatParts(
     arrays.set(path, arr);
   };
   for (const p of parts) {
-    if ("toolCall" in p) {
+    if (hasPart(p, "toolCall")) {
       if (!toolCfg || !cfg.toolArgsFormat) throw noToolCallConfigError(provider, chatWireShape);
       append(toolCfg.blocksPath, writeToolCall(p.toolCall, toolCfg, cfg));
-    } else if ("text" in p && textCfg) {
+    } else if (hasPart(p, "text") && textCfg) {
       const block: Record<string, unknown> = {};
       if (textCfg.markerValue !== "") setWirePath(block, textCfg.markerPath, textCfg.markerValue);
       setWirePath(block, textCfg.valuePath, p.text);
