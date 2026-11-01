@@ -6,7 +6,7 @@
  * Anthropic explicit caching needs a sizeable cached segment, so the
  * system prompt below is intentionally long.
  */
-import { anthropic, Client } from "../src/builders/index.ts";
+import { anthropic, Client } from "../src/llmkit.ts";
 
 const longSysPrompt = [
   "You are a meticulous technical editor for a documentation team.",

@@ -1,8 +1,7 @@
-// Public package entry point. The typed builder is the v1.0.0 API
-// surface; this module re-exports the per-provider factories,
-// `newClient`, and the four builder classes so `import { anthropic }
-// from "@aktagon/llmkit-ts"` works alongside the explicit subpackage
-// import `import { anthropic } from "@aktagon/llmkit-ts/builders"`.
+// Public package entry point, the only one (ADR-103 PUB-009). It
+// re-exports the per-provider factories, `newClient`, the Client, every
+// builder class a caller meets through the client, and the handle classes,
+// so `import { anthropic } from "@aktagon/llmkit-ts"` reaches the whole API.
 
 export {
   newClient,
@@ -10,8 +9,12 @@ export {
   Text,
   Image,
   Music,
+  Speech,
+  Transcription,
+  Video,
   Agent,
   Upload,
+  BatchHandle,
   ai21,
   anthropic,
   assemblyai,
@@ -49,6 +52,8 @@ export {
   yi,
   zhipu,
 } from "./builders/index.ts";
+// Client.provider's type (ADR-103 PUB-009).
+export type { ProviderConfig } from "./builders/index.ts";
 
 export type {
   Provider,
@@ -57,7 +62,6 @@ export type {
   Message,
   Usage,
   File,
-  BatchHandle,
   ToolCall,
   ToolResult,
   ProviderTurn,
@@ -136,6 +140,10 @@ export type { ProviderError } from "./structs.ts";
 export type { Models, Providers, ScopedModels } from "./builders/catalogue.ts";
 export type { TextStream } from "./builders/stream.ts";
 export type { BatchOptions } from "./batch.ts";
+// The poll policy VideoHandle.wait and TranscriptionHandle.wait take
+// (ADR-103 PUB-009).
+export type { VideoWaitOptions } from "./builders/video.ts";
+export type { TranscriptionWaitOptions } from "./builders/transcription.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
 // (name/envVar/defaultModel/baseUrl) — a projection of provider facts, NOT the
 // internal wire/transform spec. Exposed as the static `providers` namespace
