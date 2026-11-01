@@ -26,6 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call again and refills the cache; it carries through `provider(p)`. Sends
   never read the cache. A list served from the cache fires no middleware
   event.
+- **BREAKING — video and image support facts have three states.**
+  `VideoModelDef.supportsImageToVideo`, `supportsLastFrame` and
+  `supportsReferenceImages`, and `ImageModelDef.supportsImageInput`, are
+  optional `boolean`s, like `SpeechModelDef.supportsSpeechStyle`: `undefined`
+  means no source states the fact. Code that treated them as always set must
+  handle `undefined`.
+- **BREAKING — a model that states it lacks a feature no longer blocks the
+  request by itself.** A seed image, a last frame, reference images, image
+  parts or a speech style sent to such a listed model now reaches the
+  provider, which answers. The SDK still rejects it before sending where the
+  provider silently ignores the field: `ImageGenDef`, `VideoGenDef` and
+  `SpeechGenDef` gain a required `ignoresUnsupported`, the options that
+  provider ignores, and OpenRouter speech lists `"Style"`. Where the
+  provider's request has no field for the input, the error now says so, for
+  example `zhipu has no WithSeedFrame request`. The speaker-count and
+  image-count limits are unchanged.
 
 - **BREAKING — `decodeRequest` reads an integer option's decimal text
   exactly.** `max_tokens`, `seed` and `top_k` are read from the number's

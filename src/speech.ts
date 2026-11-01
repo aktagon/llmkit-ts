@@ -24,7 +24,7 @@ import type { Provider, SpeechLine, SpeechSpeaker } from "./types.ts";
 export type { AudioData, SpeechResponse } from "./structs.ts";
 import type { AudioData, SpeechResponse } from "./structs.ts";
 import { sendHTTP } from "./http.ts";
-import { fallbackMime, lookupModel } from "./model_lookup.ts";
+import { fallbackMime, lookupModel, statedFalseBlocks } from "./model_lookup.ts";
 
 /**
  * SpeechRequest carries a single text utterance to speak (single-turn, no
@@ -221,8 +221,9 @@ function validateSpeechInputs(request: SpeechRequest): void {
 
 // validateSpeechModel checks the request against what the config's body can
 // carry and the model's stated speaker and style facts (BUG-091). An unknown
-// model fact sends the request; only a stated false or a stated speaker count
-// that does not match blocks it (decision 009, HANDOFF-099). An unlisted
+// model fact sends the request; a stated speaker count of 1 or one that does
+// not match blocks it (decision 009, HANDOFF-099). A stated-false style blocks
+// only on a config that ignores the option (ADR-102 MPT-006 G6). An unlisted
 // model (undefined) has no facts, so only the config checks run (ADR-102
 // MPT-001). Exported for tests only; the package barrel does not re-export it.
 export function validateSpeechModel(
@@ -247,8 +248,15 @@ export function validateSpeechModel(
       );
     }
   }
-  const styled = !!request.style || (request.lines ?? []).some((l) => !!l.style);
-  if (styled && (!cfg.carriesSpeechStyle || model?.supportsSpeechStyle === false)) {
+  const styledLine = (request.lines ?? []).some((l) => !!l.style);
+  const styled = !!request.style || styledLine;
+  const style = model?.supportsSpeechStyle;
+  if (
+    styled &&
+    (!cfg.carriesSpeechStyle ||
+      (!!request.style && statedFalseBlocks(cfg.ignoresUnsupported, "Style", style)) ||
+      (styledLine && statedFalseBlocks(cfg.ignoresUnsupported, "AddStyledLine", style)))
+  ) {
     throw new ValidationError("style", `${name} does not support a speech style`);
   }
 }

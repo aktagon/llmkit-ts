@@ -30,7 +30,7 @@ import { lastInteractionOutputItem } from "../speech.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
 import type { Part } from "../image.ts";
-import { lookupModel } from "../model_lookup.ts";
+import { lookupModel, statedFalseBlocks } from "../model_lookup.ts";
 import type { MediaRef } from "../structs.ts";
 import type { ProviderName } from "../providers/providers.ts";
 import type { Provider } from "../types.ts";
@@ -264,10 +264,13 @@ export async function videoSubmit(
   checkPartKinds("video_generation", parts);
   parts.forEach((part, i) => {
     if (hasPart(part, "image")) {
-      // Image-to-video seed frame (BUG-010): accepted only by models whose
-      // VideoModelDef sets supportsImageToVideo; text-to-video-only models
-      // reject it pre-flight rather than silently dropping it at wire time.
-      if (model !== undefined && !model.supportsImageToVideo) {
+      // Image-to-video seed frame (BUG-010): a model that states
+      // supportsImageToVideo false rejects it pre-flight only on a config
+      // whose provider silently ignores it (ADR-102 MPT-006 G6).
+      if (
+        model !== undefined &&
+        statedFalseBlocks(vgCfg.ignoresUnsupported, "Image", model.supportsImageToVideo)
+      ) {
         throw new ValidationError(
           `parts[${i}]`,
           `${b._model} is a text-to-video-only model and does not accept image parts`,
@@ -276,7 +279,7 @@ export async function videoSubmit(
     }
   });
   const imageCount = parts.filter((p) => hasPart(p, "image")).length;
-  validateVideoFrames(model, imageCount, b._lastFrame, b._referenceImages);
+  validateVideoFrames(vgCfg, model, imageCount, b._lastFrame, b._referenceImages);
   validateVideoOptions(
     provider.name,
     vgCfg,
@@ -1273,19 +1276,30 @@ const MAX_VIDEO_REFERENCE_IMAGES = 3;
 
 // validateVideoFrames rejects a last frame or reference images the model or
 // the request cannot carry, before any HTTP call (BUG-089). Same rules, order
-// and messages as go/video.go validateVideoFrames. An unlisted model
-// (undefined) skips the two per-model rules (ADR-102 MPT-001).
+// and messages as go/video.go validateVideoFrames. The two per-model rules
+// block a stated false only on a config whose provider ignores the option
+// (ADR-102 MPT-006 G6); an unlisted model (undefined) skips them (ADR-102
+// MPT-001).
 function validateVideoFrames(
+  cfg: VideoGenDef,
   model: VideoModelDef | undefined,
   imageCount: number,
   lastFrame: MediaRef | undefined,
   referenceImages: MediaRef[],
 ): void {
   const refs = referenceImages.length;
-  if (lastFrame && model !== undefined && !model.supportsLastFrame) {
+  if (
+    lastFrame &&
+    model !== undefined &&
+    statedFalseBlocks(cfg.ignoresUnsupported, "LastFrame", model.supportsLastFrame)
+  ) {
     throw new ValidationError("last_frame", `${model.modelId} does not accept a last frame`);
   }
-  if (refs > 0 && model !== undefined && !model.supportsReferenceImages) {
+  if (
+    refs > 0 &&
+    model !== undefined &&
+    statedFalseBlocks(cfg.ignoresUnsupported, "AddReferenceImage", model.supportsReferenceImages)
+  ) {
     throw new ValidationError(
       "reference_images",
       `${model.modelId} does not accept reference images`,
