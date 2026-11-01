@@ -41,6 +41,7 @@ import type {
   Request as PromptRequest,
   Response as PromptResponse,
 } from "./types.ts";
+import { chatModelListed } from "./model_lookup.ts";
 
 // BatchOptions are the poll policy of BatchHandle.wait and poll, plus the
 // response handling (raw). The request-shaping options of every queued request
@@ -96,11 +97,13 @@ export async function submitBatch(
 
   // Every item comes from one builder, so the first item's model is the
   // batch's. An empty batch reports the provider's model.
+  const model = items[0]?.request.model ?? resolveModel(provider, cfg);
   const baseEvent: Event = {
     op: "batch_submit",
     phase: "pre",
     provider: provider.name,
-    model: items[0]?.request.model ?? resolveModel(provider, cfg),
+    model,
+    modelUnlisted: !chatModelListed(provider.name, model),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;
