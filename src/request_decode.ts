@@ -227,7 +227,11 @@ function exactInteger(source: string): { value: number | bigint } | { problem: s
   const [, sign, whole, fraction = "", exponent = "0"] = m;
   const digits = (whole! + fraction).replace(/^0+/, "");
   if (digits === "") return { value: 0 };
-  const significant = digits.replace(/0+$/, "");
+  // A loop, not /0+$/: that regex retries from every zero, quadratic in the
+  // length of the text.
+  let end = digits.length;
+  while (digits[end - 1] === "0") end--;
+  const significant = digits.slice(0, end);
   // The value is significant * 10^scale. Number() reads an exponent past the
   // double range as Infinity, which is out of range or a fraction all the same.
   const scale = Number(exponent) - fraction.length + (digits.length - significant.length);
