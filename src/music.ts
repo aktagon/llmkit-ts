@@ -81,7 +81,7 @@ export async function generateMusic(
     );
   }
   // ADR-102 MPT-001: an unlisted model (undefined) is sent as given.
-  const { model } = lookupModel(mgCfg.models, request.model);
+  const { model, listed } = lookupModel(mgCfg.models, request.model);
   // ADR-037 (MUS-008): supportsLyrics is advisory metadata, not a gate.
   // Lyrics on an instrumental-only model fold into the prompt (for the
   // single-prompt Predict shape) and the model ignores or honors them.
@@ -91,6 +91,7 @@ export async function generateMusic(
     phase: "pre",
     provider: provider.name,
     model: request.model,
+    modelUnlisted: !listed,
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;

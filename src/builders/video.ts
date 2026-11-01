@@ -258,7 +258,7 @@ export async function videoSubmit(
   }
   // ADR-102 MPT-001: an unlisted model (undefined) skips the per-model
   // checks; the config checks below still run.
-  const { model } = lookupModel(vgCfg.models, b._model);
+  const { model, listed } = lookupModel(vgCfg.models, b._model);
   validateGeminiOmniInputs(vgCfg, parts, b._lastFrame, b._referenceImages, b._duration);
 
   checkPartKinds("video_generation", parts);
@@ -309,6 +309,7 @@ export async function videoSubmit(
     phase: "pre",
     provider: provider.name,
     model: b._model,
+    modelUnlisted: !listed,
   };
   const veto = firePre(b._middleware as MiddlewareFn[], baseEvent);
   if (veto) throw veto;
