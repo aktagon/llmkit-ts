@@ -9,7 +9,7 @@
  * Run: ANTHROPIC_API_KEY=sk-... bun run examples/image-input.ts path/to/image.png
  */
 import { readFileSync } from "node:fs";
-import { anthropic, Client } from "../src/builders/index.ts";
+import { anthropic, Client } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");

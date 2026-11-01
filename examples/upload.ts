@@ -8,7 +8,7 @@
  * the multipart frame has a meaningful name; `.mimeType()` is optional
  * and defaults to `application/octet-stream`.
  */
-import { openai, Client } from "../src/builders/index.ts";
+import { openai, Client } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? openai(process.env.OPENAI_API_KEY ?? "sk-test");

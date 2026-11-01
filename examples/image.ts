@@ -3,7 +3,7 @@
  *
  * Run: GOOGLE_API_KEY=... bun run examples/image.ts
  */
-import { google, Client } from "../src/builders/index.ts";
+import { google, Client } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? google(process.env.GOOGLE_API_KEY ?? "k");

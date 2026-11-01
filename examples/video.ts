@@ -7,7 +7,7 @@
  * job completes and returns a temporary xAI-hosted URL (url delivery — the
  * SDK does not download the bytes).
  */
-import { grok, Client } from "../src/builders/index.ts";
+import { grok, Client } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? grok(process.env.XAI_API_KEY ?? "k");
