@@ -39,7 +39,7 @@ const DEFAULT_MAX_TOOL_ITERATIONS = 10;
 // AgentSendOptions are the Agent's send options plus its loop control
 // (ADR-098 RQC-002).
 export interface AgentSendOptions extends SendOptions {
-  maxToolIterations?: number;
+  maxToolIterations?: number | bigint;
 }
 
 export class Agent {
