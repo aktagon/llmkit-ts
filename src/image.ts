@@ -385,13 +385,14 @@ export async function generateImage(
       duration: performance.now() - start,
     });
     return result;
-  } catch (err) {
+  } catch (caught) {
+    const err = withHint(caught, imageHint(model, options, imageCount));
     firePost(options.middleware, {
       ...baseEvent,
       err: err instanceof Error ? err : new Error(String(err)),
       duration: performance.now() - start,
     });
-    throw withHint(err, imageHint(model, options, imageCount));
+    throw err;
   }
 }
 
