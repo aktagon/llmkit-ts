@@ -87,7 +87,7 @@ export interface ImageOptions {
   /** OpenAI gpt-image-* background treatment (transparent|opaque|auto). */
   background?: string;
   /** Number of images to generate; wire field `n`. OpenAI + xAI Grok. */
-  count?: number;
+  count?: number | bigint;
   /** PNG mask indicating which pixels to edit (transparent regions replaced).
    * OpenAI gpt-image-* /v1/images/edits only. */
   mask?: MediaRef;
