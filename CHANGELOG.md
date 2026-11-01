@@ -130,27 +130,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parts.
 - **BREAKING — behavior changes whose commits carry no `!`.** A change
   that rejects input the SDK used to accept, or that changes a value callers
-  already get, is breaking. These commits made such a change without the
-  marker:
-  - `bd7f0adc`: U+2028 and U+2029 are written as ` ` and ` ` in
-    every key and string the SDK writes. They used to be written as the
-    characters.
-  - `04ad8ba7`: a provider's `"input": ""` in an Anthropic, Google or
-    Bedrock reply decodes as the `input` `'""'`. It used to decode as no
-    input.
-  - `fd6a32bc`: U+2028 and U+2029 inside a provider's own text, such as a
-    tool call's arguments or a replayed turn, are written as escapes. They
-    used to be sent as the characters.
-  - `74e2124b`: an empty text part in a chat request or in `saveHistory` is
-    a `ValidationError`. A chat request used to send `content: ""`. In
-    `saveHistory`, a part with no kind threw a `TypeError`, and a part with
-    two kinds was saved with one.
-  - `cd07e5fd`: `encodeRequest` throws a `ValidationError` on
-    `chatWireShape` for a provider with no chat wire shape, such as
-    `assemblyai`. It used to return a chat body.
-  - `11f74c83`: an empty text part in an image, music, video or
-    transcription request is a `ValidationError`. These requests used to
-    send it.
+  already get, is breaking. These are such changes:
+  - U+2028 and U+2029 are written as escapes in every string the SDK
+    writes, a provider's own text included, not as the characters.
+  - A provider's `"input": ""` in an Anthropic, Google or Bedrock reply
+    decodes as the `input` `'""'`, not as no input.
+  - An empty text part is a `ValidationError` on every request and in
+    `saveHistory`, instead of being sent or saved.
+  - `saveHistory` throws a `ValidationError` for a part with no kind or two
+    kinds, instead of a `TypeError` or saving one kind.
+  - `encodeRequest` rejects a provider with no chat wire shape, such as
+    `assemblyai`, on `chatWireShape`, instead of returning a chat body.
 
 ### Added
 
