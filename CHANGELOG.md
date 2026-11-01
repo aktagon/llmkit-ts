@@ -48,12 +48,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ProviderConfig` (the type of `client.provider`), `VideoWaitOptions` and
   `TranscriptionWaitOptions` (what the handles' `wait` takes) are type-only
   exports.
+- **Video on `google` through Gemini Omni.** `gemini-omni-1.1-flash` makes a
+  video from a text prompt on the Gemini Interactions API. It sends
+  `.resolution(r)` and `.aspectRatio(r)`. The SDK rejects a duration, a seed
+  image, a last frame or reference images before send. The video bytes arrive
+  in the reply. `VideoResponse.usage` reports input, output and reasoning
+  tokens.
+- **`VideoHandle.wait` deletes the job that Gemini Omni stores.** Once
+  `wait` has the video, it sends a DELETE for the stored job.
+  `client.video.keepStored()` keeps the job. The handle records the choice
+  in `VideoHandle.keepStored`, so a resumed `wait` applies it. When the
+  delete fails, `wait` throws a `VideoDeleteError`, exported from the
+  package root. It holds the job `id`, the finished `video` and the delete
+  error in `cause`. Gemini Omni is the only provider that stores jobs, so
+  `wait` on other providers is unchanged.
+- **`video.duration(s)`, `resolution(r)` and `aspectRatio(r)` set the video
+  length, resolution and aspect ratio.** OpenRouter, Grok and Vertex Veo send
+  all three. Gemini Omni sends resolution and aspect ratio. Any other
+  provider rejects a set option with a `ValidationError` before send. A
+  value outside the model's hints is still sent.
+- **`video.lastFrame(mime, data)` and `video.addReferenceImage(mime, data)`.**
+  `lastFrame` sets the frame the video ends on. Send it with a first frame
+  from `.image(...)`; Vertex Veo and OpenRouter send it.
+  `addReferenceImage` adds an image of a person, character or product the
+  video keeps. Vertex Veo takes up to 3, without a first or last frame, and
+  only an 8-second duration. A provider whose request has no field for the
+  input rejects it before send.
+- **Multi-speaker speech and a speech style.** `speech.addSpeaker(name,
+  voice)` declares a speaker, and `addLine(speaker, text)` adds a line it
+  says. Declare exactly 2 speakers, and pass empty text to `generate`.
+  Google takes multi-speaker requests. `addStyledLine(speaker, style, text)`
+  gives one line a delivery style, such as "calm and relaxed".
+  `style(s)` sets the style of a single-voice request. OpenAI and Google send
+  a style; any other provider rejects it before send.
+- **New provider capabilities.** Speech generation runs on `google` (Gemini
+  TTS), `grok`, `minimax` and `openrouter`. Image and video generation run on
+  `openrouter`.
+- **`ProviderTurn` keeps the assistant turn as the provider wrote it.**
+  `Response.providerTurn` and `Message.providerTurn` hold its JSON text in
+  `wire` and its format in `wireShape`. The agent, and a loop that passes
+  the message on, send the turn back unchanged on the next request.
+  `saveHistory` and `loadHistory` keep it. A turn you write yourself has
+  none, and the SDK builds it from the parts. Bedrock replies carry none.
 
 - **`Response.created`.** The Unix time the provider reports, read from
   `created` (Chat Completions) or `created_at` (Responses); absent when the
   provider reports none.
-- **`Response.toolCalls`.** `text.request` sends `req.tools` and returns the
-  model's tool calls in `toolCalls` without running them.
+- **`responseToolCalls(resp)`.** `text.request` sends `req.tools` and
+  returns the model's tool calls without running them. Read them with
+  `responseToolCalls(resp)`, exported from the package root.
 - **BREAKING — `finishReason` on `ImageResponse`, `MusicResponse`,
   `SpeechResponse` and `VideoResponse` is renamed `providerFinishReason`.**
   The value is unchanged: the provider's string, verbatim.
@@ -166,12 +209,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Request.images` and the `InputImage` type are removed; put the same
   content in `Message.parts`. `saveHistory` writes version 2, and
   `loadHistory` rejects a version 1 document.
+- **BREAKING — `Response.text` is removed, and `Response.parts` holds the
+  reply.** `parts` holds the assistant turn as ordered text and tool-call
+  parts. `responseText(resp)` joins the text parts, and
+  `responseToolCalls(resp)` returns the tool-call parts. Both are exported
+  from the package root. Replace `resp.text` with `responseText(resp)`.
+- **BREAKING — a failed agent call leaves the history unchanged.** Once an
+  agent call has started, an error restores the history to what it was
+  before the call. Before, the history kept the user turn, assistant turns
+  and tool results of the failed call. The new `agent.unsavedTurns` returns
+  those turns, in order. It is empty after a call that succeeded or was
+  rejected before it started. The call throws the error that stopped it, as
+  before.
 - **BREAKING — every request times out after 600 seconds without data.**
   The client waits at most 600 seconds for the response headers, and for
   each next chunk of the body. A long stream that keeps sending does not time
   out. Before, a request waited with no limit. The new `client.timeout(ms)`
   sets another limit, and `client.timeout(0)` turns it off. A timeout
-  rejects with a `DOMException` named `TimeoutError`.
+  rejects with a `DOMException` named `TimeoutError`. The new optional field
+  `Provider.timeoutMs` holds the limit, and `0` turns it off.
 
 - **BREAKING — a rejected request for a listed model names the facts it
   contradicts.** When the provider answers 400 or 422, `APIError.hint` names the
@@ -404,9 +460,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING — `ImageOptions`, `MusicOptions` and `SpeechOptions` are no
   longer exported.** No exported function took them. Set the same options on
   the `Image`, `Music` and `Speech` builders.
-- **BREAKING — Google video generation removed.** Google shut down the Gemini API Veo
-  preview models. Video generation on the `google` provider now fails before
-  any request is sent. Veo stays available on Vertex.
+- **BREAKING — Google video no longer runs the Veo preview models.** Google
+  shut down the Gemini API Veo preview models, such as
+  `veo-3.1-generate-preview`. A 2.x call that names one now fails. The
+  `google` provider now serves `gemini-omni-1.1-flash` on the Interactions API
+  (see Added). It takes text only. The SDK rejects a seed image before send,
+  as it did for Veo. Veo stays available on Vertex.
 - **BREAKING — `ImageRequest`, `MusicRequest` and `SpeechRequest` are no
   longer exported.** No exported function took them. Build each request on
   the `Image`, `Music` and `Speech` builders.
