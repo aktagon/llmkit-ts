@@ -25,6 +25,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   post middleware events. It is true when the SDK's model list does not hold
   the model for that provider, so no per-model check ran before the request
   was sent. It is not a telemetry attribute.
+- **`ImageHints.maxInputImages` and `VideoHints.maxInputImages` report the
+  input-image limit.** Each is the most input images the catalogue lists for
+  the model, and absent when no source states a limit. `grok-imagine-video`
+  reports 1. Read it from the model's hints:
+  `const info = await c.models.provider({ name: "openai", apiKey }).get("gpt-image-1")`,
+  then `info.image?.maxInputImages`.
+- **`ProviderError` is exported from the package root.** It is the value
+  type of `LiveResult.errors`, which no exported name could type before.
+- **The package root exports the types a caller reaches from the client.**
+  `Models` (`client.models`), `ScopedModels` (`client.models.provider(p)`),
+  `Providers` (`client.providers`), `TextStream` (the return of
+  `text.stream()`), `BatchOptions` (what `BatchHandle.wait` and `poll` take),
+  `MiddlewareOp` (`Event.op`) and `MiddlewarePhase` (`Event.phase`) are
+  type-only exports. `Providers` is the configured-provider class, and the
+  lowercase `providers` namespace stays the keyless roster.
 
 - **`Response.created`.** The Unix time the provider reports, read from
   `created` (Chat Completions) or `created_at` (Responses); absent when the
@@ -46,10 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"timeout"` or `"missing"`. `poll()` reports it too: an OpenAI batch whose
   status is `expired` has code `"expired"`, and `cancelled` has
   `"cancelled"`. The poll deadline still throws `PollTimeoutError`.
-- `BATCH_SLOT_MISSING` and `BATCH_SLOT_ERROR` are `JobFailureCode` values:
-  the `cause.code` of an item with no result line and of a failure the
-  provider gives no known status for. `JobFailureCode` is exported from the package
-  root.
+- `JobFailureCode` is exported from the package root.
 - Batch items carry `id` and `model` from the provider's response body.
 - **BREAKING — `Request` has no `user` field.** Put the final prompt as the
   last user turn of `messages`. The `ToolDefinition` (name, description and
@@ -177,22 +189,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call again and refills the cache; it carries through `provider(p)`. Sends
   never read the cache. A list served from the cache fires no middleware
   event.
-- **BREAKING — video and image support facts have three states.**
-  `VideoModelDef.supportsImageToVideo`, `supportsLastFrame` and
-  `supportsReferenceImages`, and `ImageModelDef.supportsImageInput`, are
-  optional `boolean`s, like `SpeechModelDef.supportsSpeechStyle`: `undefined`
-  means no source states the fact. Code that treated them as always set must
-  handle `undefined`.
 - **BREAKING — a model that states it lacks a feature no longer blocks the
   request by itself.** A seed image, a last frame, reference images, image
   parts or a speech style sent to such a listed model now reaches the
   provider, which answers. The SDK still rejects it before sending where the
-  provider silently ignores the field: `ImageGenDef`, `VideoGenDef` and
-  `SpeechGenDef` gain a required `ignoresUnsupported`, the options that
-  provider ignores, and OpenRouter speech lists `"Style"`. Where the
-  provider's request has no field for the input, the error now says so, for
-  example `zhipu has no WithSeedFrame request`. The speaker-count and
-  image-count limits are unchanged.
+  provider ignores the field without an error, such as a speech style on
+  OpenRouter. Where the provider's request has no field for the input, the
+  `ValidationError` says so, for example `zhipu has no seed frame request`.
+  A request with two such inputs reads `grok has no seed frame and last
+  frame request`. The speaker-count and image-count limits are unchanged.
 
 - **BREAKING — `decodeRequest` reads an integer option's decimal text
   exactly.** `max_tokens`, `seed` and `top_k` are read from the number's
@@ -293,7 +298,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The chain methods `maxTokens`, `topK`, `thinkingBudget` and `seed` on
     `Text` and `Agent`, `maxToolIterations` on `Agent`, `count` on `Image`
     and `duration` on `Video`.
-  - `ImageOptions.count` and `AgentSendOptions.maxToolIterations`.
+  - `AgentSendOptions.maxToolIterations`.
 
   Code that reads one of the `Request` fields as a `number`, such as
   `request.maxTokens + 1`, no longer typechecks; check `typeof` first.
@@ -329,30 +334,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{ text: "", toolResult }` fail the role check; they used to pass as text
   parts.
 
-- **BREAKING — image and video configs list request variants.**
-  `ImageGenDef.inputMode`, `genEndpoint`, `editEndpoint`, the `ImageInputMode`
-  type and `VideoGenDef.genEndpoint` are removed. Each config now has `variants:
-  RequestVariant[]`: one `RequestVariant {carries, shape, endpoint}` with the
-  `CarriedInput` and `ImageRequestShape` types per wire request, keyed by
-  whether the request carries reference images. The request is picked from the
-  parts you pass, so builder calls do not change. Migration: read the variant
-  whose carried input matches your request from `variants` instead of the
-  removed fields.
-
 - **A mask is accepted only on an OpenAI request with reference images.** A
   mask on any other image request is rejected before the request is sent.
 
 - **BREAKING — image input limits are per model, and the provider-level count is gone.**
-  `ImageGenDef.maxInputCount` is removed. It mixed two kinds of number: wire limits, and
+  The provider-level count mixed two kinds of number: wire limits, and
   provider maxima (Google 14, OpenAI and Grok 16) that no source confirmed.
   When a provider raised its limit, image generation rejected calls the
-  provider would accept. Each image model now carries `ImageModelDef.supportsImageInput`,
-  added as the last field. Image generation rejects image parts when it is
-  false (OpenRouter, Recraft and Vertex models), and rejects more than
-  `ImageModelDef.maxInputImages` when that is not 0. Every
+  provider would accept. Image generation now rejects image parts for a
+  model that takes none (OpenRouter, Recraft and Vertex models). It rejects
+  more images than the model's limit when the catalogue states one. Every
   other model sends all image parts and lets the provider decide.
-  Migration: read `ImageModelDef.supportsImageInput` and `ImageModelDef.maxInputImages`
-  on the model instead of the provider-level count.
+  Migration: read `ModelInfo.image?.imageInput` and
+  `ModelInfo.image?.maxInputImages` instead of the provider-level count.
 
 - **Text parts join with a newline.** The text builder joins parts added with
   `.text(...)` and the prompt with a newline. It used to join them with nothing,
@@ -377,15 +371,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Vertex image generation removed.** Google shut down the Imagen endpoints.
   Image generation on Vertex now fails with a validation error before any
   request is sent. Vertex music and video are unchanged, and the Vertex default
-  model is now `lyria-002`. The SafetyFilter options (`safetyFilter` and
-  `ImageOptions.safetyFilter`) are deprecated and no longer accepted by any
-  provider; they will be removed in a later major version.
+  model is now `lyria-002`.
+- **BREAKING — the image safety filter is removed.** `Image.safetyFilter` is
+  gone. No provider accepted a safety threshold, so every call threw a
+  `ValidationError`. Delete the call; `Image.safetySettings` stays.
+- **BREAKING — the config lookups and their types are no longer exported.**
+  `imageGenConfig`, `videoGenConfig`, `musicGenConfig`, `speechGenConfig` and
+  `cachingConfig` are gone. So are the types only they return:
+  `ImageGenDef`, `ImageModelDef`, `ImageInputMode`, `ImageOutputMode`,
+  `VideoGenDef`, `VideoModelDef`, `VideoWireShape`, `VideoOutputDelivery`,
+  `MusicGenDef`, `MusicModelDef`, `SpeechGenDef`, `SpeechModelDef`,
+  `CachingDef`, `CachingMode` and `CachingLifecycle`. Read model facts from
+  the `ModelInfo` hints:
+  `const info = await c.models.provider({ name: "openai", apiKey }).get("gpt-image-1")`,
+  then `info.image?.maxInputImages`. In place of `cachingConfig`, ask
+  `client.supports("caching")`.
+- **BREAKING — `ImageOptions`, `MusicOptions` and `SpeechOptions` are no
+  longer exported.** No exported function took them. Set the same options on
+  the `Image`, `Music` and `Speech` builders.
 - **Google video generation removed.** Google shut down the Gemini API Veo
   preview models. Video generation on the `google` provider now fails before
   any request is sent. Veo stays available on Vertex.
 
 ### Fixed
 
+- **The package typechecks under Node ESM resolution.** A consumer with
+  `"moduleResolution": "nodenext"` and `skipLibCheck: false` failed with
+  TS2834 in `dist/providers/batch.d.ts` and `options.d.ts`. Those
+  declarations imported `"./providers"` without the file extension. They now
+  import `"./providers.ts"`, as the other declarations do.
 - `agent.prompt(...)` leaves the history unchanged when it rejects the
   request, for example an option the provider does not take. The rejected
   user turn used to stay in the history, so the next prompt sent two user
