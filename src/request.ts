@@ -63,7 +63,7 @@ export function resolveModel(provider: Provider, cfg: ProviderSpec): string {
   if (!cfg.defaultModel) {
     throw new ValidationError(
       "model",
-      `no model chosen and "${provider.name}" declares no default; pick one (models.live() lists what the daemon serves)`,
+      `no model chosen and "${provider.name}" declares no default; pick one (models.list() lists what the daemon serves)`,
     );
   }
   return cfg.defaultModel;
