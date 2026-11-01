@@ -197,12 +197,12 @@ const INT64_MAX = 2n ** 63n - 1n;
 // value. JSON has one number type, so an integral number in any notation
 // (4096, 4096.0, 4.096e3) is an integer, and a fraction is not (owner decision
 // 3, HANDOFF-105 F3). JSON.parse reads 1e999 as Infinity, which is out of
-// range. A seed is a 64-bit value (xsd:long), read exactly over the int64
-// range, as a bigint past 2^53 (F12); a number below. The other integer
-// options are numbers, so an integer past 2^53 is out of range for them.
-function integerOption(v: unknown, wide: boolean): { value: number | bigint } | { problem: string } {
+// range. Every integer option is a value the caller writes, read exactly over
+// the int64 range, as Go and Rust read it: a bigint past 2^53, a number below
+// (F12 for the seed; HANDOFF-111 for max_tokens, top_k and thinking_budget).
+function integerOption(v: unknown): { value: number | bigint } | { problem: string } {
   if (typeof v === "bigint") {
-    if (wide && v >= INT64_MIN && v <= INT64_MAX) return { value: v };
+    if (v >= INT64_MIN && v <= INT64_MAX) return { value: v };
     return { problem: "is out of range" };
   }
   if (typeof v !== "number" || (!Number.isInteger(v) && Number.isFinite(v))) return { problem: "must be an integer" };
@@ -228,11 +228,10 @@ function setOption(req: Request, param: OptionKey, v: unknown): string | undefin
     case OptionKeys.TOP_K:
     case OptionKeys.THINKING_BUDGET:
     case OptionKeys.SEED: {
-      const read = integerOption(v, param === OptionKeys.SEED);
+      const read = integerOption(v);
       if ("problem" in read) return read.problem;
       const n = read.value;
-      if (typeof n === "bigint") req.seed = n;
-      else if (param === OptionKeys.MAX_TOKENS) req.maxTokens = n;
+      if (param === OptionKeys.MAX_TOKENS) req.maxTokens = n;
       else if (param === OptionKeys.TOP_K) req.topK = n;
       else if (param === OptionKeys.THINKING_BUDGET) req.thinkingBudget = n;
       else req.seed = n;
