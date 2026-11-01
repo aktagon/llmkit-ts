@@ -2,7 +2,7 @@
 // in builders/catalogue.ts delegate their terminal methods here.
 
 import type { Capability, Provider } from "./types.ts";
-import type { LiveResult, ModelInfo, ProviderError } from "./structs.ts";
+import type { ImageHints, LiveResult, ModelInfo, ProviderError, VideoHints } from "./structs.ts";
 import {
   catalogueByProvider,
   ontologyCapabilities,
@@ -15,6 +15,10 @@ import {
   type ProviderName,
 } from "./providers/providers.ts";
 import { buildAuthHeaders } from "./request.ts";
+import { lookupModel } from "./model_lookup.ts";
+import { imageGenConfig, type ImageModelDef } from "./providers/image_gen.ts";
+import { speechGenConfig } from "./providers/speech_gen.ts";
+import { videoGenConfig, type VideoModelDef } from "./providers/video_gen.ts";
 import { firePre, firePost } from "./middleware.ts";
 import { sendHTTP } from "./http.ts";
 import {
@@ -416,6 +420,50 @@ function enrich(
       // A copy: the record may be the cached one, which other calls read.
       info.raw = structuredClone(rec.raw);
     }
+    Object.assign(info, catalogueHints(providerName as ProviderName, rec.id));
     return info;
   });
+}
+
+/** What the compiled catalogue states about modelId for image, video and
+ *  speech generation (ADR-102 MPT-008). A capability whose catalogue does
+ *  not list the model is left out. The lists are copies, so a caller
+ *  cannot change the compiled facts. Mirrors go/models.go. */
+function catalogueHints(
+  provider: ProviderName,
+  modelId: string,
+): Pick<ModelInfo, "image" | "video" | "speech"> {
+  const hints: Pick<ModelInfo, "image" | "video" | "speech"> = {};
+  const image = lookupModel(imageGenConfig(provider)?.models ?? [], modelId).model;
+  if (image) hints.image = imageHints(image);
+  const video = lookupModel(videoGenConfig(provider)?.models ?? [], modelId).model;
+  if (video) hints.video = videoHints(video);
+  const speech = lookupModel(speechGenConfig(provider)?.models ?? [], modelId).model;
+  if (speech) hints.speech = { style: speech.supportsSpeechStyle };
+  return hints;
+}
+
+/** One image model's facts. The lists are copies, so a caller cannot
+ *  change the compiled facts. Exported for tests only; the package barrel
+ *  does not re-export it. */
+export function imageHints(m: ImageModelDef): ImageHints {
+  return {
+    aspectRatios: [...m.aspectRatios],
+    sizes: [...m.imageSizes],
+    imageInput: m.supportsImageInput,
+  };
+}
+
+/** One video model's facts. The lists are copies, so a caller cannot
+ *  change the compiled facts. Exported for tests only; the package barrel
+ *  does not re-export it. */
+export function videoHints(m: VideoModelDef): VideoHints {
+  return {
+    resolutions: [...m.resolutions],
+    aspectRatios: [...m.aspectRatios],
+    maxDurationSeconds: m.maxDurationSeconds,
+    imageToVideo: m.supportsImageToVideo,
+    lastFrame: m.supportsLastFrame,
+    referenceImages: m.supportsReferenceImages,
+  };
 }
