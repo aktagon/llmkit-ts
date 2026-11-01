@@ -9,7 +9,7 @@
 
 import type { Capability, SpeechLine, SpeechSpeaker, Tool } from "../types.ts";
 import type { Part } from "../image.ts";
-import type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Request, Response, SafetySetting, SpeechResponse, ToolCall, ToolDefinition, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse, WireRequest } from "../structs.ts";
+import type { AudioData, File, ImageData, ImageHints, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Request, Response, SafetySetting, SpeechHints, SpeechResponse, ToolCall, ToolDefinition, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoHints, VideoResponse, WireRequest } from "../structs.ts";
 import type { MiddlewareFn } from "../providers/middleware.ts";
 import { batchConfig } from "../providers/batch.ts";
 import { cachingConfig } from "../providers/caching.ts";
@@ -22,7 +22,7 @@ import { TranscriptionHandle } from "./transcription.ts";
 
 // ADR-072 PXP-006: public struct re-exports derived from GeneratedStruct
 // (top-level-public data interfaces; handle classes value-exported below).
-export type { AudioData, File, ImageData, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Request, Response, SafetySetting, SpeechResponse, ToolCall, ToolDefinition, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoResponse, WireRequest, Tool, Part, MiddlewareFn };
+export type { AudioData, File, ImageData, ImageHints, ImageResponse, LiveResult, MediaRef, Message, ModelInfo, MusicResponse, ProviderTurn, Request, Response, SafetySetting, SpeechHints, SpeechResponse, ToolCall, ToolDefinition, ToolResult, TranscriptSegment, TranscriptionResponse, VideoData, VideoHints, VideoResponse, WireRequest, Tool, Part, MiddlewareFn };
 export { BatchHandle, VideoHandle, TranscriptionHandle };
 
 export interface ProviderConfig {
