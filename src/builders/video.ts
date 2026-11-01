@@ -342,16 +342,17 @@ export async function videoSubmit(
       duration: performance.now() - start,
     });
     return new VideoHandle(requestId, provider, !!b._raw, b._model, b._keepStored);
-  } catch (err) {
+  } catch (caught) {
+    const err = withHint(
+      caught,
+      videoHint(model, imageCount, b._lastFrame, b._referenceImages.length, b._duration, b._resolution, b._aspectRatio),
+    );
     firePost(b._middleware as MiddlewareFn[], {
       ...baseEvent,
       err: err instanceof Error ? err : new Error(String(err)),
       duration: performance.now() - start,
     });
-    throw withHint(
-      err,
-      videoHint(model, imageCount, b._lastFrame, b._referenceImages.length, b._duration, b._resolution, b._aspectRatio),
-    );
+    throw err;
   }
 }
 

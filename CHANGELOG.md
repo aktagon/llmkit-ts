@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **BREAKING — a rejected request for a listed model names the facts it
-  contradicts.** When the provider answers a 4xx, `APIError.hint` names the
+  contradicts.** When the provider answers 400 or 422, `APIError.hint` names the
   stated facts the request contradicts, for example `catalogue:
   heygen/heygen-video-1 lists no last frame, at most 15 seconds`. It covers
   image input, aspect ratio and image size on image; image-to-video, last
@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hint as an optional fourth constructor argument. The hint is `undefined`
   for a model the SDK does not list, for a fact no source states, and for
   any other status.
+  Middleware post events get the same error, hint included; its `cause` is the error without the hint.
+
 - **BREAKING — `models.list()` lists models live, and the compiled-in list
   is gone.** `client.models.list()` calls each configured provider's models
   endpoint and resolves to a `LiveResult`: the models from every provider

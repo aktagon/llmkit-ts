@@ -127,13 +127,14 @@ export async function generateSpeech(
       duration: performance.now() - start,
     });
     return result;
-  } catch (err) {
+  } catch (caught) {
+    const err = withHint(caught, speechHint(model, request));
     firePost(options.middleware, {
       ...baseEvent,
       err: err instanceof Error ? err : new Error(String(err)),
       duration: performance.now() - start,
     });
-    throw withHint(err, speechHint(model, request));
+    throw err;
   }
 }
 

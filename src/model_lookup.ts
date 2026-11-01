@@ -59,15 +59,20 @@ export function catalogueHint(modelId: string, facts: readonly string[]): string
   return facts.length === 0 ? "" : `catalogue: ${modelId} lists ${facts.join(", ")}`;
 }
 
-// withHint returns err with hint attached when err is a 4xx APIError; any
-// other error, and an empty hint, return err unchanged (ADR-102 MPT-008). It
-// builds a new APIError, so a middleware that kept the original error still
-// holds the error it was given. Mirrors go/model_lookup.go.
+// withHint returns err with hint attached when err is an APIError with
+// status 400 or 422; any other error or status, and an empty hint, return
+// err unchanged (ADR-102 MPT-008; owner, 2026-11-01). Callers attach it
+// before the post middleware event, so middleware sees the error the caller
+// gets. The hinted error is a new APIError whose cause is err, with err's
+// stack. Mirrors go/model_lookup.go.
 export function withHint(err: unknown, hint: string): unknown {
-  if (!hint || !(err instanceof APIError) || err.statusCode < 400 || err.statusCode >= 500) {
+  if (!hint || !(err instanceof APIError) || (err.statusCode !== 400 && err.statusCode !== 422)) {
     return err;
   }
-  return new APIError(err.statusCode, err.message, err.retryable, hint);
+  const hinted = new APIError(err.statusCode, err.message, err.retryable, hint);
+  hinted.cause = err;
+  hinted.stack = err.stack;
+  return hinted;
 }
 
 // offList reports whether value is set and outside a model's non-empty list.
