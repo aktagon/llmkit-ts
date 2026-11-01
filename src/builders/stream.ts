@@ -49,6 +49,7 @@ import type { Text } from "./builders.ts";
 import { buildPromptArgs } from "./text.ts";
 import { sendHTTP } from "../http.ts";
 import { writeJson } from "../json_text.ts";
+import { chatModelListed } from "../model_lookup.ts";
 
 // Maximum chunks held in the bridge queue before the producer
 // pauses. Matches Go chan(64) and Python asyncio.Queue(maxsize=64)
@@ -146,6 +147,7 @@ async function runStream(
     phase: "pre",
     provider: provider.name,
     model: prepared.model,
+    modelUnlisted: !chatModelListed(provider.name, prepared.model),
   };
   const veto = firePre(options.middleware, baseEvent);
   if (veto) throw veto;

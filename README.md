@@ -356,29 +356,29 @@ The mode is provider-specific and inferred from the provider config. The default
 
 ### Model catalogue
 
-`c.models` and `c.providers` cover model discovery in three modes. Runnable counterpart at [`examples/catalogue.ts`](./examples/catalogue.ts).
+`c.models` and `c.providers` cover model discovery. Every list comes live from the provider's `/v1/models` endpoint. Runnable counterpart at [`examples/catalogue.ts`](./examples/catalogue.ts).
 
 ```ts
 import { Capabilities } from "@aktagon/llmkit-ts";
 import type { Provider } from "@aktagon/llmkit-ts";
 
-// 1. Compiled-in catalogue — synchronous, no HTTP.
-const all = c.models.list();
-const info = c.models.get("claude-opus-4-7"); // ModelInfo | undefined
-const chat = c.models.withCapability(Capabilities.ChatCompletion).list();
+// 1. Live list across configured providers.
+const live = await c.models.list(); // LiveResult — fan-out
+const chat = await c.models.withCapability(Capabilities.ChatCompletion).list();
+const fresh = await c.models.fresh().list(); // skip the cache, refill it
 
 // 2. Providers namespace.
 c.providers.list(); // configured (credentials + /v1/models endpoint)
 providers.list(); // every provider the SDK ships with (static, keyless)
 
-// 3. Live + scoped HTTP.
-const live = await c.models.live(); // LiveResult — fan-out
+// 3. Scoped to one provider.
 const p: Provider = { name: "anthropic", apiKey: "sk-..." };
+const info = await c.models.provider(p).get("claude-opus-4-7"); // single model
 const scoped = await c.models.provider(p).list(); // single-provider list
 const raw = await c.models.provider(p).raw().list(); // ModelInfo.raw populated
 ```
 
-`live()` calls every configured provider's `/v1/models` in parallel and aggregates results into `LiveResult.models` + a per-provider `LiveResult.errors` map (partial success is the normal case). `provider(p).raw().list()` opts into populating `ModelInfo.raw` with the provider-native record — useful when you need fields the universal `ModelInfo` does not carry (Anthropic's capability matrix, Google's `supportedGenerationMethods`, etc.).
+`list()` calls every configured provider's `/v1/models` in parallel and aggregates results into `LiveResult.models` + a per-provider `LiveResult.errors` map (partial success is the normal case). Each client keeps every provider's list in memory for one hour, so a repeat `list()` or a `provider(p).get(id)` for a listed id makes no HTTP call. A failed call is not kept. `fresh()` makes the call again and refills the cache. `provider(p).raw().list()` opts into populating `ModelInfo.raw` with the provider-native record — useful when you need fields the universal `ModelInfo` does not carry (Anthropic's capability matrix, Google's `supportedGenerationMethods`, etc.).
 
 ## Options
 
