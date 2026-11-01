@@ -129,9 +129,10 @@ export type { ModelInfo, LiveResult, ImageHints, VideoHints, SpeechHints } from 
 export type { ProviderError } from "./structs.ts";
 // Client-reachable types a caller could not name (ADR-103 PUB-001):
 // client.models and client.providers (the configured-provider catalogue, not
-// the static `providers` roster namespace), Text.stream()'s return, and the
-// poll policy BatchHandle.wait and poll take.
-export type { Models, Providers } from "./builders/catalogue.ts";
+// the static `providers` roster namespace), client.models.provider(p)'s
+// return, Text.stream()'s return, and the poll policy BatchHandle.wait and
+// poll take.
+export type { Models, Providers, ScopedModels } from "./builders/catalogue.ts";
 export type { TextStream } from "./builders/stream.ts";
 export type { BatchOptions } from "./batch.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
