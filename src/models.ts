@@ -447,18 +447,20 @@ function catalogueHints(
  *  change the compiled facts. Exported for tests only; the package barrel
  *  does not re-export it. */
 export function imageHints(m: ImageModelDef): ImageHints {
-  return {
+  const hints: ImageHints = {
     aspectRatios: [...m.aspectRatios],
     sizes: [...m.imageSizes],
     imageInput: m.supportsImageInput,
   };
+  if (m.maxInputImages > 0) hints.maxInputImages = m.maxInputImages;
+  return hints;
 }
 
 /** One video model's facts. The lists are copies, so a caller cannot
  *  change the compiled facts. Exported for tests only; the package barrel
  *  does not re-export it. */
 export function videoHints(m: VideoModelDef): VideoHints {
-  return {
+  const hints: VideoHints = {
     resolutions: [...m.resolutions],
     aspectRatios: [...m.aspectRatios],
     maxDurationSeconds: m.maxDurationSeconds,
@@ -466,4 +468,8 @@ export function videoHints(m: VideoModelDef): VideoHints {
     lastFrame: m.supportsLastFrame,
     referenceImages: m.supportsReferenceImages,
   };
+  // The catalogue table holds 0 when no source states a limit
+  // (maxInputImages omitted); the hint is then absent (ADR-103 PUB-004).
+  if (m.maxInputImages > 0) hints.maxInputImages = m.maxInputImages;
+  return hints;
 }
