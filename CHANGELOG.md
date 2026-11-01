@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING — `decodeRequest` reads an integer option's decimal text
+  exactly.** `max_tokens`, `seed` and `top_k` are read from the number's
+  source text as digits times a power of ten, never as a double.
+  `9007199254740993.0` and `9.007199254740993e15` decode to
+  `9007199254740993n`; before, they rounded to `9007199254740992n`. A fraction
+  such as `9007199254740991.5` is a `ValidationError`; before, it rounded to a
+  whole number and was accepted. A value outside int64 is still a
+  `ValidationError`, and `1e3` and `5.0` still decode to `1000` and `5`. On a
+  runtime whose `JSON.parse` reviver gets no source text, an integer option
+  past 2^53 is a `ValidationError`, as before.
+
 - **BREAKING — `Response.finishReason` is a canonical `FinishReason`.** It
   holds one of five values shared by every provider: `"stop"`, `"length"`,
   `"tool_calls"`, `"content_filter"` or `"other"`, and is absent when the
