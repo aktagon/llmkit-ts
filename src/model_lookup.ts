@@ -14,7 +14,8 @@ export function lookupModel<M extends { modelId: string }>(
 // fallbackMime is the MIME a reply without its own MIME is labelled with: the
 // listed model's outputMime, or for an unlisted model the config's first
 // listed model's. Every model of one config states the same MIME, so the
-// config's first model stands for the config.
+//
+// video and speech (CQ-MUS-015, CQ-VID-021, CQ-SPK-019).
 export function fallbackMime<M extends { outputMime: string }>(
   models: readonly M[],
   model: M | undefined,
