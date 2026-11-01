@@ -10,7 +10,7 @@ import { base64ToBytes, bytesToBase64 } from "./image.ts";
 import { compactJson, JsonText, writeJson } from "./json_text.ts";
 import { checkProviderTurn, extractRawJsonElements, extractRawJsonPath } from "./provider_turn.ts";
 import { ValidationError } from "./errors.ts";
-import { partKindOf } from "./part_kinds.ts";
+import { hasPart, partKindOf } from "./part_kinds.ts";
 import { PART_KINDS } from "./structs.ts";
 import { WIRE_SCHEMA_VERSION } from "./wire_version.ts";
 
@@ -181,13 +181,13 @@ function toWireMedia(m: MediaRef): Record<string, unknown> {
 }
 
 function toWirePart(p: Part, field: string): Record<string, unknown> {
-  if ("text" in p) return { text: p.text };
-  if ("image" in p) return { image: toWireMedia(p.image) };
-  if ("file" in p) {
+  if (hasPart(p, "text")) return { text: p.text };
+  if (hasPart(p, "image")) return { image: toWireMedia(p.image) };
+  if (hasPart(p, "file")) {
     const f = p.file;
     return { file: { id: f.id, uri: f.uri, mime_type: f.mimeType, name: f.name } };
   }
-  if ("toolCall" in p) {
+  if (hasPart(p, "toolCall")) {
     const tc = p.toolCall;
     const call: Record<string, unknown> = { id: tc.id, name: tc.name };
     // The wire document holds the input as a JSON value, written from its
@@ -197,12 +197,12 @@ function toWirePart(p: Part, field: string): Record<string, unknown> {
     if (tc.input !== undefined) call.input = wireInput(tc, field);
     return { tool_call: call };
   }
-  if ("toolResult" in p) {
+  if (hasPart(p, "toolResult")) {
     const tr = p.toolResult;
     return { tool_result: { tool_use_id: tr.toolUseId, content: tr.content } };
   }
-  if ("lyrics" in p) return { lyrics: p.lyrics };
-  if ("audioUrl" in p) return { audio_url: p.audioUrl };
+  if (hasPart(p, "lyrics")) return { lyrics: p.lyrics };
+  if (hasPart(p, "audioUrl")) return { audio_url: p.audioUrl };
   return { audio: toWireMedia(p.audio) };
 }
 
