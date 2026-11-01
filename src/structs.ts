@@ -80,6 +80,26 @@ export interface ImageData {
 }
 
 /**
+ * ImageHints is what the SDK's catalogue states about one image-generation model (ADR-102 MPT-008). The values are hints: a request outside them is still sent, and the provider answers.
+ */
+export interface ImageHints {
+  /**
+   * aspectRatios are the aspect ratios the catalogue lists for the model, such as "16:9". Empty when it lists no fixed set.
+   */
+  aspectRatios?: string[];
+
+  /**
+   * sizes are the image sizes the catalogue lists for the model, such as "1K". Empty when it lists no fixed set.
+   */
+  sizes?: string[];
+
+  /**
+   * imageInput is whether the model takes image parts: yes, no, or unknown when no source states it.
+   */
+  imageInput?: boolean;
+}
+
+/**
  * ImageResponse is the universal image-generation response container returned by Image.Generate. Carries the decoded images, optional text captions/refusals, usage, and the same finish-reason / finish-message / raw fields the text-gen Response carries.
  */
 export interface ImageResponse {
@@ -212,6 +232,21 @@ export interface ModelInfo {
    * raw is the parsed provider-native record for this model, populated only when the caller opted in via the builder's .Raw() chain method (ADR-014). Type-erased — consumers cast to a provider-shape type for fields the universal ModelInfo does not carry (Anthropic capability matrix, Google supportedGenerationMethods, etc.).
    */
   raw?: unknown;
+
+  /**
+   * image is what the SDK's catalogue states about this model for image generation (ADR-102 MPT-008). Absent when the catalogue does not list the model for image generation.
+   */
+  image?: ImageHints;
+
+  /**
+   * video is what the SDK's catalogue states about this model for video generation (ADR-102 MPT-008). Absent when the catalogue does not list the model for video generation.
+   */
+  video?: VideoHints;
+
+  /**
+   * speech is what the SDK's catalogue states about this model for speech generation (ADR-102 MPT-008). Absent when the catalogue does not list the model for speech generation.
+   */
+  speech?: SpeechHints;
 }
 
 /**
@@ -450,6 +485,16 @@ export interface SafetySetting {
 }
 
 /**
+ * SpeechHints is what the SDK's catalogue states about one speech-generation model (ADR-102 MPT-008). The values are hints: a request outside them is still sent, and the provider answers.
+ */
+export interface SpeechHints {
+  /**
+   * style is whether the model takes a speech style: yes, no, or unknown when no source states it.
+   */
+  style?: boolean;
+}
+
+/**
  * SpeechResponse is the universal text-to-speech response container returned by Speech.Generate. Carries the synthesized audio (a single clip), the provider-reported usage, and an optional finish reason — reusing the music pipeline's AudioData container unchanged (ADR-049).
  */
 export interface SpeechResponse {
@@ -637,6 +682,41 @@ export interface VideoHandle {
    * keepStored is the caller's choice to keep the provider's stored job after Wait has the video. False (the default) makes Wait delete it on providers that store jobs (Gemini Omni); a failed delete returns the video with a VideoDeleteError. Submit copies the builder's KeepStored() flag here; cross-process resume callers set it directly.
    */
   keepStored?: boolean;
+}
+
+/**
+ * VideoHints is what the SDK's catalogue states about one video-generation model (ADR-102 MPT-008). The values are hints: a request outside them is still sent, and the provider answers.
+ */
+export interface VideoHints {
+  /**
+   * resolutions are the resolutions the catalogue lists for the model, such as "720p". Empty when it lists no fixed set.
+   */
+  resolutions?: string[];
+
+  /**
+   * aspectRatios are the aspect ratios the catalogue lists for the model, such as "16:9". Empty when it lists no fixed set.
+   */
+  aspectRatios?: string[];
+
+  /**
+   * maxDurationSeconds is the longest video the catalogue lists for the model, in seconds. Zero when it states none.
+   */
+  maxDurationSeconds?: number;
+
+  /**
+   * imageToVideo is whether the model takes a seed image: yes, no, or unknown when no source states it.
+   */
+  imageToVideo?: boolean;
+
+  /**
+   * lastFrame is whether the model takes a last frame: yes, no, or unknown when no source states it.
+   */
+  lastFrame?: boolean;
+
+  /**
+   * referenceImages is whether the model takes reference images: yes, no, or unknown when no source states it.
+   */
+  referenceImages?: boolean;
 }
 
 /**
