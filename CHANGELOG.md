@@ -68,11 +68,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as the provider wrote them; it used to round an integer past
   `Number.MAX_SAFE_INTEGER`. OpenAI's string arguments keep their spaces.
 - A tool call with no input, input `"null"` or input `""` sends `{}` in every
-  request. `""` used to throw a `ValidationError`. A provider's
-  `"input": ""` in an Anthropic, Google or Bedrock reply is an argument
-  value: the call's `input` is `'""'`, and the next request sends it. Only
-  `null` reads as no input.
-- **U+2028 and U+2029 are written as `\u2028` and `\u2029`** in every key
+  request. `""` used to throw a `ValidationError`.
+- **BREAKING — a provider's `"input": ""` is an argument value.** In an
+  Anthropic, Google or Bedrock reply, the call's `input` is `'""'`, and the
+  next request sends it. It used to decode as no input. Only `null` reads as
+  no input.
+- **BREAKING — U+2028 and U+2029 are written as `\u2028` and `\u2029`** in every key
   and string the SDK writes: prompt text, OpenAI's string tool-call
   arguments, image, speech, music, video, transcription and caching bodies,
   and the telemetry export. A provider's own text, such as a tool call's
@@ -101,10 +102,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Code that reads one of the `Request` fields as a `number`, such as
   `request.maxTokens + 1`, no longer typechecks; check `typeof` first.
   Every request writes a `bigint` as its digits.
-- **An empty text part is a `ValidationError` on every request,** naming
-  the part, for example `parts[0]`: image, music, video and transcription,
-  as chat already did. These requests used to send it. Speech takes no
-  parts.
+- **BREAKING — an empty text part is a `ValidationError` on every request
+  and in `saveHistory`,** naming the part, for example `parts[0]`: chat,
+  image, music, video and transcription. A chat request used to send
+  `content: ""`, and the others sent the part. Speech takes no parts.
+- **BREAKING — `saveHistory` throws a `ValidationError` for a part that sets
+  no kind or two kinds,** naming the part. A part with no kind used to throw
+  a `TypeError`, and a part with two kinds was saved with one.
 - **BREAKING — a saved provider turn must be one JSON value of its format's
   kind.** `loadHistory` and every request (`text`, stream, batch, the Agent,
   `encodeRequest`) throw a `ValidationError` on `messages[i].provider_turn`
@@ -128,19 +132,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   user turn `{ text: "", toolCall }` and an assistant turn
   `{ text: "", toolResult }` fail the role check; they used to pass as text
   parts.
-- **BREAKING — behavior changes whose commits carry no `!`.** A change
-  that rejects input the SDK used to accept, or that changes a value callers
-  already get, is breaking. These are such changes:
-  - U+2028 and U+2029 are written as escapes in every string the SDK
-    writes, a provider's own text included, not as the characters.
-  - A provider's `"input": ""` in an Anthropic, Google or Bedrock reply
-    decodes as the `input` `'""'`, not as no input.
-  - An empty text part is a `ValidationError` on every request and in
-    `saveHistory`, instead of being sent or saved.
-  - `saveHistory` throws a `ValidationError` for a part with no kind or two
-    kinds, instead of a `TypeError` or saving one kind.
-  - `encodeRequest` rejects a provider with no chat wire shape, such as
-    `assemblyai`, on `chatWireShape`, instead of returning a chat body.
 
 ### Added
 
@@ -236,7 +227,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for a provider's wire shape and returns a `WireRequest`: the path with the
   model filled in, the content headers, and the JSON body. It needs no key
   and makes no network call. An empty `chatWireShape` selects the provider's
-  default.
+  default. A provider with no chat wire shape, such as `assemblyai`, throws a
+  `ValidationError` on `chatWireShape`.
 - `decodeRequest(provider, chatWireShape, wire)` decodes an OpenAI Chat
   Completions request into a `Request`, the inverse of `encodeRequest`. It
   reads the model, a leading system turn, user and assistant turns with text
