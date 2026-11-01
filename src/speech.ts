@@ -24,7 +24,7 @@ import type { Provider, SpeechLine, SpeechSpeaker } from "./types.ts";
 export type { AudioData, SpeechResponse } from "./structs.ts";
 import type { AudioData, SpeechResponse } from "./structs.ts";
 import { sendHTTP } from "./http.ts";
-import { fallbackMime, lookupModel, statedFalseBlocks } from "./model_lookup.ts";
+import { catalogueHint, fallbackMime, lookupModel, statedFalseBlocks, withHint } from "./model_lookup.ts";
 
 /**
  * SpeechRequest carries a single text utterance to speak (single-turn, no
@@ -133,8 +133,18 @@ export async function generateSpeech(
       err: err instanceof Error ? err : new Error(String(err)),
       duration: performance.now() - start,
     });
-    throw err;
+    throw withHint(err, speechHint(model, request));
   }
+}
+
+// speechHint names the stated facts of a listed speech model the request
+// contradicts: a speech style (ADR-102 MPT-008). An unlisted model
+// (undefined) and an unknown fact give none. Exported for tests only; the
+// package barrel does not re-export it.
+export function speechHint(model: SpeechModelDef | undefined, request: SpeechRequest): string {
+  const styled = !!request.style || (request.lines ?? []).some((l) => !!l.style);
+  if (model === undefined || !styled || model.supportsSpeechStyle !== false) return "";
+  return catalogueHint(model.modelId, ["no speech style"]);
 }
 
 // dispatchSpeechHTTP picks a wire shape per provider config (never by provider
