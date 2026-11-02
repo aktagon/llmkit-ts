@@ -2,6 +2,7 @@
 
 
 import type { ProviderName } from "./providers.ts";
+import { Capabilities, type Capability } from "../types.ts";
 
 // ProviderInfo is WHAT a user wants to know about a provider [PUBLIC]: the
 // narrow, stable catalogue (typed identity, env var, default model, base URL).
@@ -14,6 +15,8 @@ export interface ProviderInfo {
   defaultModel: string;
   baseUrl: string;
   browserCallable: boolean; // ADR-035: host serves CORS for direct browser calls (coarse)
+  // What the provider offers, from its stated capabilities; Catalogue is not listed.
+  capabilities: readonly Capability[];
 }
 
 const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
@@ -24,6 +27,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "jamba-1.5-large",
     baseUrl: "https://api.ai21.com",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   anthropic: {
     id: "anthropic",
@@ -32,6 +36,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "claude-sonnet-4-6",
     baseUrl: "https://api.anthropic.com",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling],
   },
   assemblyai: {
     id: "assemblyai",
@@ -40,6 +45,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "best",
     baseUrl: "https://api.assemblyai.com",
     browserCallable: false,
+    capabilities: [Capabilities.Transcription],
   },
   azure: {
     id: "azure",
@@ -48,6 +54,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "gpt-4o",
     baseUrl: "https://{resource}.openai.azure.com",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   bedrock: {
     id: "bedrock",
@@ -56,6 +63,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "anthropic.claude-sonnet-4-20250514-v1:0",
     baseUrl: "https://bedrock-runtime.{region}.amazonaws.com",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.VideoGeneration],
   },
   cerebras: {
     id: "cerebras",
@@ -64,6 +72,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "gpt-oss-120b",
     baseUrl: "https://api.cerebras.ai",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling],
   },
   cohere: {
     id: "cohere",
@@ -72,6 +81,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "command-r-plus",
     baseUrl: "https://api.cohere.com/compatibility",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   deepseek: {
     id: "deepseek",
@@ -80,6 +90,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "deepseek-chat",
     baseUrl: "https://api.deepseek.com",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling],
   },
   doubao: {
     id: "doubao",
@@ -88,6 +99,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "doubao-1.5-pro-32k-250115",
     baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   ernie: {
     id: "ernie",
@@ -96,6 +108,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "ernie-4.0-8k",
     baseUrl: "https://qianfan.baidubce.com/v2",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   fireworks: {
     id: "fireworks",
@@ -104,6 +117,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "accounts/fireworks/models/gpt-oss-120b",
     baseUrl: "https://api.fireworks.ai/inference",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling],
   },
   google: {
     id: "google",
@@ -112,6 +126,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "gemini-2.5-flash",
     baseUrl: "https://generativelanguage.googleapis.com",
     browserCallable: true,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ImageGeneration, Capabilities.ToolCalling, Capabilities.Reasoning, Capabilities.SpeechGeneration, Capabilities.MusicGeneration, Capabilities.VideoGeneration],
   },
   grok: {
     id: "grok",
@@ -120,6 +135,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "grok-3-fast",
     baseUrl: "https://api.x.ai",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ImageGeneration, Capabilities.ToolCalling, Capabilities.SpeechGeneration, Capabilities.VideoGeneration],
   },
   groq: {
     id: "groq",
@@ -128,6 +144,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "openai/gpt-oss-120b",
     baseUrl: "https://api.groq.com/openai",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling],
   },
   inworld: {
     id: "inworld",
@@ -136,6 +153,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "inworld-tts-2",
     baseUrl: "https://api.inworld.ai",
     browserCallable: false,
+    capabilities: [Capabilities.SpeechGeneration],
   },
   jan: {
     id: "jan",
@@ -144,6 +162,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "",
     baseUrl: "http://localhost:1337",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   llamacpp: {
     id: "llamacpp",
@@ -152,6 +171,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "",
     baseUrl: "http://localhost:8080",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   lmstudio: {
     id: "lmstudio",
@@ -160,6 +180,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "",
     baseUrl: "http://localhost:1234",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   minimax: {
     id: "minimax",
@@ -168,6 +189,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "MiniMax-Text-01",
     baseUrl: "https://api.minimax.chat",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.SpeechGeneration, Capabilities.MusicGeneration, Capabilities.VideoGeneration],
   },
   mistral: {
     id: "mistral",
@@ -176,6 +198,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "mistral-large-latest",
     baseUrl: "https://api.mistral.ai",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling],
   },
   moonshot: {
     id: "moonshot",
@@ -184,6 +207,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "kimi-k2.6",
     baseUrl: "https://api.moonshot.ai",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling],
   },
   ollama: {
     id: "ollama",
@@ -192,6 +216,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "",
     baseUrl: "http://localhost:11434",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   openai: {
     id: "openai",
@@ -200,6 +225,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "gpt-4o-2024-08-06",
     baseUrl: "https://api.openai.com",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ImageGeneration, Capabilities.ToolCalling, Capabilities.Reasoning, Capabilities.SpeechGeneration, Capabilities.Transcription],
   },
   openrouter: {
     id: "openrouter",
@@ -208,6 +234,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "openai/gpt-4o",
     baseUrl: "https://openrouter.ai/api",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ImageGeneration, Capabilities.ToolCalling, Capabilities.SpeechGeneration, Capabilities.VideoGeneration],
   },
   perplexity: {
     id: "perplexity",
@@ -216,6 +243,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "sonar-pro",
     baseUrl: "https://api.perplexity.ai",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   pixverse: {
     id: "pixverse",
@@ -224,6 +252,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "v4.5",
     baseUrl: "https://app-api.pixverse.ai",
     browserCallable: false,
+    capabilities: [Capabilities.VideoGeneration],
   },
   qwen: {
     id: "qwen",
@@ -232,6 +261,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "qwen-plus",
     baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.VideoGeneration],
   },
   recraft: {
     id: "recraft",
@@ -240,6 +270,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "recraftv3",
     baseUrl: "https://external.api.recraft.ai",
     browserCallable: false,
+    capabilities: [Capabilities.ImageGeneration],
   },
   sambanova: {
     id: "sambanova",
@@ -248,6 +279,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "Meta-Llama-3.3-70B-Instruct",
     baseUrl: "https://api.sambanova.ai",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   together: {
     id: "together",
@@ -256,6 +288,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
     baseUrl: "https://api.together.xyz",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.VideoGeneration],
   },
   vertex: {
     id: "vertex",
@@ -264,6 +297,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "lyria-002",
     baseUrl: "https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models",
     browserCallable: false,
+    capabilities: [Capabilities.MusicGeneration, Capabilities.VideoGeneration],
   },
   vidu: {
     id: "vidu",
@@ -272,6 +306,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "viduq3-pro",
     baseUrl: "https://api.vidu.com",
     browserCallable: false,
+    capabilities: [Capabilities.VideoGeneration],
   },
   vllm: {
     id: "vllm",
@@ -280,6 +315,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "",
     baseUrl: "http://localhost:8000",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   workersai: {
     id: "workersai",
@@ -288,6 +324,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "@cf/meta/llama-3.1-8b-instruct",
     baseUrl: "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   yi: {
     id: "yi",
@@ -296,6 +333,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "yi-large",
     baseUrl: "https://api.01.ai",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion],
   },
   zhipu: {
     id: "zhipu",
@@ -304,6 +342,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     defaultModel: "glm-4-plus",
     baseUrl: "https://open.bigmodel.cn/api/paas",
     browserCallable: false,
+    capabilities: [Capabilities.ChatCompletion, Capabilities.VideoGeneration],
   },
 };
 

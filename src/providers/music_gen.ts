@@ -18,8 +18,8 @@ export interface MusicModelDef {
    * 0 when unverified; availableOutputFormats lists the emittable MIMEs. */
   sampleRateHz: number;
   availableOutputFormats: string[];
-  /** Whether the model takes Image Parts; undefined when no source states it. */
-  supportsImageInput?: boolean;
+  /** Whether llmkit sends Image Parts for this model. */
+  supportsImageInput: boolean;
 }
 
 export interface MusicGenDef {
