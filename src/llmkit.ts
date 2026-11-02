@@ -1,19 +1,11 @@
 // Public package entry point, the only one (ADR-103 PUB-009). It
 // re-exports the per-provider factories, `newClient`, the Client, every
-// builder class a caller meets through the client, and the handle classes,
+// builder type a caller meets through the client, and the handle classes,
 // so `import { anthropic } from "@aktagon/llmkit-ts"` reaches the whole API.
 
 export {
   newClient,
   Client,
-  Text,
-  Image,
-  Music,
-  Speech,
-  Transcription,
-  Video,
-  Agent,
-  Upload,
   BatchHandle,
   ai21,
   anthropic,
@@ -137,6 +129,18 @@ export type { ProviderError } from "./structs.ts";
 // the static `providers` roster namespace), client.models.provider(p)'s
 // return, Text.stream()'s return, and the poll policy BatchHandle.wait and
 // poll take.
+// The builder classes are type-only exports: a caller gets each one from the
+// client, and their constructors are internal (ADR-103 PUB-001).
+export type {
+  Text,
+  Image,
+  Music,
+  Speech,
+  Transcription,
+  Video,
+  Agent,
+  Upload,
+} from "./builders/index.ts";
 export type { Models, Providers, ScopedModels } from "./builders/catalogue.ts";
 export type { TextStream } from "./builders/stream.ts";
 export type { BatchOptions } from "./batch.ts";
