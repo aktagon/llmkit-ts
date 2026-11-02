@@ -285,6 +285,10 @@ function setOption(req: Request, param: OptionKey, v: unknown, source: string | 
       if (typeof v !== "string") return "must be a string";
       req.reasoningEffort = v;
       return undefined;
+    case OptionKeys.THINKING_TYPE:
+      if (typeof v !== "string") return "must be a string";
+      req.thinkingType = v;
+      return undefined;
     case OptionKeys.STOP_SEQUENCES:
       // A bare string is a one-item list (HANDOFF-105 R3b).
       if (typeof v === "string") {

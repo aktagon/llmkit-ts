@@ -12,6 +12,7 @@ export const OptionKeys = {
   STOP_SEQUENCES: "stop_sequences",
   TEMPERATURE: "temperature",
   THINKING_BUDGET: "thinking_budget",
+  THINKING_TYPE: "thinking_type",
   TOP_K: "top_k",
   TOP_P: "top_p",
 } as const;
@@ -79,6 +80,11 @@ export const ALL_OPTIONS: readonly OptionDef[] = [
     defaultJsonKey: "thinking_budget",
   },
   {
+    key: OptionKeys.THINKING_TYPE,
+    valueType: "string",
+    defaultJsonKey: "thinking_type",
+  },
+  {
     key: OptionKeys.TOP_K,
     valueType: "int",
     defaultJsonKey: "top_k",
@@ -129,6 +135,10 @@ const SUPPORTED_OPTIONS: Record<ProviderName, readonly SupportedOptionDef[]> = {
     {
       key: OptionKeys.THINKING_BUDGET,
       jsonKey: "thinking.budget_tokens",
+    },
+    {
+      key: OptionKeys.THINKING_TYPE,
+      jsonKey: "thinking.type",
     },
     {
       key: OptionKeys.TOP_K,
@@ -913,6 +923,13 @@ const OPTION_OVERRIDES: Record<ProviderName, readonly OptionOverrideDef[]> = {
       jsonKey: "thinking.budget_tokens",
       allowedValues: [],
       extraFieldsJson: "{\"type\":\"enabled\"}",
+      rootExtraFieldsJson: "",
+    },
+    {
+      key: OptionKeys.THINKING_TYPE,
+      jsonKey: "thinking.type",
+      allowedValues: ["adaptive", "enabled", "disabled", "between_tools"],
+      extraFieldsJson: "",
       rootExtraFieldsJson: "",
     },
   ],
