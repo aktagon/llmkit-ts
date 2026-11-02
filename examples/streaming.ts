@@ -7,7 +7,7 @@
  * drains, `stream.response()` returns the final `Response` (with
  * token counts) and `stream.error()` returns any terminal error.
  */
-import { anthropic, Client } from "../src/builders/index.ts";
+import { anthropic, Client } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");

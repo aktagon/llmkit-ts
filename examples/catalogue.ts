@@ -14,7 +14,7 @@
  *
  * Run: ANTHROPIC_API_KEY=sk-... bun run examples/catalogue.ts
  */
-import { anthropic, type Client } from "../src/builders/index.ts";
+import { anthropic, type Client } from "../src/llmkit.ts";
 import { Capabilities } from "../src/types.ts";
 import type { Provider } from "../src/types.ts";
 import * as providers from "../src/providers/provider_info.ts";

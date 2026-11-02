@@ -5,11 +5,8 @@ import type { ProviderName } from "./providers.ts";
 
 /** The inputs a request variant carries (ADR-096). */
 export type CarriedInput = "TextOnly" | "WithReferenceImages" | "WithSeedFrame" | "WithLastFrame";
-/**
- * Image request shapes: each names one request body (ADR-096).
- * JSONPredict: Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen shut down, BUG-101); removed at the next major.
- */
-export type ImageRequestShape = "InlineParts" | "JSONGenerationsOpenAI" | "MultipartForm" | "JSONInlineRefs" | "JSONPredict" | "JSONGenerations" | "JSONGenerationsInputRefs";
+/** Image request shapes: each names one request body (ADR-096). */
+export type ImageRequestShape = "InlineParts" | "JSONGenerationsOpenAI" | "MultipartForm" | "JSONInlineRefs" | "JSONGenerations" | "JSONGenerationsInputRefs";
 
 /** One wire request of an image or video config, keyed by the inputs it
  * carries (ADR-096). shape is "" on a video variant; endpoint "" means

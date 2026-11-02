@@ -1,7 +1,7 @@
 // Code generated — DO NOT EDIT.
 
 
-import type { ProviderName } from "./providers";
+import type { ProviderName } from "./providers.ts";
 
 export type CachingMode = "AutomaticCaching" | "ExplicitCaching" | "ResourceCaching";
 
