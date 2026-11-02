@@ -36,8 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `client.models.withCapability(Capabilities.SpeechGeneration)` finds
   speech models. `client.supports` answers the four from the provider's
   configuration. An exhaustive `switch` over `Capability` that ends in a
-  `never` check stops compiling until it handles the four new values
-  (ADR-044 VER-008: widening a union is a minor).
+  `never` check stops compiling until it handles the four new values.
 - **`ProviderInfo.capabilities`** lists what a provider offers, with no
   client and no API key, in the order `Capabilities` declares them.
   `Catalogue` is not listed.
