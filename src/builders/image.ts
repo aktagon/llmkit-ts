@@ -6,6 +6,7 @@
 
 import {
   generateImage as runImageGeneration,
+  previewImageRequest,
   type ImageOptions,
   type ImageRequest,
   type ImageResponse,
@@ -18,6 +19,20 @@ export async function imageGenerate(
   b: Image,
   msg: string,
 ): Promise<ImageResponse> {
+  return await runImageGeneration(...imageCall(b, msg));
+}
+
+// imagePreviewRequest returns the body imageGenerate would POST (ADR-106).
+export function imagePreviewRequest(b: Image, msg: string): string {
+  return previewImageRequest(...imageCall(b, msg));
+}
+
+// imageCall translates the builder state into the runtime's arguments; the
+// terminal and the preview share it.
+function imageCall(
+  b: Image,
+  msg: string,
+): [Provider, ImageRequest, ImageOptions] {
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
@@ -55,5 +70,6 @@ export async function imageGenerate(
   }
   if (b._raw) options.raw = true;
 
-  return await runImageGeneration(provider, request, options);
+  return [provider, request, options];
 }
+

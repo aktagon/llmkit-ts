@@ -59,33 +59,8 @@ export async function generateMusic(
   request: MusicRequest,
   options: MusicOptions = {},
 ): Promise<MusicResponse> {
-  const cfg = PROVIDERS[provider.name];
-  if (!cfg) {
-    throw new ValidationError("provider", `unknown: ${provider.name}`);
-  }
-  if (!provider.apiKey) {
-    throw new ValidationError("apiKey", "required");
-  }
-  if (!request.model) {
-    throw new ValidationError("model", "required for music generation");
-  }
-
-  const parts = normalizeMusicParts(request);
-  checkPartKinds("music_generation", parts);
-
-  const mgCfg = musicGenConfig(provider.name);
-  if (!mgCfg) {
-    throw new ValidationError(
-      "provider",
-      `${provider.name} does not support music generation`,
-    );
-  }
-  // ADR-102 MPT-001: an unlisted model (undefined) is sent as given.
-  const { model, listed } = lookupModel(mgCfg.models, request.model);
-  // ADR-037 (MUS-008): supportsLyrics is advisory metadata, not a gate.
-  // Lyrics on an instrumental-only model fold into the prompt (for the
-  // single-prompt Predict shape) and the model ignores or honors them.
-
+  const prepared = prepareMusic(provider, request);
+  const { mgCfg, model, listed } = prepared;
   const baseEvent: Event = {
     op: "music_generation",
     phase: "pre",
@@ -98,25 +73,11 @@ export async function generateMusic(
   const start = performance.now();
 
   try {
-    // Explicit override > the provider's distinct music base > the chat base.
-    // Mirrors videoBaseUrl; mgCfg.baseUrl is "" for every provider whose music
-    // API shares the chat host, so this is a no-op except for MiniMax.
-    const baseUrl = provider.baseUrl || mgCfg.baseUrl || cfg.baseUrl;
-    const authHeaders = buildAuthHeaders(provider, cfg);
-
-    const { url, body } = dispatchMusicHTTP(
-      provider,
-      cfg,
-      mgCfg,
-      request.model,
-      parts,
-      baseUrl,
-    );
-
-    const httpResp = await sendHTTP(url, {
+    const wire = buildMusicWire(prepared);
+    const httpResp = await sendHTTP(wire.url, {
       method: "POST",
-      headers: { ...authHeaders, "content-type": "application/json" },
-      body: writeJson(body),
+      headers: wire.headers,
+      body: wire.body,
       signal: options.signal,
     }, provider.timeoutMs);
 
@@ -151,6 +112,91 @@ export async function generateMusic(
     });
     throw err;
   }
+}
+
+// PreparedMusic is a validated music call (ADR-106 PRV-006).
+interface PreparedMusic {
+  provider: Provider;
+  request: MusicRequest;
+  cfg: ProviderSpec;
+  mgCfg: MusicGenDef;
+  model: MusicModelDef | undefined;
+  listed: boolean;
+  parts: Part[];
+}
+
+/**
+ * previewMusicRequest returns the exact JSON body generateMusic would POST,
+ * after the same validation, with no middleware and no network (ADR-106).
+ */
+export function previewMusicRequest(
+  provider: Provider,
+  request: MusicRequest,
+): string {
+  return buildMusicWire(prepareMusic(provider, request)).body;
+}
+
+// prepareMusic runs every pre-flight check; generateMusic and
+// previewMusicRequest share it.
+function prepareMusic(
+  provider: Provider,
+  request: MusicRequest,
+): PreparedMusic {
+  const cfg = PROVIDERS[provider.name];
+  if (!cfg) {
+    throw new ValidationError("provider", `unknown: ${provider.name}`);
+  }
+  if (!provider.apiKey) {
+    throw new ValidationError("apiKey", "required");
+  }
+  if (!request.model) {
+    throw new ValidationError("model", "required for music generation");
+  }
+
+  const parts = normalizeMusicParts(request);
+  checkPartKinds("music_generation", parts);
+
+  const mgCfg = musicGenConfig(provider.name);
+  if (!mgCfg) {
+    throw new ValidationError(
+      "provider",
+      `${provider.name} does not support music generation`,
+    );
+  }
+  // ADR-102 MPT-001: an unlisted model (undefined) is sent as given.
+  const { model, listed } = lookupModel(mgCfg.models, request.model);
+  // ADR-037 (MUS-008): supportsLyrics is advisory metadata, not a gate.
+  // Lyrics on an instrumental-only model fold into the prompt (for the
+  // single-prompt Predict shape) and the model ignores or honors them.
+
+  return { provider, request, cfg, mgCfg, model, listed, parts };
+}
+
+// buildMusicWire builds the URL, headers and body the terminal sends. The body
+// is serialized here, once, so the preview and the send share it.
+function buildMusicWire(
+  prepared: PreparedMusic,
+): { url: string; headers: Record<string, string>; body: string } {
+  const { provider, request, cfg, mgCfg, parts } = prepared;
+  // Explicit override > the provider's distinct music base > the chat base.
+  // Mirrors videoBaseUrl; mgCfg.baseUrl is "" for every provider whose music
+  // API shares the chat host, so this is a no-op except for MiniMax.
+  const baseUrl = provider.baseUrl || mgCfg.baseUrl || cfg.baseUrl;
+  const authHeaders = buildAuthHeaders(provider, cfg);
+
+  const { url, body } = dispatchMusicHTTP(
+    provider,
+    cfg,
+    mgCfg,
+    request.model,
+    parts,
+    baseUrl,
+  );
+  return {
+    url,
+    headers: { ...authHeaders, "content-type": "application/json" },
+    body: writeJson(body),
+  };
 }
 
 // dispatchMusicHTTP picks a wire shape per provider config (never by provider

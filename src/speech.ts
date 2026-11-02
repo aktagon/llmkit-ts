@@ -56,29 +56,8 @@ export async function generateSpeech(
   request: SpeechRequest,
   options: SpeechOptions = {},
 ): Promise<SpeechResponse> {
-  const cfg = PROVIDERS[provider.name];
-  if (!cfg) {
-    throw new ValidationError("provider", `unknown: ${provider.name}`);
-  }
-  if (!provider.apiKey) {
-    throw new ValidationError("apiKey", "required");
-  }
-  if (!request.model) {
-    throw new ValidationError("model", "required for speech generation");
-  }
-  validateSpeechInputs(request);
-
-  const sgCfg = speechGenConfig(provider.name);
-  if (!sgCfg) {
-    throw new ValidationError(
-      "provider",
-      `${provider.name} does not support speech generation`,
-    );
-  }
-  // ADR-102 MPT-001: an unlisted model (undefined) is sent as given.
-  const { model, listed } = lookupModel(sgCfg.models, request.model);
-  validateSpeechModel(request, sgCfg, model);
-
+  const prepared = prepareSpeech(provider, request);
+  const { sgCfg, model, listed } = prepared;
   const baseEvent: Event = {
     op: "speech_generation",
     phase: "pre",
@@ -91,16 +70,11 @@ export async function generateSpeech(
   const start = performance.now();
 
   try {
-    // Speech base: explicit override > the config's distinct speech base
-    // (MiniMax, HANDOFF-094) > chat base — the music base contract.
-    const baseUrl = provider.baseUrl || sgCfg.baseUrl || cfg.baseUrl;
-    const authHeaders = buildAuthHeaders(provider, cfg);
-    const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl, provider.apiKey);
-
-    const httpResp = await sendHTTP(url, {
+    const wire = buildSpeechWire(prepared);
+    const httpResp = await sendHTTP(wire.url, {
       method: "POST",
-      headers: { ...authHeaders, "content-type": "application/json" },
-      body: writeJson(body),
+      headers: wire.headers,
+      body: wire.body,
       signal: options.signal,
     }, provider.timeoutMs);
 
@@ -136,6 +110,71 @@ export async function generateSpeech(
     });
     throw err;
   }
+}
+
+// PreparedSpeech is a validated speech call (ADR-106 PRV-006).
+interface PreparedSpeech {
+  provider: Provider;
+  request: SpeechRequest;
+  cfg: ProviderSpec;
+  sgCfg: SpeechGenDef;
+  model: SpeechModelDef | undefined;
+  listed: boolean;
+}
+
+/**
+ * previewSpeechRequest returns the exact JSON body generateSpeech would POST,
+ * after the same validation, with no middleware and no network (ADR-106).
+ */
+export function previewSpeechRequest(provider: Provider, request: SpeechRequest): string {
+  return buildSpeechWire(prepareSpeech(provider, request)).body;
+}
+
+// prepareSpeech runs every pre-flight check; generateSpeech and
+// previewSpeechRequest share it.
+function prepareSpeech(provider: Provider, request: SpeechRequest): PreparedSpeech {
+  const cfg = PROVIDERS[provider.name];
+  if (!cfg) {
+    throw new ValidationError("provider", `unknown: ${provider.name}`);
+  }
+  if (!provider.apiKey) {
+    throw new ValidationError("apiKey", "required");
+  }
+  if (!request.model) {
+    throw new ValidationError("model", "required for speech generation");
+  }
+  validateSpeechInputs(request);
+
+  const sgCfg = speechGenConfig(provider.name);
+  if (!sgCfg) {
+    throw new ValidationError(
+      "provider",
+      `${provider.name} does not support speech generation`,
+    );
+  }
+  // ADR-102 MPT-001: an unlisted model (undefined) is sent as given.
+  const { model, listed } = lookupModel(sgCfg.models, request.model);
+  validateSpeechModel(request, sgCfg, model);
+
+  return { provider, request, cfg, sgCfg, model, listed };
+}
+
+// buildSpeechWire builds the URL, headers and body the terminal sends. The body
+// is serialized here, once, so the preview and the send share it.
+function buildSpeechWire(
+  prepared: PreparedSpeech,
+): { url: string; headers: Record<string, string>; body: string } {
+  const { provider, request, cfg, sgCfg } = prepared;
+  // Speech base: explicit override > the config's distinct speech base
+  // (MiniMax, HANDOFF-094) > chat base — the music base contract.
+  const baseUrl = provider.baseUrl || sgCfg.baseUrl || cfg.baseUrl;
+  const authHeaders = buildAuthHeaders(provider, cfg);
+  const { url, body } = dispatchSpeechHTTP(cfg, sgCfg, request, baseUrl, provider.apiKey);
+  return {
+    url,
+    headers: { ...authHeaders, "content-type": "application/json" },
+    body: writeJson(body),
+  };
 }
 
 // speechHint names the stated facts of a listed speech model the request
