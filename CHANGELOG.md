@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exported.** The catalogue calls throw them. Test a caught error with
   `err instanceof ErrModelsNotSupported`.
 - **The package root exports every builder and handle a caller reaches.**
-  `Speech`, `Transcription`, `Video` and `BatchHandle` are value exports.
+  `BatchHandle` is a value export. `Speech`, `Transcription`, `Video`,
   `ProviderConfig` (the type of `client.provider`), `VideoWaitOptions` and
   `TranscriptionWaitOptions` (what the handles' `wait` takes) are type-only
   exports.
@@ -478,6 +478,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Agent`, `Upload`, `Models`, `ScopedModels`, `Providers` and `TextStream`
   took the client or builder state. Get each object from the client, such as
   `client.text`, `client.models.provider(p)` or `client.text.stream(prompt)`.
+- **BREAKING — `Text`, `Image`, `Music`, `Agent` and `Upload` are type-only
+  exports.** So are the new `Speech`, `Transcription` and `Video`. A value
+  export let `new Text()` compile, and the object failed at runtime. Name the
+  types in annotations, and get each builder from the client.
 
 ### Fixed
 
