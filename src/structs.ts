@@ -199,7 +199,7 @@ export interface ModelInfo {
   id: string;
 
   /**
-   * provider is the Provider value that exposes this model. Used by Models.Provider(m.Provider).Get(ctx, m.ID) to round-trip back to live data when needed.
+   * provider is the provider that exposes this model. It carries the provider name only, with no API key; pass a Provider with a key to Models.Provider(p).Get(ctx, m.ID) to read live data.
    */
   provider: Provider;
 
@@ -209,7 +209,7 @@ export interface ModelInfo {
   capabilities: Capability[];
 
   /**
-   * displayName is the human-readable name when the provider supplies one (Anthropic display_name, Google displayName). Empty when the provider's wire shape does not carry one.
+   * displayName is the human-readable name: the provider's when its wire shape carries one (Anthropic display_name, Google displayName), else the catalogue's label for the model. Empty when neither states one.
    */
   displayName?: string;
 
@@ -264,7 +264,7 @@ export interface ModelInfo {
  */
 export interface MusicHints {
   /**
-   * lyrics is whether the model takes lyrics. No means the model makes instrumental music only.
+   * lyrics is whether the model takes lyrics: yes, no, or unknown when no source states it. No means the model makes instrumental music only.
    */
   lyrics?: boolean;
 
@@ -279,7 +279,7 @@ export interface MusicHints {
   outputFormats?: string[];
 
   /**
-   * imageInput is whether llmkit sends image parts to the model.
+   * imageInput is whether the model takes image parts: yes, no, or unknown when no source states it.
    */
   imageInput?: boolean;
 }
@@ -524,14 +524,19 @@ export interface SafetySetting {
  */
 export interface SpeechHints {
   /**
-   * style is whether the model takes a speech style: yes, no, or unknown when no source states it. No when the provider's request body carries no style, whatever the model states (ADR-102 MPT-010).
+   * style is whether the model takes a speech style: yes, no, or unknown when no source states it.
    */
   style?: boolean;
 
   /**
-   * maxSpeakers is the number of speakers the model takes. 1 when the provider's request body has no multi-speaker form, whatever the model states. Zero or absent when no source states it (ADR-102 MPT-010).
+   * maxSpeakers is the number of speakers the catalogue lists for the model. Zero or absent when no source states it (ADR-102 MPT-010).
    */
   maxSpeakers?: number;
+
+  /**
+   * rejects are the request options the SDK rejects before send for this model, because the provider's request has no place for them: "speakers", "style". Sorted; empty when it rejects none (ADR-102 MPT-010).
+   */
+  rejects?: string[];
 }
 
 /**
