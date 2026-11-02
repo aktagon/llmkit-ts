@@ -99,7 +99,7 @@ export interface ImageHints {
   imageInput?: boolean;
 
   /**
-   * maxInputImages is the most input images the catalogue lists for the model (maxInputImages). Zero or absent when no source states a limit (ADR-103 PUB-004).
+   * maxInputImages is the most input images the catalogue lists for the model (maxInputImages). Zero or absent when no source states a limit (ADR-104 PUB-004).
    */
   maxInputImages?: number;
 }
@@ -724,7 +724,7 @@ export interface VideoHints {
   referenceImages?: boolean;
 
   /**
-   * maxInputImages is the most input images the catalogue lists for the model (maxInputImages), such as 1 for a single seed-frame slot. Zero or absent when no source states a limit (ADR-103 PUB-004).
+   * maxInputImages is the most input images the catalogue lists for the model (maxInputImages), such as 1 for a single seed-frame slot. Zero or absent when no source states a limit (ADR-104 PUB-004).
    */
   maxInputImages?: number;
 }
