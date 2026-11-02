@@ -252,6 +252,36 @@ export interface ModelInfo {
    * speech is what the SDK's catalogue states about this model for speech generation (ADR-102 MPT-008). Absent when the catalogue does not list the model for speech generation.
    */
   speech?: SpeechHints;
+
+  /**
+   * music is what the SDK's catalogue states about this model for music generation (ADR-102 MPT-010). Absent when the catalogue does not list the model for music generation.
+   */
+  music?: MusicHints;
+}
+
+/**
+ * MusicHints is what the SDK's catalogue states about one music-generation model (ADR-102 MPT-010). The values are hints: a request outside them is still sent, and the provider answers.
+ */
+export interface MusicHints {
+  /**
+   * lyrics is whether the model takes lyrics. No means the model makes instrumental music only.
+   */
+  lyrics?: boolean;
+
+  /**
+   * maxDurationSeconds is the longest track the catalogue lists for the model, in seconds. Zero when it states none.
+   */
+  maxDurationSeconds?: number;
+
+  /**
+   * outputFormats are the audio MIME types the model can return, such as "audio/mpeg".
+   */
+  outputFormats?: string[];
+
+  /**
+   * imageInput is whether llmkit sends image parts to the model.
+   */
+  imageInput?: boolean;
 }
 
 /**
@@ -494,9 +524,14 @@ export interface SafetySetting {
  */
 export interface SpeechHints {
   /**
-   * style is whether the model takes a speech style: yes, no, or unknown when no source states it.
+   * style is whether the model takes a speech style: yes, no, or unknown when no source states it. No when the provider's request body carries no style, whatever the model states (ADR-102 MPT-010).
    */
   style?: boolean;
+
+  /**
+   * maxSpeakers is the number of speakers the model takes. 1 when the provider's request body has no multi-speaker form, whatever the model states. Zero or absent when no source states it (ADR-102 MPT-010).
+   */
+  maxSpeakers?: number;
 }
 
 /**
