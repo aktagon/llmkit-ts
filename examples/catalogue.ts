@@ -1,7 +1,7 @@
 /**
  * Model catalogue + provider lookup.
  *
- * Demonstrates the c.models and c.providers surface (ADR-019). Three parts:
+ * Demonstrates the c.models and c.providers surface (ADR-019). Four parts:
  *
  * 1. Live list — list() fans out to each configured provider's /v1/models
  *    endpoint. The client caches each provider's list in memory for one
@@ -11,13 +11,14 @@
  * 3. Scoped — provider(p).get(id) answers from the cached list when it
  *    holds the id; provider(p).list() lists one provider. raw()
  *    additionally populates ModelInfo.raw with the provider-native record.
+ * 4. Known models — providers.knownModels(name) lists the models this SDK
+ *    version states facts for, with no key and no network.
  *
  * Run: ANTHROPIC_API_KEY=sk-... bun run examples/catalogue.ts
  */
-import { anthropic, type Client } from "../src/llmkit.ts";
+import { anthropic, providers, type Client } from "../src/llmkit.ts";
 import { Capabilities } from "../src/types.ts";
 import type { Provider } from "../src/types.ts";
-import * as providers from "../src/providers/provider_info.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? anthropic(process.env.ANTHROPIC_API_KEY ?? "sk-test");
@@ -52,6 +53,14 @@ export async function main(c?: Client): Promise<void> {
   const first = rawScoped[0];
   const rawPopulated = first !== undefined && first.raw !== undefined;
   console.log(`raw populated: ${rawPopulated}`);
+
+  // 4. Known models: what this SDK version states about each model, with no
+  // key and no network.
+  // #region known-models
+  for (const m of providers.knownModels("google")) {
+    if (m.speech) console.log(m.id, m.displayName, m.speech.maxSpeakers, m.speech.rejects);
+  }
+  // #endregion
 }
 
 if (import.meta.main) {

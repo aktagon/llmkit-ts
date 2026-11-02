@@ -129,6 +129,8 @@ export type {
 // The errors the catalogue calls throw (ADR-104 PUB-009), so a caller can
 // test them with instanceof.
 export { ErrModelsNotSupported, ErrModelsUnavailable, ErrModelsScope } from "./models.ts";
+// The JSON form every SDK writes for a ModelInfo (ADR-102 MPT-010).
+export { modelInfoToJSON } from "./models.ts";
 // The value type of LiveResult.errors (ADR-104 PUB-005).
 export type { ProviderError } from "./structs.ts";
 // Client-reachable types a caller could not name (ADR-104 PUB-001):
@@ -162,7 +164,7 @@ export type { TranscriptionWaitOptions } from "./builders/transcription.ts";
 // headline use case is "which env var holds the key?", asked before a client
 // exists). This replaces the rejected re-export of the full internal registry
 // (BUG-012): renaming an internal wire path can never break a consumer.
-// providers.catalogue(name) lists the models this SDK version states facts
+// providers.knownModels(name) lists the models this SDK version states facts
 // for, also keyless (ADR-102 MPT-010).
 export * as providers from "./provider_namespace.ts";
 export type { ProviderInfo } from "./providers/provider_info.ts";

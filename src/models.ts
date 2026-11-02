@@ -13,6 +13,7 @@ import type {
 } from "./structs.ts";
 import {
   catalogueByProvider,
+  compiledInModels,
   ontologyCapabilities,
   type CatalogueConfig,
 } from "./catalogue.ts";
@@ -34,6 +35,7 @@ import {
 import { videoGenConfig, type VideoModelDef } from "./providers/video_gen.ts";
 import { firePre, firePost } from "./middleware.ts";
 import { sendHTTP } from "./http.ts";
+import { ValidationError } from "./errors.ts";
 import {
   parseAnthropicModelsResponse,
   parseGoogleModelsResponse,
@@ -418,8 +420,9 @@ function enrich(
 ): ModelInfo[] {
   const providerName = scoped.target.name as ProviderName;
   return records.map((rec) => {
-    const info = catalogueModelInfo(providerName, rec.id);
-    info.displayName = rec.displayName ?? "";
+    const info = knownModelInfo(providerName, rec.id);
+    // The provider's own name wins over the catalogue label.
+    if (rec.displayName) info.displayName = rec.displayName;
     info.description = rec.description ?? "";
     info.contextWindow = rec.contextWindow ?? 0;
     info.maxOutput = rec.maxOutput ?? 0;
@@ -434,38 +437,59 @@ function enrich(
 
 /**
  * Every model this SDK version states facts for under `name`, with the
- * capabilities and hints the compiled catalogue holds (ADR-102 MPT-010).
- * It needs no client, no API key and no network. The list is not proof
- * that the provider serves a model; use `client.models.provider(p).list()`
- * for that. The live fields (displayName, contextWindow, raw and the rest)
- * are empty, and the provider carries no API key. Sorted by id.
+ * capabilities, hints and label the compiled catalogue holds (ADR-102
+ * MPT-010). It needs no client, no API key and no network. The list is not
+ * proof that the provider serves a model; use
+ * `client.models.provider(p).list()` for that. The live fields
+ * (description, contextWindow, raw and the rest) are empty, and the
+ * provider carries no API key. Sorted by id; empty for a provider the
+ * catalogue states nothing for. Throws a ValidationError for a name that
+ * is not a provider.
  */
-export function catalogue(name: ProviderName): ModelInfo[] {
+export function knownModels(name: ProviderName): ModelInfo[] {
+  if (!Object.prototype.hasOwnProperty.call(PROVIDERS, name)) {
+    throw new ValidationError("provider", `unknown: ${name}`);
+  }
   const ids = new Set(Object.keys(ontologyCapabilities[name] ?? {}));
   for (const m of imageGenConfig(name)?.models ?? []) ids.add(m.modelId);
   for (const m of videoGenConfig(name)?.models ?? []) ids.add(m.modelId);
   for (const m of speechGenConfig(name)?.models ?? []) ids.add(m.modelId);
   for (const m of musicGenConfig(name)?.models ?? []) ids.add(m.modelId);
+  // Code-unit order, the byte order Go and Rust use for these ASCII ids.
   return [...ids]
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-    .map((id) => catalogueModelInfo(name, id));
+    .map((id) => knownModelInfo(name, id));
 }
 
-/** The one ModelInfo builder for a live list (enrich) and the keyless
- *  catalogue: the id, the provider without a key, and what the compiled
- *  catalogue states about the model. The live fields are left empty. */
-function catalogueModelInfo(provider: ProviderName, modelId: string): ModelInfo {
+/** The one ModelInfo builder for a live list (enrich) and knownModels: the
+ *  id, the provider without a key, and what the compiled catalogue states
+ *  about the model. The live fields are left empty. */
+function knownModelInfo(provider: ProviderName, modelId: string): ModelInfo {
   return {
     id: modelId,
     provider: { name: provider, apiKey: "" },
-    capabilities: ontologyCapabilities[provider]?.[modelId] ?? [],
-    displayName: "",
+    capabilities: [...(ontologyCapabilities[provider]?.[modelId] ?? [])],
+    displayName: catalogueLabel(provider, modelId),
     description: "",
     contextWindow: 0,
     maxOutput: 0,
     created: 0,
     ...catalogueHints(provider, modelId),
   };
+}
+
+/** The first label the compiled catalogue states for the model: the chat
+ *  table's, then the image, video, speech and music lists'. Empty when none
+ *  states one. */
+function catalogueLabel(provider: ProviderName, modelId: string): string {
+  const labels = [
+    compiledInModels.find((m) => m.provider.name === provider && m.id === modelId)?.displayName,
+    lookupModel(imageGenConfig(provider)?.models ?? [], modelId).model?.label,
+    lookupModel(videoGenConfig(provider)?.models ?? [], modelId).model?.label,
+    lookupModel(speechGenConfig(provider)?.models ?? [], modelId).model?.label,
+    lookupModel(musicGenConfig(provider)?.models ?? [], modelId).model?.label,
+  ];
+  return labels.find((l) => l) ?? "";
 }
 
 type Hints = Pick<ModelInfo, "image" | "video" | "speech" | "music">;
@@ -489,27 +513,86 @@ function catalogueHints(provider: ProviderName, modelId: string): Hints {
   return hints;
 }
 
-/** The provider's request body limits every model: a body with no style
- *  field makes style false, and a body with no multi-speaker form makes
- *  one speaker. These are the config checks the speech path runs before
- *  send (ADR-102 MPT-010). */
+/** The model's stated facts, plus the request options the SDK rejects
+ *  before send for every model of this provider config: "speakers" when
+ *  the config has no multi-speaker body, "style" when it carries no style.
+ *  These are the config checks the speech path runs (ADR-102 MPT-010).
+ *  Sorted. */
 function speechHints(cfg: SpeechGenDef, m: SpeechModelDef): SpeechHints {
-  const hints: SpeechHints = {};
-  const style = cfg.carriesSpeechStyle ? m.supportsSpeechStyle : false;
-  if (style !== undefined) hints.style = style;
-  const maxSpeakers = cfg.multiSpeaker ? m.maxSpeakers : 1;
-  if (maxSpeakers !== undefined) hints.maxSpeakers = maxSpeakers;
+  const rejects: string[] = [];
+  if (!cfg.multiSpeaker) rejects.push("speakers");
+  if (!cfg.carriesSpeechStyle) rejects.push("style");
+  const hints: SpeechHints = { rejects };
+  if (m.supportsSpeechStyle !== undefined) hints.style = m.supportsSpeechStyle;
+  if (m.maxSpeakers !== undefined) hints.maxSpeakers = m.maxSpeakers;
   return hints;
 }
 
 /** One music model's facts. The list is a copy, so a caller cannot change
- *  the compiled facts. */
+ *  the compiled facts. An unstated fact is left out. */
 function musicHints(m: MusicModelDef): MusicHints {
-  return {
-    lyrics: m.supportsLyrics,
+  const hints: MusicHints = {
     maxDurationSeconds: m.maxDurationSeconds,
     outputFormats: [...m.availableOutputFormats],
-    imageInput: m.supportsImageInput,
+  };
+  if (m.supportsLyrics !== undefined) hints.lyrics = m.supportsLyrics;
+  if (m.supportsImageInput !== undefined) hints.imageInput = m.supportsImageInput;
+  return hints;
+}
+
+/**
+ * The JSON form every SDK writes for a ModelInfo (ADR-102 MPT-010):
+ * camelCase keys, provider as the provider name, capabilities as their
+ * names, and null for an absent or unknown value. Go's json.Marshal and
+ * Rust's ModelInfo::to_json write the same form.
+ */
+export function modelInfoToJSON(m: ModelInfo): Record<string, unknown> {
+  const opt = <T>(v: T | undefined): T | null => (v === undefined ? null : v);
+  const count = (n: number | undefined): number | null => (n && n > 0 ? n : null);
+  return {
+    id: m.id,
+    provider: m.provider.name,
+    capabilities: [...m.capabilities],
+    displayName: m.displayName ?? "",
+    description: m.description ?? "",
+    contextWindow: m.contextWindow ?? 0,
+    maxOutput: m.maxOutput ?? 0,
+    created: m.created ?? 0,
+    raw: opt(m.raw),
+    image: m.image
+      ? {
+          aspectRatios: m.image.aspectRatios ?? [],
+          sizes: m.image.sizes ?? [],
+          imageInput: opt(m.image.imageInput),
+          maxInputImages: count(m.image.maxInputImages),
+        }
+      : null,
+    video: m.video
+      ? {
+          resolutions: m.video.resolutions ?? [],
+          aspectRatios: m.video.aspectRatios ?? [],
+          maxDurationSeconds: m.video.maxDurationSeconds ?? 0,
+          imageToVideo: opt(m.video.imageToVideo),
+          lastFrame: opt(m.video.lastFrame),
+          referenceImages: opt(m.video.referenceImages),
+          maxInputImages: count(m.video.maxInputImages),
+        }
+      : null,
+    speech: m.speech
+      ? {
+          style: opt(m.speech.style),
+          maxSpeakers: count(m.speech.maxSpeakers),
+          rejects: m.speech.rejects ?? [],
+        }
+      : null,
+    music: m.music
+      ? {
+          lyrics: opt(m.music.lyrics),
+          maxDurationSeconds: m.music.maxDurationSeconds ?? 0,
+          outputFormats: m.music.outputFormats ?? [],
+          imageInput: opt(m.music.imageInput),
+        }
+      : null,
   };
 }
 

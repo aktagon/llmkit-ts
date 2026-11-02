@@ -10,15 +10,16 @@ export type MusicWireShape = "MusicPredict" | "MusicGenerateContent" | "MusicMin
 export interface MusicModelDef {
   modelId: string;
   label: string;
-  supportsLyrics: boolean;
+  /** undefined when no source states it (decision 009). */
+  supportsLyrics?: boolean;
   maxDurationSeconds: number;
   outputMime: string;
   /** ADR-037 advisory facts (queryable, never gated). sampleRateHz is
    * 0 when unverified; availableOutputFormats lists the emittable MIMEs. */
   sampleRateHz: number;
   availableOutputFormats: string[];
-  /** Whether llmkit sends Image Parts for this model. */
-  supportsImageInput: boolean;
+  /** Whether the model takes Image Parts; undefined when no source states it. */
+  supportsImageInput?: boolean;
 }
 
 export interface MusicGenDef {
