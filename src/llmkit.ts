@@ -118,7 +118,14 @@ export type { VideoResponse, VideoData } from "./structs.ts";
 // Model catalogue return types (ADR-019): what
 // client.models.list() and client.models.provider(...).list() return, so a
 // consumer can name the type of a catalogue result at the package boundary.
-export type { ModelInfo, LiveResult, ImageHints, VideoHints, SpeechHints } from "./structs.ts";
+export type {
+  ModelInfo,
+  LiveResult,
+  ImageHints,
+  VideoHints,
+  SpeechHints,
+  MusicHints,
+} from "./structs.ts";
 // The errors the catalogue calls throw (ADR-104 PUB-009), so a caller can
 // test them with instanceof.
 export { ErrModelsNotSupported, ErrModelsUnavailable, ErrModelsScope } from "./models.ts";
@@ -155,7 +162,9 @@ export type { TranscriptionWaitOptions } from "./builders/transcription.ts";
 // headline use case is "which env var holds the key?", asked before a client
 // exists). This replaces the rejected re-export of the full internal registry
 // (BUG-012): renaming an internal wire path can never break a consumer.
-export * as providers from "./providers/provider_info.ts";
+// providers.catalogue(name) lists the models this SDK version states facts
+// for, also keyless (ADR-102 MPT-010).
+export * as providers from "./provider_namespace.ts";
 export type { ProviderInfo } from "./providers/provider_info.ts";
 // Typed provider identity (ADR-040), for consumers annotating providers.parse.
 export type { ProviderName } from "./providers/providers.ts";

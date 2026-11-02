@@ -2,7 +2,15 @@
 // in builders/catalogue.ts delegate their terminal methods here.
 
 import type { Capability, Provider } from "./types.ts";
-import type { ImageHints, LiveResult, ModelInfo, ProviderError, VideoHints } from "./structs.ts";
+import type {
+  ImageHints,
+  LiveResult,
+  ModelInfo,
+  MusicHints,
+  ProviderError,
+  SpeechHints,
+  VideoHints,
+} from "./structs.ts";
 import {
   catalogueByProvider,
   ontologyCapabilities,
@@ -17,7 +25,12 @@ import {
 import { buildAuthHeaders } from "./request.ts";
 import { lookupModel } from "./model_lookup.ts";
 import { imageGenConfig, type ImageModelDef } from "./providers/image_gen.ts";
-import { speechGenConfig } from "./providers/speech_gen.ts";
+import { musicGenConfig, type MusicModelDef } from "./providers/music_gen.ts";
+import {
+  speechGenConfig,
+  type SpeechGenDef,
+  type SpeechModelDef,
+} from "./providers/speech_gen.ts";
 import { videoGenConfig, type VideoModelDef } from "./providers/video_gen.ts";
 import { firePre, firePost } from "./middleware.ts";
 import { sendHTTP } from "./http.ts";
@@ -403,44 +416,101 @@ function enrich(
   scoped: ScopedModels,
   records: ParsedModelRecord[],
 ): ModelInfo[] {
-  const providerName = scoped.target.name;
-  const ontologyForProvider = ontologyCapabilities[providerName] ?? {};
+  const providerName = scoped.target.name as ProviderName;
   return records.map((rec) => {
-    const info: ModelInfo = {
-      id: rec.id,
-      provider: { name: providerName, apiKey: "" },
-      capabilities: ontologyForProvider[rec.id] ?? [],
-      displayName: rec.displayName ?? "",
-      description: rec.description ?? "",
-      contextWindow: rec.contextWindow ?? 0,
-      maxOutput: rec.maxOutput ?? 0,
-      created: rec.created ?? 0,
-    };
+    const info = catalogueModelInfo(providerName, rec.id);
+    info.displayName = rec.displayName ?? "";
+    info.description = rec.description ?? "";
+    info.contextWindow = rec.contextWindow ?? 0;
+    info.maxOutput = rec.maxOutput ?? 0;
+    info.created = rec.created ?? 0;
     if (scoped.rawFlag) {
       // A copy: the record may be the cached one, which other calls read.
       info.raw = structuredClone(rec.raw);
     }
-    Object.assign(info, catalogueHints(providerName as ProviderName, rec.id));
     return info;
   });
 }
 
-/** What the compiled catalogue states about modelId for image, video and
- *  speech generation (ADR-102 MPT-008). A capability whose catalogue does
- *  not list the model is left out. The lists are copies, so a caller
- *  cannot change the compiled facts. Mirrors go/models.go. */
-function catalogueHints(
-  provider: ProviderName,
-  modelId: string,
-): Pick<ModelInfo, "image" | "video" | "speech"> {
-  const hints: Pick<ModelInfo, "image" | "video" | "speech"> = {};
+/**
+ * Every model this SDK version states facts for under `name`, with the
+ * capabilities and hints the compiled catalogue holds (ADR-102 MPT-010).
+ * It needs no client, no API key and no network. The list is not proof
+ * that the provider serves a model; use `client.models.provider(p).list()`
+ * for that. The live fields (displayName, contextWindow, raw and the rest)
+ * are empty, and the provider carries no API key. Sorted by id.
+ */
+export function catalogue(name: ProviderName): ModelInfo[] {
+  const ids = new Set(Object.keys(ontologyCapabilities[name] ?? {}));
+  for (const m of imageGenConfig(name)?.models ?? []) ids.add(m.modelId);
+  for (const m of videoGenConfig(name)?.models ?? []) ids.add(m.modelId);
+  for (const m of speechGenConfig(name)?.models ?? []) ids.add(m.modelId);
+  for (const m of musicGenConfig(name)?.models ?? []) ids.add(m.modelId);
+  return [...ids]
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .map((id) => catalogueModelInfo(name, id));
+}
+
+/** The one ModelInfo builder for a live list (enrich) and the keyless
+ *  catalogue: the id, the provider without a key, and what the compiled
+ *  catalogue states about the model. The live fields are left empty. */
+function catalogueModelInfo(provider: ProviderName, modelId: string): ModelInfo {
+  return {
+    id: modelId,
+    provider: { name: provider, apiKey: "" },
+    capabilities: ontologyCapabilities[provider]?.[modelId] ?? [],
+    displayName: "",
+    description: "",
+    contextWindow: 0,
+    maxOutput: 0,
+    created: 0,
+    ...catalogueHints(provider, modelId),
+  };
+}
+
+type Hints = Pick<ModelInfo, "image" | "video" | "speech" | "music">;
+
+/** What the compiled catalogue states about modelId for image, video,
+ *  speech and music generation (ADR-102 MPT-008, MPT-010). A capability
+ *  whose catalogue does not list the model is left out. The lists are
+ *  copies, so a caller cannot change the compiled facts. Mirrors
+ *  go/models.go. */
+function catalogueHints(provider: ProviderName, modelId: string): Hints {
+  const hints: Hints = {};
   const image = lookupModel(imageGenConfig(provider)?.models ?? [], modelId).model;
   if (image) hints.image = imageHints(image);
   const video = lookupModel(videoGenConfig(provider)?.models ?? [], modelId).model;
   if (video) hints.video = videoHints(video);
-  const speech = lookupModel(speechGenConfig(provider)?.models ?? [], modelId).model;
-  if (speech) hints.speech = { style: speech.supportsSpeechStyle };
+  const speechCfg = speechGenConfig(provider);
+  const speech = lookupModel(speechCfg?.models ?? [], modelId).model;
+  if (speechCfg && speech) hints.speech = speechHints(speechCfg, speech);
+  const music = lookupModel(musicGenConfig(provider)?.models ?? [], modelId).model;
+  if (music) hints.music = musicHints(music);
   return hints;
+}
+
+/** The provider's request body limits every model: a body with no style
+ *  field makes style false, and a body with no multi-speaker form makes
+ *  one speaker. These are the config checks the speech path runs before
+ *  send (ADR-102 MPT-010). */
+function speechHints(cfg: SpeechGenDef, m: SpeechModelDef): SpeechHints {
+  const hints: SpeechHints = {};
+  const style = cfg.carriesSpeechStyle ? m.supportsSpeechStyle : false;
+  if (style !== undefined) hints.style = style;
+  const maxSpeakers = cfg.multiSpeaker ? m.maxSpeakers : 1;
+  if (maxSpeakers !== undefined) hints.maxSpeakers = maxSpeakers;
+  return hints;
+}
+
+/** One music model's facts. The list is a copy, so a caller cannot change
+ *  the compiled facts. */
+function musicHints(m: MusicModelDef): MusicHints {
+  return {
+    lyrics: m.supportsLyrics,
+    maxDurationSeconds: m.maxDurationSeconds,
+    outputFormats: [...m.availableOutputFormats],
+    imageInput: m.supportsImageInput,
+  };
 }
 
 /** One image model's facts. The lists are copies, so a caller cannot
