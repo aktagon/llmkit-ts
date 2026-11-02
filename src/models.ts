@@ -469,9 +469,10 @@ export function listKnownModels(name: ProviderName): ModelInfo[] {
 function knownModelInfo(provider: ProviderName, modelId: string): ModelInfo {
   const hints = catalogueHints(provider, modelId);
   const capabilities: Capability[] = [...(ontologyCapabilities[provider]?.[modelId] ?? [])];
-  // A model in the provider's speech, music or video list has that
+  // A model in the provider's image, speech, music or video list has that
   // capability (ADR-102 MPT-010); the hints are present exactly then.
   const derived: [boolean, Capability][] = [
+    [hints.image !== undefined, Capabilities.ImageGeneration],
     [hints.speech !== undefined, Capabilities.SpeechGeneration],
     [hints.music !== undefined, Capabilities.MusicGeneration],
     [hints.video !== undefined, Capabilities.VideoGeneration],
@@ -479,6 +480,9 @@ function knownModelInfo(provider: ProviderName, modelId: string): ModelInfo {
   for (const [member, cap] of derived) {
     if (member && !capabilities.includes(cap)) capabilities.push(cap);
   }
+  // Declaration order, as the compiled lists use.
+  const order: Capability[] = Object.values(Capabilities);
+  capabilities.sort((a, b) => order.indexOf(a) - order.indexOf(b));
   return {
     id: modelId,
     provider: { name: provider, apiKey: "" },
