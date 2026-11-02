@@ -14,8 +14,12 @@ import type { MiddlewareFn } from "../providers/middleware.ts";
 import { batchConfig } from "../providers/batch.ts";
 import { cachingConfig } from "../providers/caching.ts";
 import { imageGenConfig } from "../providers/image_gen.ts";
+import { musicGenConfig } from "../providers/music_gen.ts";
 import type { ProviderName } from "../providers/providers.ts";
+import { speechGenConfig } from "../providers/speech_gen.ts";
+import { transcriptionConfig } from "../providers/transcription_gen.ts";
 import { fileUploadConfig } from "../providers/upload.ts";
+import { videoGenConfig } from "../providers/video_gen.ts";
 import { BatchHandle } from "./batch.ts";
 import { VideoHandle } from "./video.ts";
 import { TranscriptionHandle } from "./transcription.ts";
@@ -119,6 +123,14 @@ export class Client {
         return fileUploadConfig(name) !== undefined;
       case "image_generation":
         return imageGenConfig(name) !== undefined;
+      case "speech_generation":
+        return speechGenConfig(name) !== undefined;
+      case "music_generation":
+        return musicGenConfig(name) !== undefined;
+      case "video_generation":
+        return videoGenConfig(name) !== undefined;
+      case "transcription":
+        return transcriptionConfig(name) !== undefined;
       default:
         return true;
     }
