@@ -1,4 +1,4 @@
-// Public package entry point, the only one (ADR-103 PUB-009). It
+// Public package entry point, the only one (ADR-104 PUB-009). It
 // re-exports the per-provider factories, `newClient`, the Client, every
 // builder type a caller meets through the client, and the handle classes,
 // so `import { anthropic } from "@aktagon/llmkit-ts"` reaches the whole API.
@@ -44,7 +44,7 @@ export {
   yi,
   zhipu,
 } from "./builders/index.ts";
-// Client.provider's type (ADR-103 PUB-009).
+// Client.provider's type (ADR-104 PUB-009).
 export type { ProviderConfig } from "./builders/index.ts";
 
 export type {
@@ -119,18 +119,18 @@ export type { VideoResponse, VideoData } from "./structs.ts";
 // client.models.list() and client.models.provider(...).list() return, so a
 // consumer can name the type of a catalogue result at the package boundary.
 export type { ModelInfo, LiveResult, ImageHints, VideoHints, SpeechHints } from "./structs.ts";
-// The errors the catalogue calls throw (ADR-103 PUB-009), so a caller can
+// The errors the catalogue calls throw (ADR-104 PUB-009), so a caller can
 // test them with instanceof.
 export { ErrModelsNotSupported, ErrModelsUnavailable, ErrModelsScope } from "./models.ts";
-// The value type of LiveResult.errors (ADR-103 PUB-005).
+// The value type of LiveResult.errors (ADR-104 PUB-005).
 export type { ProviderError } from "./structs.ts";
-// Client-reachable types a caller could not name (ADR-103 PUB-001):
+// Client-reachable types a caller could not name (ADR-104 PUB-001):
 // client.models and client.providers (the configured-provider catalogue, not
 // the static `providers` roster namespace), client.models.provider(p)'s
 // return, Text.stream()'s return, and the poll policy BatchHandle.wait and
 // poll take.
 // The builder classes are type-only exports: a caller gets each one from the
-// client, and their constructors are internal (ADR-103 PUB-001).
+// client, and their constructors are internal (ADR-104 PUB-001).
 export type {
   Text,
   Image,
@@ -145,7 +145,7 @@ export type { Models, Providers, ScopedModels } from "./builders/catalogue.ts";
 export type { TextStream } from "./builders/stream.ts";
 export type { BatchOptions } from "./batch.ts";
 // The poll policy VideoHandle.wait and TranscriptionHandle.wait take
-// (ADR-103 PUB-009).
+// (ADR-104 PUB-009).
 export type { VideoWaitOptions } from "./builders/video.ts";
 export type { TranscriptionWaitOptions } from "./builders/transcription.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
@@ -161,7 +161,7 @@ export type { ProviderInfo } from "./providers/provider_info.ts";
 export type { ProviderName } from "./providers/providers.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
 // Event.op and Event.phase are typed by MiddlewareOp and MiddlewarePhase
-// (ADR-103 PUB-003).
+// (ADR-104 PUB-003).
 export type { Event, MiddlewareFn, MiddlewareOp, MiddlewarePhase } from "./providers/middleware.ts";
 // Opt-in telemetry (ADR-054). The value re-export also loads telemetry.ts at
 // runtime so its Client.addTelemetry prototype augmentation is installed.

@@ -1,5 +1,5 @@
 // Internal barrel for the typed-builder API. The package's only entry point
-// is ../llmkit.ts (ADR-103 PUB-009); tests and examples import this file.
+// is ../llmkit.ts (ADR-104 PUB-009); tests and examples import this file.
 //
 //
 // text.ts / image.ts directly via `import { textPrompt } from "./text.ts"`,

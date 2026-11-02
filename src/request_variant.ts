@@ -30,7 +30,7 @@ export function selectRequestVariant(
 
 /**
  * The carried inputs in the words an error message uses; the constant names
- * are internal (ADR-103 PUB-005).
+ * are internal (ADR-104 PUB-005).
  */
 const CARRIED_INPUT_NAMES: Record<CarriedInput, string> = {
   TextOnly: "text-only",
