@@ -40,9 +40,9 @@ export interface Provider {
  * Capability names one of the SDK's modelled capabilities. The set mirrors
  *
  *
- * provider wire data. A model lists speech_generation, music_generation or
- * video_generation when the provider's speech, music or video model list
- * holds it (ADR-102 MPT-010).
+ * provider wire data. A model lists image_generation, speech_generation,
+ * music_generation or video_generation when the provider's image, speech,
+ * music or video model list holds it (ADR-102 MPT-010).
  */
 export type Capability =
   | "chat_completion"

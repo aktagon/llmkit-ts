@@ -30,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SDKs share: camelCase keys, `provider` as the provider name, and `null`
   for an absent or unknown value.
 - **`Capabilities` gains `SpeechGeneration`, `MusicGeneration`,
-  `VideoGeneration` and `Transcription`.** A model in a provider's speech,
-  music or video model list carries that capability in
+  `VideoGeneration` and `Transcription`.** A model in a provider's image,
+  speech, music or video model list carries that capability in
   `ModelInfo.capabilities`, from both `knownModels` and the live list, so
   `client.models.withCapability(Capabilities.SpeechGeneration)` finds
   speech models. `client.supports` answers the four from the provider's
