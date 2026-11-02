@@ -11,10 +11,6 @@
     ".": {
       "types": "./dist/llmkit.d.ts",
       "import": "./dist/llmkit.js"
-    },
-    "./builders": {
-      "types": "./dist/builders/index.d.ts",
-      "import": "./dist/builders/index.js"
     }
   },
   "files": [
@@ -56,7 +52,7 @@
     "bun": ">=1.4.2"
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/llmkit.ts src/builders/index.ts --outdir dist --target browser --format esm --splitting && bun run build:types",
+    "build": "rm -rf dist && bun build src/llmkit.ts --outdir dist --target browser --format esm --splitting && bun run build:types",
     "build:types": "tsc -p tsconfig.build.json",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

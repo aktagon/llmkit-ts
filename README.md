@@ -37,7 +37,7 @@ The package ships compiled ESM in `dist/` (works in plain Node ESM, Workers, Den
 
 ```ts
 import { responseText } from "@aktagon/llmkit-ts";
-import { anthropic } from "@aktagon/llmkit-ts/builders";
+import { anthropic } from "@aktagon/llmkit-ts";
 
 const c = anthropic(process.env.ANTHROPIC_API_KEY!);
 const resp = await c.text
@@ -176,7 +176,7 @@ const resp = await c.text
 ### Image — text-to-image and edit
 
 ```ts
-import { google } from "@aktagon/llmkit-ts/builders";
+import { google } from "@aktagon/llmkit-ts";
 
 const c = google(process.env.GOOGLE_API_KEY!);
 const img = await c.image
@@ -223,7 +223,7 @@ Provider knobs are typed chain methods on the `Image` builder:
 The chain validates per provider — calling `.quality(...)` on a Google or xAI builder rejects with `ValidationError` immediately, no HTTP round-trip. Knobs without typed methods (OpenAI: `output_compression`, `moderation`) remain reachable via `.extraFields(...)`, which is unvalidated and freeform.
 
 ```ts
-import { openai } from "@aktagon/llmkit-ts/builders";
+import { openai } from "@aktagon/llmkit-ts";
 
 const c = openai(process.env.OPENAI_API_KEY!);
 const resp = await c.image
@@ -296,14 +296,10 @@ Control content filtering for Gemini providers. `safetySettings` applies to text
 generation, streaming, agents, and Gemini image generation. On a non-Gemini
 provider it throws a `ValidationError`.
 
-`safetyFilter` is deprecated. It served Vertex Imagen, which Google shut down;
-every provider now throws a `ValidationError` for it. It will be removed in the
-next major version.
-
 ### Upload — Path or Bytes
 
 ```ts
-import { openai } from "@aktagon/llmkit-ts/builders";
+import { openai } from "@aktagon/llmkit-ts";
 
 const c = openai(process.env.OPENAI_API_KEY!);
 
@@ -477,7 +473,7 @@ const resp = await client.text.prompt("Hello");
 ## Self-hosted endpoints
 
 ```ts
-import { openai } from "@aktagon/llmkit-ts/builders";
+import { openai } from "@aktagon/llmkit-ts";
 
 const c = openai("anything").baseURL("http://localhost:8080/v1");
 ```
@@ -489,7 +485,7 @@ Works for any OpenAI-compatible server (vLLM, LM Studio, Ollama, corporate gatew
 Attach a custom HTTP header to every request — for example an authenticated gateway that needs its own auth header alongside the provider key. `addHeader` is chainable and calls accumulate.
 
 ```ts
-import { anthropic } from "@aktagon/llmkit-ts/builders";
+import { anthropic } from "@aktagon/llmkit-ts";
 
 const c = anthropic(apiKey)
   .baseURL("https://gateway.example.com/anthropic")

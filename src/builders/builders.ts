@@ -195,7 +195,7 @@ export class Text {
   /** @internal */ _topK?: number | bigint;
   /** @internal */ _topP?: number;
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Text { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   /**
@@ -273,17 +273,17 @@ export class Image {
   /** @internal */ _outputFormat: string = "";
   /** @internal */ _quality: string = "";
   /** @internal */ _raw: boolean = false;
-  /** @internal */ _safetyFilter: string = "";
   /** @internal */ _safetySettings: SafetySetting[] = [];
   /** @internal */ _extraFields?: Record<string, unknown> | undefined;
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Image { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   /**
-   * Sets the output aspect ratio, such as "16:9". A ratio the model does
-   * not list is rejected before send. On a video, OpenRouter, Grok, Veo and
-   * Gemini Omni send it.
+   * Sets the output aspect ratio, such as "16:9". The SDK sends a ratio the
+   * model does not list; if the provider rejects it, the error names the
+   * catalogue fact. On a video, OpenRouter, Grok, Veo and Gemini Omni send it;
+   * for other video providers the SDK rejects it before send.
    */
   aspectRatio(r: string): Image { const out = clone(this); out._aspectRatio = r; return out; }
   background(s: string): Image { const out = clone(this); out._background = s; return out; }
@@ -296,14 +296,6 @@ export class Image {
   outputFormat(s: string): Image { const out = clone(this); out._outputFormat = s; return out; }
   quality(s: string): Image { const out = clone(this); out._quality = s; return out; }
   raw(): Image { const out = clone(this); out._raw = true; return out; }
-  /**
-   * Sets a single image safety threshold. Every image provider rejects it
-   * with a validation error.
-   *
-   * Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen
-   * shut down, BUG-101); removed at the next major.
-   */
-  safetyFilter(s: string): Image { const out = clone(this); out._safetyFilter = s; return out; }
   safetySettings(s: SafetySetting[]): Image { const out = clone(this); out._safetySettings = s; return out; }
   text(s: string): Image { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   extraFields(extras: Record<string, unknown>): Image { const out = clone(this); out._extraFields = { ...(this._extraFields ?? {}), ...extras }; return out; }
@@ -321,7 +313,7 @@ export class Music {
   /** @internal */ _model: string = "";
   /** @internal */ _raw: boolean = false;
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Music { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   lyrics(s: string): Music { const out = clone(this); out._parts = [...out._parts, { lyrics: s }]; return out; }  // ordered
@@ -344,7 +336,7 @@ export class Speech {
   /** @internal */ _style: string = "";
   /** @internal */ _voice: string = "";
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   /**
    * Appends a line said by a declared speaker. Lines are spoken in call
@@ -381,7 +373,7 @@ export class Transcription {
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _model: string = "";
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Transcription { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   model(name: string): Transcription { const out = clone(this); out._model = name; return out; }
@@ -409,7 +401,7 @@ export class Video {
   /** @internal */ _raw: boolean = false;
   /** @internal */ _resolution: string = "";
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Video { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   /**
@@ -418,15 +410,17 @@ export class Video {
    */
   addReferenceImage(mime: string, data: Uint8Array): Video { const out = clone(this); out._referenceImages = [...out._referenceImages, { mimeType: mime, bytes: data }]; return out; }  // ordered
   /**
-   * Sets the output aspect ratio, such as "16:9". A ratio the model does
-   * not list is rejected before send. On a video, OpenRouter, Grok, Veo and
-   * Gemini Omni send it.
+   * Sets the output aspect ratio, such as "16:9". The SDK sends a ratio the
+   * model does not list; if the provider rejects it, the error names the
+   * catalogue fact. On a video, OpenRouter, Grok, Veo and Gemini Omni send it;
+   * for other video providers the SDK rejects it before send.
    */
   aspectRatio(r: string): Video { const out = clone(this); out._aspectRatio = r; return out; }
   /**
    * Sets the video length in whole seconds; 0 means the provider default.
-   * OpenRouter, Grok and Veo send it. Above the model's maximum, it is rejected
-   * before send. With Veo reference images, only 8 is accepted.
+   * OpenRouter, Grok and Veo send it; for other video providers the SDK
+   * rejects it before send. The SDK rejects a negative value and sends a
+   * value above the model's maximum. With Veo reference images, only 8 is accepted.
    */
   duration(seconds: number | bigint): Video { const out = clone(this); out._duration = seconds; return out; }
   image(mime: string, data: Uint8Array): Video { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered
@@ -446,8 +440,9 @@ export class Video {
   raw(): Video { const out = clone(this); out._raw = true; return out; }
   /**
    * Sets the video resolution, such as "720p". OpenRouter, Grok, Veo and
-   * Gemini Omni send it.
-   * A resolution the model does not list is rejected before send.
+   * Gemini Omni send it; for other video providers the SDK rejects it before
+   * send. The SDK sends a resolution the model does not list; if the provider
+   * rejects it, the error names the catalogue fact.
    */
   resolution(r: string): Video { const out = clone(this); out._resolution = r; return out; }
   text(s: string): Video { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
@@ -482,7 +477,7 @@ export class Agent {
   /** @internal */ _topP?: number;
   /** @internal */ _state?: AgentState;
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Agent { const out = clone(this); out._middleware = [...out._middleware, ...fns]; out._state = undefined; return out; }
   addTool(t: Tool): Agent { const out = clone(this); out._tools = [...out._tools, t]; out._state = undefined; return out; }
@@ -550,7 +545,7 @@ export class Upload {
   /** @internal */ _mimeType: string = "";
   /** @internal */ _path: string = "";
 
-  constructor(client: Client) { this.client = client; }
+  /** @internal */ constructor(client: Client) { this.client = client; }
 
   addMiddleware(...fns: MiddlewareFn[]): Upload { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   bytes(data: Uint8Array): Upload { const out = clone(this); out._bytes = data; return out; }

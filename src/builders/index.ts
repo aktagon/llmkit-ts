@@ -1,9 +1,9 @@
-// Public entry point for the typed-builder API.
+// Internal barrel for the typed-builder API. The package's only entry point
+// is ../llmkit.ts (ADR-104 PUB-009); tests and examples import this file.
 //
 //
 // text.ts / image.ts directly via `import { textPrompt } from "./text.ts"`,
 // so importing builders.ts is enough to get the wired methods. This
-// file just re-exports the public surface so callers can write
-// `from "@aktagon/llmkit-ts/builders"` without reaching into a sub-file.
+// file just re-exports builders.ts.
 
 export * from "./builders.ts";

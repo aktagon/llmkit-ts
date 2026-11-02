@@ -5,7 +5,7 @@
  *
  * lyria-002 is instrumental-only — no `.lyrics()`.
  */
-import { vertex, Client } from "../src/builders/index.ts";
+import { vertex, Client } from "../src/llmkit.ts";
 
 export async function main(c?: Client): Promise<void> {
   const client = c ?? vertex(process.env.VERTEX_ACCESS_TOKEN ?? "k");
