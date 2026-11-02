@@ -580,6 +580,12 @@ function applyOptions(
     apply(OptionKeys.THINKING_BUDGET, options.thinkingBudget);
   if (options.reasoningEffort !== undefined)
     apply(OptionKeys.REASONING_EFFORT, options.reasoningEffort);
+  // thinkingType is applied last, after every option that merges extras, so
+  // its value is the body's final thinking.type (ADR-105 THT-002): it wins
+  // over reasoningEffort's root-merged adaptive type and over
+  // thinkingBudget's type enabled.
+  if (options.thinkingType !== undefined)
+    apply(OptionKeys.THINKING_TYPE, options.thinkingType);
 }
 
 function setNestedField(
@@ -668,20 +674,26 @@ export function validateOptions(
     requireOption(OptionKeys.THINKING_BUDGET, "thinkingBudget");
   if (options.reasoningEffort !== undefined)
     requireOption(OptionKeys.REASONING_EFFORT, "reasoningEffort");
+  if (options.thinkingType !== undefined)
+    requireOption(OptionKeys.THINKING_TYPE, "thinkingType");
 
-  if (options.reasoningEffort !== undefined) {
-    const ov = overrides.get(OptionKeys.REASONING_EFFORT);
-    if (
-      ov &&
-      ov.allowedValues.length > 0 &&
-      !ov.allowedValues.includes(options.reasoningEffort)
-    ) {
+  //
+  const requireAllowed = (
+    key: OptionKey,
+    field: string,
+    value: string | undefined,
+  ): void => {
+    if (value === undefined) return;
+    const ov = overrides.get(key);
+    if (ov && ov.allowedValues.length > 0 && !ov.allowedValues.includes(value)) {
       throw new ValidationError(
-        "reasoningEffort",
-        `invalid value ${JSON.stringify(options.reasoningEffort)}, must be one of: ${ov.allowedValues.join(",")}`,
+        field,
+        `invalid value ${JSON.stringify(value)}, must be one of: ${ov.allowedValues.join(",")}`,
       );
     }
-  }
+  };
+  requireAllowed(OptionKeys.REASONING_EFFORT, "reasoningEffort", options.reasoningEffort);
+  requireAllowed(OptionKeys.THINKING_TYPE, "thinkingType", options.thinkingType);
 }
 
 // The message builders below read one ordered list of turns (ADR-100): each
