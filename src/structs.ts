@@ -279,7 +279,7 @@ export interface MusicHints {
   outputFormats?: string[];
 
   /**
-   * imageInput is whether the model takes image parts: yes, no, or unknown when no source states it.
+   * imageInput is whether llmkit sends image parts to the model: yes or no. Every music model states it.
    */
   imageInput?: boolean;
 }
