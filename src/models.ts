@@ -469,7 +469,7 @@ export function videoHints(m: VideoModelDef): VideoHints {
     referenceImages: m.supportsReferenceImages,
   };
   // The catalogue table holds 0 when no source states a limit
-  // (maxInputImages omitted); the hint is then absent (ADR-103 PUB-004).
+  // (maxInputImages omitted); the hint is then absent (ADR-104 PUB-004).
   if (m.maxInputImages > 0) hints.maxInputImages = m.maxInputImages;
   return hints;
 }
