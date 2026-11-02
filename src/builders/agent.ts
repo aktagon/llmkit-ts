@@ -73,6 +73,7 @@ function initAgent(b: Agent): AgentState {
     request.thinkingBudget = b._thinkingBudget;
   if (b._reasoningEffort !== undefined)
     request.reasoningEffort = b._reasoningEffort;
+  if (b._thinkingType !== undefined) request.thinkingType = b._thinkingType;
   if (b._safetySettings.length > 0) request.safetySettings = b._safetySettings;
 
   const options: AgentSendOptions = {};

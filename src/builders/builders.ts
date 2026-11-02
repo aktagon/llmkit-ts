@@ -204,6 +204,7 @@ export class Text {
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
   /** @internal */ _thinkingBudget?: number | bigint;
+  /** @internal */ _thinkingType?: string;
   /** @internal */ _topK?: number | bigint;
   /** @internal */ _topP?: number;
 
@@ -256,6 +257,13 @@ export class Text {
   temperature(t: number): Text { const out = clone(this); out._temperature = t; return out; }
   text(s: string): Text { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   thinkingBudget(n: number | bigint): Text { const out = clone(this); out._thinkingBudget = n; return out; }
+  /**
+   * Sets the thinking mode: adaptive, enabled, disabled or between_tools.
+   * Anthropic sends it as thinking.type, and it wins over the type that
+   * ReasoningEffort or ThinkingBudget would send. Which model accepts which
+   * mode is the provider's call; an unknown mode fails before send.
+   */
+  thinkingType(mode: string): Text { const out = clone(this); out._thinkingType = mode; return out; }
   topK(n: number | bigint): Text { const out = clone(this); out._topK = n; return out; }
   topP(v: number): Text { const out = clone(this); out._topP = v; return out; }
   async prompt(msg: string): Promise<Response> {
@@ -485,6 +493,7 @@ export class Agent {
   /** @internal */ _system: string = "";
   /** @internal */ _temperature?: number;
   /** @internal */ _thinkingBudget?: number | bigint;
+  /** @internal */ _thinkingType?: string;
   /** @internal */ _topK?: number | bigint;
   /** @internal */ _topP?: number;
   /** @internal */ _state?: AgentState;
@@ -526,6 +535,13 @@ export class Agent {
   system(s: string): Agent { const out = clone(this); out._system = s; out._state = undefined; return out; }
   temperature(t: number): Agent { const out = clone(this); out._temperature = t; out._state = undefined; return out; }
   thinkingBudget(n: number | bigint): Agent { const out = clone(this); out._thinkingBudget = n; out._state = undefined; return out; }
+  /**
+   * Sets the thinking mode: adaptive, enabled, disabled or between_tools.
+   * Anthropic sends it as thinking.type, and it wins over the type that
+   * ReasoningEffort or ThinkingBudget would send. Which model accepts which
+   * mode is the provider's call; an unknown mode fails before send.
+   */
+  thinkingType(mode: string): Agent { const out = clone(this); out._thinkingType = mode; out._state = undefined; return out; }
   topK(n: number | bigint): Agent { const out = clone(this); out._topK = n; out._state = undefined; return out; }
   topP(v: number): Agent { const out = clone(this); out._topP = v; out._state = undefined; return out; }
   get messages(): readonly Message[] { return agentMessages(this); }

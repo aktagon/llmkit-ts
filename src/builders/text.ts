@@ -82,6 +82,7 @@ export function buildPromptArgs(
     request.thinkingBudget = b._thinkingBudget;
   if (b._reasoningEffort !== undefined)
     request.reasoningEffort = b._reasoningEffort;
+  if (b._thinkingType !== undefined) request.thinkingType = b._thinkingType;
   if (b._safetySettings.length > 0) request.safetySettings = b._safetySettings;
 
   return { provider, request, options: textSendOptions(b) };
@@ -112,6 +113,7 @@ export function textSetRequest(b: Text, req: Request): void {
   b._presencePenalty = req.presencePenalty;
   b._reasoningEffort = req.reasoningEffort;
   b._thinkingBudget = req.thinkingBudget;
+  b._thinkingType = req.thinkingType;
   b._safetySettings = [...(req.safetySettings ?? [])];
 }
 
