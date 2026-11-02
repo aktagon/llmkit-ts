@@ -1,7 +1,7 @@
 // Hand-coded catalogue runtime (ADR-019). The generated builder classes
 // in builders/catalogue.ts delegate their terminal methods here.
 
-import type { Capability, Provider } from "./types.ts";
+import { Capabilities, type Capability, type Provider } from "./types.ts";
 import type {
   ImageHints,
   LiveResult,
@@ -443,10 +443,12 @@ function enrich(
  * `client.models.provider(p).list()` for that. The live fields
  * (description, contextWindow, raw and the rest) are empty, and the
  * provider carries no API key. Sorted by id; empty for a provider the
- * catalogue states nothing for. Throws a ValidationError for a name that
- * is not a provider.
+ * catalogue states nothing for. Chat models appear only for providers
+ * with compiled chat facts (today Anthropic, Google and OpenAI); image,
+ * video, speech and music models appear for every provider that lists them.
+ * Throws a ValidationError for a name that is not a provider.
  */
-export function knownModels(name: ProviderName): ModelInfo[] {
+export function listKnownModels(name: ProviderName): ModelInfo[] {
   if (!Object.prototype.hasOwnProperty.call(PROVIDERS, name)) {
     throw new ValidationError("provider", `unknown: ${name}`);
   }
@@ -465,16 +467,28 @@ export function knownModels(name: ProviderName): ModelInfo[] {
  *  id, the provider without a key, and what the compiled catalogue states
  *  about the model. The live fields are left empty. */
 function knownModelInfo(provider: ProviderName, modelId: string): ModelInfo {
+  const hints = catalogueHints(provider, modelId);
+  const capabilities: Capability[] = [...(ontologyCapabilities[provider]?.[modelId] ?? [])];
+  // A model in the provider's speech, music or video list has that
+  // capability (ADR-102 MPT-010); the hints are present exactly then.
+  const derived: [boolean, Capability][] = [
+    [hints.speech !== undefined, Capabilities.SpeechGeneration],
+    [hints.music !== undefined, Capabilities.MusicGeneration],
+    [hints.video !== undefined, Capabilities.VideoGeneration],
+  ];
+  for (const [member, cap] of derived) {
+    if (member && !capabilities.includes(cap)) capabilities.push(cap);
+  }
   return {
     id: modelId,
     provider: { name: provider, apiKey: "" },
-    capabilities: [...(ontologyCapabilities[provider]?.[modelId] ?? [])],
+    capabilities,
     displayName: catalogueLabel(provider, modelId),
     description: "",
     contextWindow: 0,
     maxOutput: 0,
     created: 0,
-    ...catalogueHints(provider, modelId),
+    ...hints,
   };
 }
 
@@ -534,9 +548,10 @@ function musicHints(m: MusicModelDef): MusicHints {
   const hints: MusicHints = {
     maxDurationSeconds: m.maxDurationSeconds,
     outputFormats: [...m.availableOutputFormats],
+    // Required on a music model (CR-008), so always true or false.
+    imageInput: m.supportsImageInput,
   };
   if (m.supportsLyrics !== undefined) hints.lyrics = m.supportsLyrics;
-  if (m.supportsImageInput !== undefined) hints.imageInput = m.supportsImageInput;
   return hints;
 }
 
