@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ModelInfo.music` holds a `MusicHints`** for a model the SDK lists for
   music generation: whether it takes lyrics, the maximum duration in
   seconds, the audio formats it can return, and whether it takes image
-  parts. Each support fact is absent when no source states it.
+  parts. `lyrics` is absent when no source states it; `imageInput` is
+  always `true` or `false`.
 - **`SpeechHints.maxSpeakers`** is the number of speakers the model takes,
   or absent when no source states it. **`SpeechHints.rejects`** names the
   request options the SDK rejects before send for the model, from
@@ -28,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`modelInfoToJSON(m)`** writes the JSON form the Go, TypeScript and Rust
   SDKs share: camelCase keys, `provider` as the provider name, and `null`
   for an absent or unknown value.
+- **`Capabilities` gains `SpeechGeneration`, `MusicGeneration`,
+  `VideoGeneration` and `Transcription`.** A model in a provider's speech,
+  music or video model list carries that capability in
+  `ModelInfo.capabilities`, from both `knownModels` and the live list, so
+  `client.models.withCapability(Capabilities.SpeechGeneration)` finds
+  speech models. `client.supports` answers the four from the provider's
+  configuration.
+- **`ProviderInfo.capabilities`** lists what a provider offers, with no
+  client and no API key, in the order `Capabilities` declares them.
+  `Catalogue` is not listed.
+- `knownModels` lists chat models only for providers with compiled chat
+  facts (today Anthropic, Google and OpenAI).
 - `ModelInfo.displayName` falls back to the model's label when the
   provider's model list carries no name.
 

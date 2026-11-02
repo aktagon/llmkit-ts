@@ -40,7 +40,9 @@ export interface Provider {
  * Capability names one of the SDK's modelled capabilities. The set mirrors
  *
  *
- * provider wire data.
+ * provider wire data. A model lists speech_generation, music_generation or
+ * video_generation when the provider's speech, music or video model list
+ * holds it (ADR-102 MPT-010).
  */
 export type Capability =
   | "chat_completion"
@@ -50,7 +52,11 @@ export type Capability =
   | "batching"
   | "caching"
   | "reasoning"
-  | "catalogue";
+  | "catalogue"
+  | "speech_generation"
+  | "music_generation"
+  | "video_generation"
+  | "transcription";
 
 export const Capabilities = {
   ChatCompletion: "chat_completion",
@@ -61,6 +67,10 @@ export const Capabilities = {
   Caching: "caching",
   Reasoning: "reasoning",
   Catalogue: "catalogue",
+  SpeechGeneration: "speech_generation",
+  MusicGeneration: "music_generation",
+  VideoGeneration: "video_generation",
+  Transcription: "transcription",
 } as const satisfies Record<string, Capability>;
 
 // Usage is GENERATED from the TokenDimension instances (plus the ADR-027
