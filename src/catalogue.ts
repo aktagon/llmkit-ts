@@ -19,17 +19,17 @@ export const compiledInModels: ModelInfo[] = [
   { id: "claude-opus-4-7", provider: { name: "anthropic", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling], displayName: "Claude Opus 4.7", contextWindow: 1000000, maxOutput: 128000 },
   { id: "claude-sonnet-4-5-20250929", provider: { name: "anthropic", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling], displayName: "Claude Sonnet 4.5", contextWindow: 1000000, maxOutput: 64000 },
   { id: "claude-sonnet-4-6", provider: { name: "anthropic", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling], displayName: "Claude Sonnet 4.6", contextWindow: 1000000, maxOutput: 128000 },
-  { id: "gemini-2.5-flash", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling], displayName: "Gemini 2.5 Flash", description: "Stable version of Gemini 2.5 Flash", contextWindow: 1048576, maxOutput: 65536 },
+  { id: "gemini-2.5-flash", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning], displayName: "Gemini 2.5 Flash", description: "Stable version of Gemini 2.5 Flash", contextWindow: 1048576, maxOutput: 65536 },
   { id: "gemini-2.5-flash-lite", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling], displayName: "Gemini 2.5 Flash-Lite", description: "Stable version of Gemini 2.5 Flash-Lite", contextWindow: 1048576, maxOutput: 65536 },
-  { id: "gemini-2.5-pro", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling], displayName: "Gemini 2.5 Pro", description: "Stable release of Gemini 2.5 Pro", contextWindow: 1048576, maxOutput: 65536 },
+  { id: "gemini-2.5-pro", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning], displayName: "Gemini 2.5 Pro", description: "Stable release of Gemini 2.5 Pro", contextWindow: 1048576, maxOutput: 65536 },
   { id: "gemini-nano-banana-2.1", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ImageGeneration], displayName: "Nano Banana 2.1", description: "Gemini Nano Banana 2.1", contextWindow: 131072, maxOutput: 32768 },
   { id: "gpt-4o", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling] },
   { id: "gpt-4o-mini", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling] },
-  { id: "gpt-5", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling] },
+  { id: "gpt-5", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning] },
   { id: "gpt-image-1", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ImageGeneration] },
   { id: "o1", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.Reasoning] },
-  { id: "o3", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling] },
-  { id: "o4-mini", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling] },
+  { id: "o3", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning] },
+  { id: "o4-mini", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning] },
 ];
 
 /** (provider name, model id) -> capabilities — consulted by live-path
@@ -45,19 +45,19 @@ export const ontologyCapabilities: Record<string, Record<string, Capability[]>> 
     "claude-sonnet-4-6": [Capabilities.ChatCompletion, Capabilities.ToolCalling],
   },
   "google": {
-    "gemini-2.5-flash": [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling],
+    "gemini-2.5-flash": [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning],
     "gemini-2.5-flash-lite": [Capabilities.ChatCompletion, Capabilities.ToolCalling],
-    "gemini-2.5-pro": [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling],
+    "gemini-2.5-pro": [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning],
     "gemini-nano-banana-2.1": [Capabilities.ImageGeneration],
   },
   "openai": {
     "gpt-4o": [Capabilities.ChatCompletion, Capabilities.ToolCalling],
     "gpt-4o-mini": [Capabilities.ChatCompletion, Capabilities.ToolCalling],
-    "gpt-5": [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling],
+    "gpt-5": [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning],
     "gpt-image-1": [Capabilities.ImageGeneration],
     "o1": [Capabilities.ChatCompletion, Capabilities.Reasoning],
-    "o3": [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling],
-    "o4-mini": [Capabilities.ChatCompletion, Capabilities.Reasoning, Capabilities.ToolCalling],
+    "o3": [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning],
+    "o4-mini": [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning],
   },
 };
 

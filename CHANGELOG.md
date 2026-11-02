@@ -9,25 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`providers.catalogue(name)` lists the models this SDK version states
+- **`providers.knownModels(name)` lists the models this SDK version states
   facts for, with no client, no API key and no network.** It returns a
-  `ModelInfo[]` sorted by id, with `capabilities` and the hints filled. The
-  live fields (`displayName`, `contextWindow`, `raw` and the rest) are
-  empty. The list is not proof that the provider serves a model; use
+  `ModelInfo[]` sorted by id, with `capabilities`, the hints and the model's
+  label as `displayName`. The live fields (`description`, `contextWindow`,
+  `raw` and the rest) are empty. A provider with no listed models returns
+  an empty list; a name that is not a provider throws `ValidationError`.
+  The list is not proof that the provider serves a model; use
   `client.models.provider(p).list()` for that.
 - **`ModelInfo.music` holds a `MusicHints`** for a model the SDK lists for
   music generation: whether it takes lyrics, the maximum duration in
   seconds, the audio formats it can return, and whether it takes image
-  parts.
+  parts. Each support fact is absent when no source states it.
 - **`SpeechHints.maxSpeakers`** is the number of speakers the model takes,
-  or absent when no source states it. It is 1 when the provider's request
-  has no multi-speaker form.
+  or absent when no source states it. **`SpeechHints.rejects`** names the
+  request options the SDK rejects before send for the model, from
+  `"speakers"` and `"style"`, sorted.
+- **`modelInfoToJSON(m)`** writes the JSON form the Go, TypeScript and Rust
+  SDKs share: camelCase keys, `provider` as the provider name, and `null`
+  for an absent or unknown value.
+- `ModelInfo.displayName` falls back to the model's label when the
+  provider's model list carries no name.
 
 ### Changed
 
-- **`SpeechHints.style` is `false` when the provider's request carries no
-  style**, whatever the model states. The SDK already rejected a style on
-  those providers before send.
+- A model's capabilities are listed in the order `Capabilities` declares
+  them.
 
 ## [3.0.0] — 2026-11-02
 
