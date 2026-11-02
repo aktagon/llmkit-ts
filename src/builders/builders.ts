@@ -48,14 +48,14 @@ export const DEFAULT_TIMEOUT_MS = 600000;
 import { saveHistory, loadHistory } from "../wire.ts";
 import { agentMessages, agentPrompt, agentReset, agentUnsavedTurns } from "./agent.ts";
 import { textBatch } from "./batch.ts";
-import { imageGenerate } from "./image.ts";
-import { musicGenerate } from "./music.ts";
-import { speechGenerate } from "./speech.ts";
+import { imageGenerate, imagePreviewRequest } from "./image.ts";
+import { musicGenerate, musicPreviewRequest } from "./music.ts";
+import { speechGenerate, speechPreviewRequest } from "./speech.ts";
 import { textStream } from "./stream.ts";
 import { textPrompt, textSetRequest } from "./text.ts";
 import { transcriptionSubmit, transcriptionTranscribe } from "./transcription.ts";
 import { uploadRun } from "./upload.ts";
-import { videoSubmit } from "./video.ts";
+import { videoPreviewRequest, videoSubmit } from "./video.ts";
 import type { AgentState } from "./agent.ts";
 import type { TextStream } from "./stream.ts";
 
@@ -322,6 +322,9 @@ export class Image {
   async generate(msg: string): Promise<ImageResponse> {
     return imageGenerate(this, msg);
   }
+  previewRequest(msg: string): string {
+    return imagePreviewRequest(this, msg);
+  }
 }
 
 // === Music — MusicGeneration builder ===
@@ -342,6 +345,9 @@ export class Music {
   text(s: string): Music { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   async generate(msg: string): Promise<MusicResponse> {
     return musicGenerate(this, msg);
+  }
+  previewRequest(msg: string): string {
+    return musicPreviewRequest(this, msg);
   }
 }
 
@@ -383,6 +389,9 @@ export class Speech {
   voice(id: string): Speech { const out = clone(this); out._voice = id; return out; }
   async generate(msg: string): Promise<SpeechResponse> {
     return speechGenerate(this, msg);
+  }
+  previewRequest(msg: string): string {
+    return speechPreviewRequest(this, msg);
   }
 }
 
@@ -468,6 +477,9 @@ export class Video {
   text(s: string): Video { const out = clone(this); out._parts = [...out._parts, { text: s }]; return out; }  // ordered
   async submit(msg: string): Promise<VideoHandle> {
     return videoSubmit(this, msg);
+  }
+  previewRequest(msg: string): string {
+    return videoPreviewRequest(this, msg);
   }
 }
 

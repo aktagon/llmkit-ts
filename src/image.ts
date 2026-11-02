@@ -5,10 +5,11 @@
 // select a request variant (ADR-096); dispatch switches on that variant's
 // request shape, never on provider name.
 
-import { PROVIDERS } from "./providers/providers.ts";
+import { PROVIDERS, type ProviderSpec } from "./providers/providers.ts";
 import {
   type ImageGenDef,
   type ImageModelDef,
+  type RequestVariant,
   imageGenConfig,
 } from "./providers/image_gen.ts";
 import { writeJson } from "./json_text.ts";
@@ -110,11 +111,140 @@ export interface ImageOptions {
   raw?: boolean;
 }
 
+// PreparedImage is a validated image call: every pre-flight check has passed
+// and the request variant is selected (ADR-106 PRV-006).
+interface PreparedImage {
+  provider: Provider;
+  request: ImageRequest;
+  options: ImageOptions;
+  cfg: ProviderSpec;
+  imgCfg: ImageGenDef;
+  model: ImageModelDef | undefined;
+  listed: boolean;
+  parts: Part[];
+  imageCount: number;
+  variant: RequestVariant;
+}
+
+// ImageWire is the request the terminal POSTs: a JSON body is the exact
+// serialized string; the OpenAI edits body is multipart form data.
+interface ImageWire {
+  url: string;
+  headers: Record<string, string>;
+  body: string | FormData;
+}
+
 export async function generateImage(
   provider: Provider,
   request: ImageRequest,
   options: ImageOptions = {},
 ): Promise<ImageResponse> {
+  const prepared = prepareImage(provider, request, options);
+  const { imgCfg, model, listed, imageCount } = prepared;
+  const baseEvent: Event = {
+    op: "image_generation",
+    phase: "pre",
+    provider: provider.name,
+    model: request.model,
+    modelUnlisted: !listed,
+  };
+  const veto = firePre(options.middleware, baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
+
+  try {
+    const wire = buildImageWire(prepared);
+    const httpResp = await sendHTTP(wire.url, {
+      method: "POST",
+      headers: wire.headers,
+      body: wire.body,
+      signal: options.signal,
+    }, provider.timeoutMs);
+
+    const respText = await httpResp.text();
+    if (!httpResp.ok) {
+      throw new APIError(
+        httpResp.status,
+        respText,
+        httpResp.status === 429 || httpResp.status >= 500,
+      );
+    }
+
+    const raw = JSON.parse(respText) as unknown;
+    // Response parser selected by config shape, never by provider name
+    // (BUG-024). imgCfg.usage{Input,Output,Reasoning}Path are dotted-from-root,
+    // image-gen-scoped, and empty when the endpoint reports no usage.
+    let result: ImageResponse;
+    switch (imgCfg.responseShape) {
+      case "DataArrayB64Json":
+        // OpenAI/xAI/Recraft data[].b64_json shape. SVG bytes (Recraft vector
+        // models) are sniffed to image/svg+xml inside the parser.
+        result = parseImageResponseDataArray(
+          raw,
+          imgCfg.usageInputPath,
+          imgCfg.usageOutputPath,
+          imgCfg.usageReasoningPath,
+        );
+        break;
+      case "GoogleParts":
+        // candidates[].content.parts inline data.
+        result = parseImageResponse(
+          raw,
+          imgCfg.usageInputPath,
+          imgCfg.usageOutputPath,
+          imgCfg.usageReasoningPath,
+        );
+        break;
+      case "VertexPredictions":
+        // No runtime parses VertexPredictions (Vertex Imagen removed, BUG-101).
+        throw new APIError(0, `image: unsupported response shape ${imgCfg.responseShape}`, false);
+      default: {
+        const _exhaustive: never = imgCfg.responseShape;
+        throw new APIError(0, `image: unsupported response shape ${String(_exhaustive)}`, false);
+      }
+    }
+    if (options.raw) result.raw = raw;
+    firePost(options.middleware, {
+      ...baseEvent,
+      usage: result.usage,
+      duration: performance.now() - start,
+    });
+    return result;
+  } catch (caught) {
+    const err = withHint(caught, imageHint(model, options, imageCount));
+    firePost(options.middleware, {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
+  }
+}
+
+/**
+ * previewImageRequest returns the exact JSON body generateImage would POST,
+ * after the same validation, with no middleware and no network (ADR-106).
+ * A multipart request (OpenAI edits) has no previewable body.
+ */
+export function previewImageRequest(
+  provider: Provider,
+  request: ImageRequest,
+  options: ImageOptions = {},
+): string {
+  const { body } = buildImageWire(prepareImage(provider, request, options));
+  if (typeof body !== "string") {
+    throw new ValidationError("preview", "not available for a multipart request body");
+  }
+  return body;
+}
+
+// prepareImage runs every pre-flight check and selects the request variant.
+// It is shared by generateImage and previewImageRequest (ADR-106 PRV-006).
+function prepareImage(
+  provider: Provider,
+  request: ImageRequest,
+  options: ImageOptions,
+): PreparedImage {
   const cfg = PROVIDERS[provider.name];
   if (!cfg) {
     throw new ValidationError("provider", `unknown: ${provider.name}`);
@@ -240,134 +370,62 @@ export async function generateImage(
     throw new Error(`image: unsupported request shape ${String(_exhaustive)}`);
   }
 
-  const baseEvent: Event = {
-    op: "image_generation",
-    phase: "pre",
-    provider: provider.name,
-    model: request.model,
-    modelUnlisted: !listed,
-  };
-  const veto = firePre(options.middleware, baseEvent);
-  if (veto) throw veto;
-  const start = performance.now();
+  return { provider, request, options, cfg, imgCfg, model, listed, parts, imageCount, variant };
+}
 
-  try {
-    const baseUrl = provider.baseUrl || cfg.baseUrl;
-    const authHeaders = buildAuthHeaders(provider, cfg);
+// buildImageWire builds the URL, headers and body the terminal sends. The
+// JSON body is serialized here, once, so the preview and the send share it.
+function buildImageWire(prepared: PreparedImage): ImageWire {
+  const { provider, request, options, cfg, parts, variant } = prepared;
+  const baseUrl = provider.baseUrl || cfg.baseUrl;
+  const authHeaders = buildAuthHeaders(provider, cfg);
 
-    // URL: base + the variant's endpoint, or the provider's main endpoint
-    // template (with {model} substituted) when the endpoint is empty.
-    let url: string;
-    if (variant.endpoint) {
-      url = baseUrl + variant.endpoint;
-    } else {
-      let endpoint = (cfg.endpoint || "").replaceAll("{model}", request.model);
-      if (cfg.authScheme === "QueryParamKey" && cfg.authQueryParam) {
-        const sep = endpoint.includes("?") ? "&" : "?";
-        endpoint = `${endpoint}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
-      }
-      url = baseUrl + endpoint;
+  // URL: base + the variant's endpoint, or the provider's main endpoint
+  // template (with {model} substituted) when the endpoint is empty.
+  let url: string;
+  if (variant.endpoint) {
+    url = baseUrl + variant.endpoint;
+  } else {
+    let endpoint = (cfg.endpoint || "").replaceAll("{model}", request.model);
+    if (cfg.authScheme === "QueryParamKey" && cfg.authQueryParam) {
+      const sep = endpoint.includes("?") ? "&" : "?";
+      endpoint = `${endpoint}${sep}${cfg.authQueryParam}=${encodeURIComponent(provider.apiKey)}`;
     }
-
-    let httpResp: Response;
-    if (variant.shape === "MultipartForm") {
-      const form = buildOpenAIEditFormData(parts, request.model, options);
-      httpResp = await sendHTTP(url, {
-        method: "POST",
-        headers: authHeaders, // FormData sets its own Content-Type
-        body: form,
-        signal: options.signal,
-      }, provider.timeoutMs);
-    } else {
-      let body: Record<string, unknown>;
-      switch (variant.shape) {
-        case "JSONGenerationsOpenAI":
-          body = buildOpenAIGenBody(parts, request.model, options);
-          break;
-        case "JSONInlineRefs":
-          body = buildXAIBody(parts, request.model, options);
-          break;
-        case "JSONGenerations":
-          body = buildRecraftGenBody(parts, request.model, options);
-          break;
-        case "JSONGenerationsInputRefs":
-          body = buildRecraftGenBody(parts, request.model, options);
-          body.input_references = imageURLContentParts(parts);
-          break;
-        case "InlineParts":
-          body = buildImageBody(parts, options);
-          break;
-        default:
-          throw new Error(
-            `image request shape "${variant.shape}" has no body builder`,
-          );
-      }
-      httpResp = await sendHTTP(url, {
-        method: "POST",
-        headers: { ...authHeaders, "content-type": "application/json" },
-        body: writeJson(body),
-        signal: options.signal,
-      }, provider.timeoutMs);
-    }
-
-    const respText = await httpResp.text();
-    if (!httpResp.ok) {
-      throw new APIError(
-        httpResp.status,
-        respText,
-        httpResp.status === 429 || httpResp.status >= 500,
-      );
-    }
-
-    const raw = JSON.parse(respText) as unknown;
-    // Response parser selected by config shape, never by provider name
-    // (BUG-024). imgCfg.usage{Input,Output,Reasoning}Path are dotted-from-root,
-    // image-gen-scoped, and empty when the endpoint reports no usage.
-    let result: ImageResponse;
-    switch (imgCfg.responseShape) {
-      case "DataArrayB64Json":
-        // OpenAI/xAI/Recraft data[].b64_json shape. SVG bytes (Recraft vector
-        // models) are sniffed to image/svg+xml inside the parser.
-        result = parseImageResponseDataArray(
-          raw,
-          imgCfg.usageInputPath,
-          imgCfg.usageOutputPath,
-          imgCfg.usageReasoningPath,
-        );
-        break;
-      case "GoogleParts":
-        // candidates[].content.parts inline data.
-        result = parseImageResponse(
-          raw,
-          imgCfg.usageInputPath,
-          imgCfg.usageOutputPath,
-          imgCfg.usageReasoningPath,
-        );
-        break;
-      case "VertexPredictions":
-        // No runtime parses VertexPredictions (Vertex Imagen removed, BUG-101).
-        throw new APIError(0, `image: unsupported response shape ${imgCfg.responseShape}`, false);
-      default: {
-        const _exhaustive: never = imgCfg.responseShape;
-        throw new APIError(0, `image: unsupported response shape ${String(_exhaustive)}`, false);
-      }
-    }
-    if (options.raw) result.raw = raw;
-    firePost(options.middleware, {
-      ...baseEvent,
-      usage: result.usage,
-      duration: performance.now() - start,
-    });
-    return result;
-  } catch (caught) {
-    const err = withHint(caught, imageHint(model, options, imageCount));
-    firePost(options.middleware, {
-      ...baseEvent,
-      err: err instanceof Error ? err : new Error(String(err)),
-      duration: performance.now() - start,
-    });
-    throw err;
+    url = baseUrl + endpoint;
   }
+
+  if (variant.shape === "MultipartForm") {
+    // FormData sets its own Content-Type.
+    return { url, headers: authHeaders, body: buildOpenAIEditFormData(parts, request.model, options) };
+  }
+  let body: Record<string, unknown>;
+  switch (variant.shape) {
+    case "JSONGenerationsOpenAI":
+      body = buildOpenAIGenBody(parts, request.model, options);
+      break;
+    case "JSONInlineRefs":
+      body = buildXAIBody(parts, request.model, options);
+      break;
+    case "JSONGenerations":
+      body = buildRecraftGenBody(parts, request.model, options);
+      break;
+    case "JSONGenerationsInputRefs":
+      body = buildRecraftGenBody(parts, request.model, options);
+      body.input_references = imageURLContentParts(parts);
+      break;
+    case "InlineParts":
+      body = buildImageBody(parts, options);
+      break;
+    default:
+      throw new Error(
+        `image request shape "${variant.shape}" has no body builder`,
+      );
+  }
+  return {
+    url,
+    headers: { ...authHeaders, "content-type": "application/json" },
+    body: writeJson(body),
+  };
 }
 
 /**

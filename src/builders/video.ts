@@ -223,6 +223,69 @@ export async function videoSubmit(
   b: Video,
   msg: string,
 ): Promise<VideoHandle> {
+  const prepared = prepareVideo(b, msg);
+  const { provider, cfg, vgCfg, model, listed, imageCount } = prepared;
+  const baseEvent: Event = {
+    op: "video_generation",
+    phase: "pre",
+    provider: provider.name,
+    model: b._model,
+    modelUnlisted: !listed,
+  };
+  const veto = firePre(b._middleware as MiddlewareFn[], baseEvent);
+  if (veto) throw veto;
+  const start = performance.now();
+
+  try {
+    const wire = buildVideoWire(prepared);
+    // Bedrock (SigV4) signs the submit POST; the bearer/query-param header map
+    // does not apply. Region/secret/session come from the AWS env vars.
+    const respText =
+      cfg.authScheme === "SigV4"
+        ? await sigV4PostJson(wire.url, wire.body, provider, cfg)
+        : await postJson(wire.url, wire.body, wire.headers, provider.timeoutMs);
+    const requestId = readVideoHandle(respText, vgCfg);
+    firePost(b._middleware as MiddlewareFn[], {
+      ...baseEvent,
+      duration: performance.now() - start,
+    });
+    return new VideoHandle(requestId, provider, !!b._raw, b._model, b._keepStored);
+  } catch (caught) {
+    const err = withHint(
+      caught,
+      videoHint(model, imageCount, b._lastFrame, b._referenceImages.length, b._duration, b._resolution, b._aspectRatio),
+    );
+    firePost(b._middleware as MiddlewareFn[], {
+      ...baseEvent,
+      err: err instanceof Error ? err : new Error(String(err)),
+      duration: performance.now() - start,
+    });
+    throw err;
+  }
+}
+
+// PreparedVideo is a validated video submit (ADR-106 PRV-006).
+interface PreparedVideo {
+  b: Video;
+  provider: Provider;
+  cfg: ProviderSpec;
+  vgCfg: VideoGenDef;
+  model: VideoModelDef | undefined;
+  listed: boolean;
+  parts: Part[];
+  imageCount: number;
+  variant: RequestVariant;
+}
+
+// videoPreviewRequest returns the exact JSON body videoSubmit would POST,
+// after the same validation, with no middleware and no network (ADR-106).
+export function videoPreviewRequest(b: Video, msg: string): string {
+  return buildVideoWire(prepareVideo(b, msg)).body;
+}
+
+// prepareVideo runs every pre-flight check and selects the submit request
+// variant; videoSubmit and videoPreviewRequest share it.
+function prepareVideo(b: Video, msg: string): PreparedVideo {
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
@@ -307,53 +370,7 @@ export async function videoSubmit(
     );
   }
 
-  const baseEvent: Event = {
-    op: "video_generation",
-    phase: "pre",
-    provider: provider.name,
-    model: b._model,
-    modelUnlisted: !listed,
-  };
-  const veto = firePre(b._middleware as MiddlewareFn[], baseEvent);
-  if (veto) throw veto;
-  const start = performance.now();
-
-  try {
-    const baseUrl = videoBaseUrl(provider, cfg, vgCfg);
-    const headers = buildAuthHeaders(provider, cfg);
-    const requestId = await dispatchVideoSubmit(
-      vgCfg,
-      variant,
-      baseUrl,
-      headers,
-      provider,
-      cfg,
-      b._model,
-      b._outputURI,
-      parts,
-      b._lastFrame,
-      b._referenceImages,
-      b._duration,
-      b._aspectRatio,
-      b._resolution,
-    );
-    firePost(b._middleware as MiddlewareFn[], {
-      ...baseEvent,
-      duration: performance.now() - start,
-    });
-    return new VideoHandle(requestId, provider, !!b._raw, b._model, b._keepStored);
-  } catch (caught) {
-    const err = withHint(
-      caught,
-      videoHint(model, imageCount, b._lastFrame, b._referenceImages.length, b._duration, b._resolution, b._aspectRatio),
-    );
-    firePost(b._middleware as MiddlewareFn[], {
-      ...baseEvent,
-      err: err instanceof Error ? err : new Error(String(err)),
-      duration: performance.now() - start,
-    });
-    throw err;
-  }
+  return { b, provider, cfg, vgCfg, model, listed, parts, imageCount, variant };
 }
 
 // videoHint names the stated facts of a listed video model the request
@@ -383,9 +400,9 @@ function videoHint(
   return catalogueHint(model.modelId, facts);
 }
 
-// dispatchVideoSubmit POSTs the submit body per wire shape (never by provider
-// name — the wire shape is the single discriminator) and returns the
-// provider-assigned poll handle id.
+// buildVideoWire builds the submit URL, headers and serialized body per wire
+// shape (never by provider name — the wire shape is the single discriminator).
+// videoSubmit POSTs the body; videoPreviewRequest returns it (ADR-106).
 //
 //   - VideoGrok (xAI), VideoZhipu (CogVideoX), VideoTogether, VideoMinimax and
 //     VideoVidu share the simple {model, prompt} submit body. They differ only in which response
@@ -401,22 +418,18 @@ function videoHint(
 // The body and any per-shape headers are selected by wire shape (never
 // provider name); the poll handle id is always read from the config-declared
 // dotted path (vgCfg.submitHandleField).
-async function dispatchVideoSubmit(
-  vgCfg: VideoGenDef,
-  variant: RequestVariant,
-  baseUrl: string,
-  headers: Record<string, string>,
-  provider: Provider,
-  cfg: ProviderSpec,
-  model: string,
-  outputUri: string,
-  parts: Part[],
-  lastFrame: MediaRef | undefined,
-  referenceImages: MediaRef[],
-  durationSeconds: number | bigint,
-  aspectRatio: string,
-  resolution: string,
-): Promise<string> {
+function buildVideoWire(
+  prepared: PreparedVideo,
+): { url: string; headers: Record<string, string>; body: string } {
+  const { b, provider, cfg, vgCfg, variant, parts } = prepared;
+  const model = b._model;
+  const lastFrame = b._lastFrame;
+  const referenceImages = b._referenceImages;
+  const durationSeconds = b._duration;
+  const aspectRatio = b._aspectRatio;
+  const resolution = b._resolution;
+  const baseUrl = videoBaseUrl(provider, cfg, vgCfg);
+  const headers = buildAuthHeaders(provider, cfg);
   // Submit endpoint is the selected request variant's (ADR-096), resolved
   // against the config-declared base (Option D); handle id read from the config-declared dotted path (OQ7).
   let body: Record<string, unknown>;
@@ -483,7 +496,7 @@ async function dispatchVideoSubmit(
         textToVideoParams: { text: joinPromptText(parts) },
       },
       outputDataConfig: {
-        s3OutputDataConfig: { s3Uri: outputUri },
+        s3OutputDataConfig: { s3Uri: b._outputURI },
       },
     };
   } else if (vgCfg.wireShape === "VideoGeminiOmni") {
@@ -549,12 +562,12 @@ async function dispatchVideoSubmit(
     provider,
     cfg,
   );
-  // Bedrock (SigV4) signs the submit POST; the bearer/query-param header map
-  // does not apply. Region/secret/session come from the AWS env vars.
-  const respText =
-    cfg.authScheme === "SigV4"
-      ? await sigV4PostJson(submitUrl, body, provider, cfg)
-      : await postJson(submitUrl, body, postHeaders, provider.timeoutMs);
+  return { url: submitUrl, headers: postHeaders, body: writeJson(body) };
+}
+
+// readVideoHandle reads the provider-assigned poll handle id from the submit
+// reply, at the config-declared dotted path (vgCfg.submitHandleField).
+function readVideoHandle(respText: string, vgCfg: VideoGenDef): string {
   const raw = JSON.parse(respText) as Record<string, unknown>;
   const id = lookupHandleField(raw, vgCfg.submitHandleField);
   if (!id) {
@@ -1501,7 +1514,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 async function postJson(
   url: string,
-  body: Record<string, unknown>,
+  jsonBody: string,
   headers: Record<string, string>,
   timeoutMs: number | undefined,
 ): Promise<string> {
@@ -1510,7 +1523,7 @@ async function postJson(
     {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
-      body: writeJson(body),
+      body: jsonBody,
     },
     timeoutMs,
   );
@@ -1614,12 +1627,11 @@ async function fetchBytes(
 // content-hashed into the signature).
 async function sigV4PostJson(
   url: string,
-  body: Record<string, unknown>,
+  jsonBody: string,
   provider: Provider,
   cfg: ProviderSpec,
 ): Promise<string> {
   const { signSigV4 } = await import("../sigv4.ts");
-  const jsonBody = writeJson(body);
   const region = process.env[cfg.regionEnvVar] || "";
   const secret = process.env[cfg.secretKeyEnvVar] || "";
   const session = process.env[cfg.sessionTokenEnvVar] || "";

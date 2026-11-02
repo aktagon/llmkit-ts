@@ -4,6 +4,7 @@
 
 import {
   generateMusic as runMusicGeneration,
+  previewMusicRequest,
   type MusicOptions,
   type MusicRequest,
   type MusicResponse,
@@ -17,6 +18,22 @@ export async function musicGenerate(
   b: Music,
   msg: string,
 ): Promise<MusicResponse> {
+  const [provider, request, options] = musicCall(b, msg);
+  return await runMusicGeneration(provider, request, options);
+}
+
+// musicPreviewRequest returns the body musicGenerate would POST (ADR-106).
+export function musicPreviewRequest(b: Music, msg: string): string {
+  const [provider, request] = musicCall(b, msg);
+  return previewMusicRequest(provider, request);
+}
+
+// musicCall translates the builder state into the runtime's arguments; the
+// terminal and the preview share it.
+function musicCall(
+  b: Music,
+  msg: string,
+): [Provider, MusicRequest, MusicOptions] {
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
@@ -38,5 +55,6 @@ export async function musicGenerate(
   if (b._middleware.length > 0) options.middleware = b._middleware;
   if (b._raw) options.raw = true;
 
-  return await runMusicGeneration(provider, request, options);
+  return [provider, request, options];
 }
+
