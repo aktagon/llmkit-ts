@@ -9,8 +9,8 @@
  * builder gets a fresh conversation. `bot.reset()` clears history
  * without dropping chained config.
  */
-import { anthropic, Client } from "../src/builders/index.ts";
-import type { Tool } from "../src/builders/index.ts";
+import { anthropic, Client } from "../src/llmkit.ts";
+import type { Tool } from "../src/llmkit.ts";
 import { responseText } from "../src/llmkit.ts";
 
 const add: Tool = {

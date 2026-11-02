@@ -1,17 +1,12 @@
-// Public package entry point. The typed builder is the v1.0.0 API
-// surface; this module re-exports the per-provider factories,
-// `newClient`, and the four builder classes so `import { anthropic }
-// from "@aktagon/llmkit-ts"` works alongside the explicit subpackage
-// import `import { anthropic } from "@aktagon/llmkit-ts/builders"`.
+// Public package entry point, the only one (ADR-104 PUB-009). It
+// re-exports the per-provider factories, `newClient`, the Client, every
+// builder type a caller meets through the client, and the handle classes,
+// so `import { anthropic } from "@aktagon/llmkit-ts"` reaches the whole API.
 
 export {
   newClient,
   Client,
-  Text,
-  Image,
-  Music,
-  Agent,
-  Upload,
+  BatchHandle,
   ai21,
   anthropic,
   assemblyai,
@@ -49,6 +44,8 @@ export {
   yi,
   zhipu,
 } from "./builders/index.ts";
+// Client.provider's type (ADR-104 PUB-009).
+export type { ProviderConfig } from "./builders/index.ts";
 
 export type {
   Provider,
@@ -57,7 +54,6 @@ export type {
   Message,
   Usage,
   File,
-  BatchHandle,
   ToolCall,
   ToolResult,
   ProviderTurn,
@@ -94,12 +90,10 @@ export type { JobFailureCode } from "./providers/batch.ts";
 export type { FinishReason } from "./providers/providers.ts";
 export type { Tool } from "./types.ts";
 export type {
-  ImageRequest,
   ImageResponse,
   ImageData,
   MediaRef,
   Part,
-  ImageOptions,
 } from "./image.ts";
 // Standalone Part constructors for varargs terminals (transcription, ADR-048).
 export { audio, audioBytes } from "./image.ts";
@@ -112,16 +106,10 @@ export type {
   TranscriptSegment,
 } from "./structs.ts";
 export type {
-  MusicRequest,
   MusicResponse,
   AudioData,
-  MusicOptions,
 } from "./music.ts";
-export type {
-  SpeechRequest,
-  SpeechResponse,
-  SpeechOptions,
-} from "./speech.ts";
+export type { SpeechResponse } from "./speech.ts";
 // Video generation (ADR-034): the async handle class and its result
 // containers, mirroring the other media capabilities so a consumer can name
 // the type of `client.video()...submit(...).wait()`.
@@ -131,45 +119,35 @@ export type { VideoResponse, VideoData } from "./structs.ts";
 // client.models.list() and client.models.provider(...).list() return, so a
 // consumer can name the type of a catalogue result at the package boundary.
 export type { ModelInfo, LiveResult, ImageHints, VideoHints, SpeechHints } from "./structs.ts";
-// Per-model capability introspection (BUG-011): query the supported models and
-// their advisory caps (maxInputImages, supportsImageToVideo, ...) so a consumer
-// can gate input — e.g. how many seed/reference images a model accepts —
-// before issuing a call. These live in the generated providers module, which
-// is not its own package entry point, so they MUST be re-exported here.
-export { imageGenConfig } from "./providers/image_gen.ts";
+// The errors the catalogue calls throw (ADR-104 PUB-009), so a caller can
+// test them with instanceof.
+export { ErrModelsNotSupported, ErrModelsUnavailable, ErrModelsScope } from "./models.ts";
+// The value type of LiveResult.errors (ADR-104 PUB-005).
+export type { ProviderError } from "./structs.ts";
+// Client-reachable types a caller could not name (ADR-104 PUB-001):
+// client.models and client.providers (the configured-provider catalogue, not
+// the static `providers` roster namespace), client.models.provider(p)'s
+// return, Text.stream()'s return, and the poll policy BatchHandle.wait and
+// poll take.
+// The builder classes are type-only exports: a caller gets each one from the
+// client, and their constructors are internal (ADR-104 PUB-001).
 export type {
-  ImageGenDef,
-  ImageModelDef,
-  CarriedInput,
-  ImageRequestShape,
-  RequestVariant,
-  ImageOutputMode,
-} from "./providers/image_gen.ts";
-export { videoGenConfig } from "./providers/video_gen.ts";
-export type {
-  VideoGenDef,
-  VideoModelDef,
-  VideoWireShape,
-  VideoOutputDelivery,
-} from "./providers/video_gen.ts";
-export { musicGenConfig } from "./providers/music_gen.ts";
-export type { MusicGenDef, MusicModelDef } from "./providers/music_gen.ts";
-export { speechGenConfig } from "./providers/speech_gen.ts";
-export type { SpeechGenDef, SpeechModelDef } from "./providers/speech_gen.ts";
-// Prompt-caching capability, queryable so a consumer can gate the builder's
-// `.caching()` on real support (it THROWS for a provider with no caching
-// config, e.g. grok — not a no-op). Same introspection pattern as the *GenConfig
-// re-exports above: the config lives in the generated providers module, which is
-// not its own entry point, so it MUST be re-exported here.
-export { cachingConfig } from "./providers/caching.ts";
-// Batch slot values (ADR-091): the finishReason of a batch slot with no result
-// line, and of a failed slot the provider gave no reason for.
-export { BATCH_SLOT_ERROR, BATCH_SLOT_MISSING } from "./providers/batch.ts";
-export type {
-  CachingDef,
-  CachingMode,
-  CachingLifecycle,
-} from "./providers/caching.ts";
+  Text,
+  Image,
+  Music,
+  Speech,
+  Transcription,
+  Video,
+  Agent,
+  Upload,
+} from "./builders/index.ts";
+export type { Models, Providers, ScopedModels } from "./builders/catalogue.ts";
+export type { TextStream } from "./builders/stream.ts";
+export type { BatchOptions } from "./batch.ts";
+// The poll policy VideoHandle.wait and TranscriptionHandle.wait take
+// (ADR-104 PUB-009).
+export type { VideoWaitOptions } from "./builders/video.ts";
+export type { TranscriptionWaitOptions } from "./builders/transcription.ts";
 // Provider metadata (ADR-038): the narrow public per-provider catalogue
 // (name/envVar/defaultModel/baseUrl) — a projection of provider facts, NOT the
 // internal wire/transform spec. Exposed as the static `providers` namespace
@@ -182,7 +160,9 @@ export type { ProviderInfo } from "./providers/provider_info.ts";
 // Typed provider identity (ADR-040), for consumers annotating providers.parse.
 export type { ProviderName } from "./providers/providers.ts";
 export { MiddlewareVetoError } from "./middleware.ts";
-export type { Event, MiddlewareFn } from "./providers/middleware.ts";
+// Event.op and Event.phase are typed by MiddlewareOp and MiddlewarePhase
+// (ADR-104 PUB-003).
+export type { Event, MiddlewareFn, MiddlewareOp, MiddlewarePhase } from "./providers/middleware.ts";
 // Opt-in telemetry (ADR-054). The value re-export also loads telemetry.ts at
 // runtime so its Client.addTelemetry prototype augmentation is installed.
 export { buildOTLPTraces, httpExport } from "./telemetry.ts";

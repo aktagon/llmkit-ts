@@ -26,6 +26,7 @@ export class Models {
   /** @internal */ readonly capFilter?: Capability;
   /** @internal */ readonly freshFlag: boolean;
 
+  /** @internal */
   constructor(client: Client, capFilter?: Capability, freshFlag = false) {
     this.client = client;
     this.capFilter = capFilter;
@@ -69,6 +70,7 @@ export class ScopedModels {
   /** @internal */ readonly rawFlag: boolean;
   /** @internal */ readonly freshFlag: boolean;
 
+  /** @internal */
   constructor(client: Client, target: Provider, capFilter?: Capability, rawFlag = false, freshFlag = false) {
     this.client = client;
     this.target = target;
@@ -103,6 +105,7 @@ export class ScopedModels {
 export class Providers {
   /** @internal */ readonly client: Client;
 
+  /** @internal */
   constructor(client: Client) {
     this.client = client;
   }
