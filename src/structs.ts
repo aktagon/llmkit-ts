@@ -429,6 +429,11 @@ export interface Request {
   thinkingBudget?: number | bigint;
 
   /**
+   * thinkingType is the thinking mode, such as "adaptive" or "disabled". When set it wins over the thinking type that the reasoning effort or the thinking budget would send. Unset sends none.
+   */
+  thinkingType?: string;
+
+  /**
    * safetySettings are the per-category safety filters for Gemini providers. Empty sets none.
    */
   safetySettings?: SafetySetting[];
