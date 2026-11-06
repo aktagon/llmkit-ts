@@ -123,6 +123,18 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         aspectRatios: [],
         maxInputImages: 0,
       },
+      {
+        modelId: "gemini-omni-1.2-flash",
+        label: "Gemini Omni 1.2 Flash",
+        supportsImageToVideo: false,
+        supportsLastFrame: false,
+        supportsReferenceImages: false,
+        maxDurationSeconds: 0,
+        outputMime: "video/mp4",
+        resolutions: [],
+        aspectRatios: [],
+        maxInputImages: 0,
+      },
     ],
   },
   grok: {

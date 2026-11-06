@@ -1418,7 +1418,7 @@ function validateGeminiOmniInputs(
 ): void {
   if (vgCfg.wireShape !== "VideoGeminiOmni") return;
   if (!sameInteger(durationSeconds, 0)) {
-    throw new ValidationError("duration", "Gemini Omni video has no duration field");
+    throw new ValidationError("duration", "llmkit sends no duration for Gemini Omni video");
   }
   if (parts.some((p) => hasPart(p, "image"))) {
     throw new ValidationError("parts", "Gemini Omni video sends text only, not a seed frame");
