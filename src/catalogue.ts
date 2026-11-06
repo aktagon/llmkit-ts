@@ -23,6 +23,8 @@ export const compiledInModels: ModelInfo[] = [
   { id: "gemini-2.5-flash-lite", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling], displayName: "Gemini 2.5 Flash-Lite", description: "Stable version of Gemini 2.5 Flash-Lite", contextWindow: 1048576, maxOutput: 65536 },
   { id: "gemini-2.5-pro", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning], displayName: "Gemini 2.5 Pro", description: "Stable release of Gemini 2.5 Pro", contextWindow: 1048576, maxOutput: 65536 },
   { id: "gemini-3-pro-image", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ImageGeneration], displayName: "Nano Banana Pro", description: "Gemini 3 Pro Image", contextWindow: 65536, maxOutput: 32768 },
+  { id: "gemini-3.5-flash-lite", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning], displayName: "Gemini 3.5 Flash-Lite", description: "Stable version of Gemini 3.5 Flash-Lite", contextWindow: 1048576, maxOutput: 65536 },
+  { id: "gemini-3.8-flash", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning], displayName: "Gemini 3.8 Flash", description: "Stable version of Gemini 3.8 Flash", contextWindow: 1048576, maxOutput: 65536 },
   { id: "gemini-nano-banana-2.1", provider: { name: "google", apiKey: "" }, capabilities: [Capabilities.ImageGeneration], displayName: "Nano Banana 2.1", description: "Gemini Nano Banana 2.1", contextWindow: 131072, maxOutput: 32768 },
   { id: "gpt-4o", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling] },
   { id: "gpt-4o-mini", provider: { name: "openai", apiKey: "" }, capabilities: [Capabilities.ChatCompletion, Capabilities.ToolCalling] },
@@ -50,6 +52,8 @@ export const ontologyCapabilities: Record<string, Record<string, Capability[]>> 
     "gemini-2.5-flash-lite": [Capabilities.ChatCompletion, Capabilities.ToolCalling],
     "gemini-2.5-pro": [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning],
     "gemini-3-pro-image": [Capabilities.ImageGeneration],
+    "gemini-3.5-flash-lite": [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning],
+    "gemini-3.8-flash": [Capabilities.ChatCompletion, Capabilities.ToolCalling, Capabilities.Reasoning],
     "gemini-nano-banana-2.1": [Capabilities.ImageGeneration],
   },
   "openai": {
