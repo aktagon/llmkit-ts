@@ -914,7 +914,7 @@ export const PROVIDERS: Record<ProviderName, ProviderSpec> = Object.assign(
     name: "google",
     baseUrl: "https://generativelanguage.googleapis.com",
     endpoint: "/v1beta/models/{model}:generateContent",
-    defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-3.5-flash-lite",
     envVar: "GOOGLE_API_KEY",
     defaultMaxTokens: 0,
     responseTextPath: "candidates[0].content.parts[0].text",

@@ -123,7 +123,7 @@ const PROVIDER_INFO: Record<ProviderName, ProviderInfo> = {
     id: "google",
     slug: "google",
     envVar: "GOOGLE_API_KEY",
-    defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-3.5-flash-lite",
     baseUrl: "https://generativelanguage.googleapis.com",
     browserCallable: true,
     capabilities: [Capabilities.ChatCompletion, Capabilities.ImageGeneration, Capabilities.ToolCalling, Capabilities.Reasoning, Capabilities.SpeechGeneration, Capabilities.MusicGeneration, Capabilities.VideoGeneration],
