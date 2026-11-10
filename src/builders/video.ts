@@ -349,6 +349,7 @@ function prepareVideo(b: Video, msg: string): PreparedVideo {
     b._duration,
     b._aspectRatio,
     b._resolution,
+    b._audio,
     b._referenceImages.length,
   );
   // ADR-096: the carried inputs select the submit request; a config with no
@@ -428,6 +429,7 @@ function buildVideoWire(
   const durationSeconds = b._duration;
   const aspectRatio = b._aspectRatio;
   const resolution = b._resolution;
+  const audio = b._audio;
   const baseUrl = videoBaseUrl(provider, cfg, vgCfg);
   const headers = buildAuthHeaders(provider, cfg);
   // Submit endpoint is the selected request variant's (ADR-096), resolved
@@ -483,6 +485,7 @@ function buildVideoWire(
     if (durationSeconds > 0) params.durationSeconds = durationSeconds;
     if (aspectRatio) params.aspectRatio = aspectRatio;
     if (resolution) params.resolution = resolution;
+    if (audio !== undefined) params.generateAudio = audio;
     if (Object.keys(params).length > 0) body.parameters = params;
   } else if (vgCfg.wireShape === "VideoBedrock") {
     // Nova Reel carries the model in the BODY (modelId, unlike the Converse
@@ -526,6 +529,7 @@ function buildVideoWire(
       body.frame_images = frames;
     }
     setRootVideoOptions(body, durationSeconds, aspectRatio, resolution);
+    if (audio !== undefined) body.generate_audio = audio;
   } else if (
     vgCfg.wireShape === "VideoGrok" ||
     vgCfg.wireShape === "VideoZhipu" ||
@@ -1403,6 +1407,13 @@ function videoShapeSendsOptions(shape: VideoGenDef["wireShape"]): boolean {
   );
 }
 
+// videoShapeSendsAudio reports whether a video wire shape has a body field for
+// the audio switch: generate_audio on OpenRouter, parameters.generateAudio on
+// Vertex Veo (both read 2026-11-10).
+function videoShapeSendsAudio(shape: VideoGenDef["wireShape"]): boolean {
+  return shape === "VideoOpenRouter" || shape === "VideoVertexVeo";
+}
+
 // validateGeminiOmniInputs rejects what Gemini Omni slice 1 cannot send,
 // before any HTTP call (owner, 2026-10-29, ADR-097): a duration (Omni has no
 // duration field), a seed frame, a last frame and reference images (llmkit
@@ -1434,13 +1445,15 @@ function validateGeminiOmniInputs(
   }
 }
 
-// validateVideoOptions rejects a duration, aspect ratio or resolution the
-// provider or the model cannot take, before any HTTP call (HANDOFF-097). Same
-// rules, order and messages as go/video.go validateVideoOptions:
+// validateVideoOptions rejects a duration, aspect ratio, resolution or audio
+// switch the provider or the model cannot take, before any HTTP call
+// (HANDOFF-097). Same rules, order and messages as go/video.go
+// validateVideoOptions:
 //
 //  1. A set option on a wire shape with no body field for it (see
-//     videoShapeSendsOptions). The first set option is named, in the order
-//     duration, aspect_ratio, resolution.
+//     videoShapeSendsOptions and videoShapeSendsAudio). The first set option
+//     is named, in the order duration, aspect_ratio, resolution,
+//     generate_audio.
 //  2. A negative duration.
 //  3. A duration other than 8 with reference images: Veo forces 8 seconds
 //     (ai.google.dev/gemini-api/docs/veo, read 2026-10-19; HANDOFF-100).
@@ -1453,21 +1466,22 @@ function validateVideoOptions(
   durationSeconds: number | bigint,
   aspectRatio: string,
   resolution: string,
+  audio: boolean | undefined,
   referenceImageCount: number,
 ): void {
-  if (!videoShapeSendsOptions(vgCfg.wireShape)) {
-    const opts: [string, boolean][] = [
-      ["duration", !sameInteger(durationSeconds, 0)],
-      ["aspect_ratio", aspectRatio !== ""],
-      ["resolution", resolution !== ""],
-    ];
-    for (const [field, set] of opts) {
-      if (set) {
-        throw new ValidationError(field, `${providerName} video does not send ${field}`);
-      }
+  const sendsOptions = videoShapeSendsOptions(vgCfg.wireShape);
+  const opts: [string, boolean][] = [
+    ["duration", !sendsOptions && !sameInteger(durationSeconds, 0)],
+    ["aspect_ratio", !sendsOptions && aspectRatio !== ""],
+    ["resolution", !sendsOptions && resolution !== ""],
+    ["generate_audio", !videoShapeSendsAudio(vgCfg.wireShape) && audio !== undefined],
+  ];
+  for (const [field, set] of opts) {
+    if (set) {
+      throw new ValidationError(field, `${providerName} video does not send ${field}`);
     }
-    return;
   }
+  if (!sendsOptions) return;
   if (durationSeconds < 0) {
     throw new ValidationError("duration", "must be positive");
   }

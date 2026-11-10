@@ -421,6 +421,7 @@ export class Video {
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _referenceImages: MediaRef[] = [];
   /** @internal */ _aspectRatio: string = "";
+  /** @internal */ _audio: boolean | undefined = undefined;
   /** @internal */ _duration: number | bigint = 0;
   /** @internal */ _parts: Part[] = [];
   /** @internal */ _keepStored: boolean = false;
@@ -445,6 +446,12 @@ export class Video {
    * for other video providers the SDK rejects it before send.
    */
   aspectRatio(r: string): Video { const out = clone(this); out._aspectRatio = r; return out; }
+  /**
+   * Turns the video's audio track on or off. Unset, the provider default
+   * applies. OpenRouter and Vertex Veo send it; for other video providers
+   * the SDK rejects it before send.
+   */
+  audio(on: boolean): Video { const out = clone(this); out._audio = on; return out; }
   /**
    * Sets the video length in whole seconds; 0 means the provider default.
    * OpenRouter, Grok and Veo send it; for other video providers the SDK
