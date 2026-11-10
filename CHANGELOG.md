@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`video.resume(id)` returns the handle for a job submitted in another
+  process**, built from your own client: its key, base URL, headers and
+  timeout, the builder's model, and its `raw` and `keepStored` choices.
+  `new VideoHandle(id, client.provider)` does not typecheck, because
+  `client.provider.name` is a `string`; use `resume` instead.
 - **`video.audio(on)` turns a video's audio track on or off.** OpenRouter
   sends it as `generate_audio` and Vertex Veo as `parameters.generateAudio`.
   Without the call no field is sent, and the provider default applies. On other

@@ -9,7 +9,9 @@
 // matching Go's `VideoHandle.Wait` value-receiver shape, exactly as
 // BatchHandle (ADR-014) does in batch.ts. The class fields (id, provider,
 // raw, model, keepStored) preserve the generated value shape, so cross-process
-// callers can reconstruct a handle via `new VideoHandle(id, provider, raw)`.
+// callers resume a handle with `client.video.model(m).resume(id)`, which
+// carries the client's provider; `new VideoHandle(id, provider, raw)` also
+// works with a hand-built Provider.
 
 import { PROVIDERS } from "../providers/providers.ts";
 import type { ProviderSpec } from "../providers/providers.ts";
@@ -283,9 +285,19 @@ export function videoPreviewRequest(b: Video, msg: string): string {
   return buildVideoWire(prepareVideo(b, msg)).body;
 }
 
-// prepareVideo runs every pre-flight check and selects the submit request
-// variant; videoSubmit and videoPreviewRequest share it.
-function prepareVideo(b: Video, msg: string): PreparedVideo {
+// videoResume returns the handle for a job submitted earlier, so another
+// process can wait on it (ADR-014 cross-process resume). The handle carries
+// the client's provider with its key, base URL, headers and timeout, the
+// builder's model (Vertex Veo polls a model-templated URL), and its raw and
+// keepStored choices, as submit's handle does. It sends nothing. Mirror of
+// go/video_builder.go Resume.
+export function videoResume(b: Video, id: string): VideoHandle {
+  return new VideoHandle(id, videoProvider(b), !!b._raw, b._model, b._keepStored);
+}
+
+// videoProvider lowers the client's provider config to the Provider the
+// video runtime and the handle use.
+function videoProvider(b: Video): Provider {
   const provider: Provider = {
     name: b.client.provider.name as ProviderName,
     apiKey: b.client.provider.apiKey,
@@ -295,6 +307,13 @@ function prepareVideo(b: Video, msg: string): PreparedVideo {
   if (b.client.provider.baseUrl) {
     provider.baseUrl = b.client.provider.baseUrl;
   }
+  return provider;
+}
+
+// prepareVideo runs every pre-flight check and selects the submit request
+// variant; videoSubmit and videoPreviewRequest share it.
+function prepareVideo(b: Video, msg: string): PreparedVideo {
+  const provider = videoProvider(b);
 
   // Mirror go/video_builder.go: chain-accumulated parts plus an optional
   // trailing text part from submit(msg).
