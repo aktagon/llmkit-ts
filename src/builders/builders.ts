@@ -55,7 +55,7 @@ import { textStream } from "./stream.ts";
 import { textPrompt, textSetRequest } from "./text.ts";
 import { transcriptionSubmit, transcriptionTranscribe } from "./transcription.ts";
 import { uploadRun } from "./upload.ts";
-import { videoPreviewRequest, videoSubmit } from "./video.ts";
+import { videoPreviewRequest, videoResume, videoSubmit } from "./video.ts";
 import type { AgentState } from "./agent.ts";
 import type { TextStream } from "./stream.ts";
 
@@ -487,6 +487,9 @@ export class Video {
   }
   previewRequest(msg: string): string {
     return videoPreviewRequest(this, msg);
+  }
+  resume(id: string): VideoHandle {
+    return videoResume(this, id);
   }
 }
 
