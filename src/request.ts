@@ -413,15 +413,10 @@ function applyStructuredOutput(
   schema: string,
   providerName: ProviderName,
 ): void {
-  const def = structuredOutput(providerName);
-  if (!def) return;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(schema);
-  } catch {
-    return;
-  }
+  // validateOptions has already rejected a provider with no structured
+  // output and a schema that is not JSON (BUG-120).
+  const def = structuredOutput(providerName)!;
+  const parsed: unknown = JSON.parse(schema);
 
   if (def.enforceStrict) setAdditionalPropertiesFalse(parsed);
   if (def.removeAdditionalProps) removeAdditionalProperties(parsed);
@@ -653,6 +648,19 @@ export function validateOptions(
   name: ProviderName,
   options: PromptRequest,
 ): void {
+  // BUG-120: a schema the provider cannot carry, or one that is not JSON,
+  // is rejected here instead of being dropped by the encoder.
+  if (options.schema) {
+    if (!structuredOutput(name)) {
+      throw new ValidationError("schema", `not supported by ${name}`);
+    }
+    try {
+      JSON.parse(options.schema);
+    } catch {
+      throw new ValidationError("schema", "not valid JSON");
+    }
+  }
+
   if (!PROVIDERS[name]) return;
   const supported = new Set(supportedOptions(name).map((o) => o.key));
   const overrides = new Map(optionOverrides(name).map((o) => [o.key, o]));
