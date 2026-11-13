@@ -652,7 +652,7 @@ export function validateOptions(
   // is rejected here instead of being dropped by the encoder.
   if (options.schema) {
     if (!structuredOutput(name)) {
-      throw new ValidationError("schema", `not supported by ${name}`);
+      throw new ValidationError("schema", `llmkit has no structured-output support for ${name}`);
     }
     try {
       JSON.parse(options.schema);
