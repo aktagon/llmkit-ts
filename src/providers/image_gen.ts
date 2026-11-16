@@ -238,6 +238,14 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
         supportsImageInput: true,
       },
       {
+        modelId: "google/gemini-nano-banana-2.1",
+        label: "Nano Banana 2.1",
+        aspectRatios: [],
+        imageSizes: [],
+        maxInputImages: 0,
+        supportsImageInput: true,
+      },
+      {
         modelId: "meta/muse-image",
         label: "Muse Image",
         aspectRatios: [],
