@@ -420,6 +420,7 @@ export class Video {
   /** @internal */ client: Client;
   /** @internal */ _middleware: MiddlewareFn[] = [];
   /** @internal */ _referenceImages: MediaRef[] = [];
+  /** @internal */ _referenceImageUrls: string[] = [];
   /** @internal */ _aspectRatio: string = "";
   /** @internal */ _audio: boolean | undefined = undefined;
   /** @internal */ _duration: number | bigint = 0;
@@ -436,9 +437,17 @@ export class Video {
   addMiddleware(...fns: MiddlewareFn[]): Video { const out = clone(this); out._middleware = [...out._middleware, ...fns]; return out; }
   /**
    * Appends an asset reference image, such as a person, character or
-   * product the video keeps. Add at most 3, without Image or LastFrame.
+   * product the video keeps. A model with a stated limit (Veo: 3) rejects
+   * more before send. Vertex Veo rejects it together with Image or LastFrame.
    */
   addReferenceImage(mime: string, data: Uint8Array): Video { const out = clone(this); out._referenceImages = [...out._referenceImages, { mimeType: mime, bytes: data }]; return out; }  // ordered
+  /**
+   * Appends an asset reference image given as an HTTPS URL. The provider
+   * fetches it; the SDK sends the URL as is. OpenRouter sends it; for other
+   * video providers the SDK rejects it before send. URL references follow
+   * the AddReferenceImage references and count toward the same limit.
+   */
+  addReferenceImageURL(url: string): Video { const out = clone(this); out._referenceImageUrls = [...out._referenceImageUrls, url]; return out; }  // ordered
   /**
    * Sets the output aspect ratio, such as "16:9". The SDK sends a ratio the
    * model does not list; if the provider rejects it, the error names the
@@ -456,7 +465,7 @@ export class Video {
    * Sets the video length in whole seconds; 0 means the provider default.
    * OpenRouter, Grok and Veo send it; for other video providers the SDK
    * rejects it before send. The SDK rejects a negative value and sends a
-   * value above the model's maximum. With Veo reference images, only 8 is accepted.
+   * value above the model's maximum.
    */
   duration(seconds: number | bigint): Video { const out = clone(this); out._duration = seconds; return out; }
   image(mime: string, data: Uint8Array): Video { const out = clone(this); out._parts = [...out._parts, { image: { mimeType: mime, bytes: data } }]; return out; }  // ordered

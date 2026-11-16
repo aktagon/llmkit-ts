@@ -47,8 +47,8 @@ function carriedInputWords(carries: CarriedInput[]): string {
 /**
  * partsCarry is the carried input of a request with `imageCount` image
  * parts: `imageInput` when it holds at least one, else TextOnly. The
- * capability names what its image parts are: WithReferenceImages for image,
- * WithSeedFrame for video.
+ * capability names what its image parts are: WithReferenceImages for image.
+ * Video names every input it carries (videoCarries).
  */
 export function partsCarry(
   imageCount: number,

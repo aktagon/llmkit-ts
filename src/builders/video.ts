@@ -24,14 +24,14 @@ import { writeJson } from "../json_text.ts";
 import { APIError, ValidationError, VideoDeleteError } from "../errors.ts";
 import { checkPartKinds, hasPart } from "../part_kinds.ts";
 import type { CarriedInput, RequestVariant } from "../providers/image_gen.ts";
-import { partsCarry, selectRequestVariant } from "../request_variant.ts";
+import { selectRequestVariant } from "../request_variant.ts";
 import { sendHTTP } from "../http.ts";
 import { buildAuthHeaders } from "../request.ts";
 import { optIntPath } from "../paths.ts";
 import { lastInteractionOutputItem } from "../speech.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
-import type { Part } from "../image.ts";
+import { imageURLContentPart, type Part } from "../image.ts";
 import { catalogueHint, lookupModel, offList, statedFalseBlocks, withHint } from "../model_lookup.ts";
 import type { MediaRef } from "../structs.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -255,7 +255,7 @@ export async function videoSubmit(
   } catch (caught) {
     const err = withHint(
       caught,
-      videoHint(model, imageCount, b._lastFrame, b._referenceImages.length, b._duration, b._resolution, b._aspectRatio),
+      videoHint(model, imageCount, b._lastFrame, videoReferenceCount(b), b._duration, b._resolution, b._aspectRatio),
     );
     firePost(b._middleware as MiddlewareFn[], {
       ...baseEvent,
@@ -341,7 +341,7 @@ function prepareVideo(b: Video, msg: string): PreparedVideo {
   // ADR-102 MPT-001: an unlisted model (undefined) skips the per-model
   // checks; the config checks below still run.
   const { model, listed } = lookupModel(vgCfg.models, b._model);
-  validateGeminiOmniInputs(vgCfg, parts, b._lastFrame, b._referenceImages, b._duration);
+  validateGeminiOmniInputs(vgCfg, parts, b._lastFrame, videoReferenceCount(b), b._duration);
 
   checkPartKinds("video_generation", parts);
   parts.forEach((part, i) => {
@@ -361,7 +361,7 @@ function prepareVideo(b: Video, msg: string): PreparedVideo {
     }
   });
   const imageCount = parts.filter((p) => hasPart(p, "image")).length;
-  validateVideoFrames(vgCfg, model, imageCount, b._lastFrame, b._referenceImages);
+  validateVideoFrames(provider.name, vgCfg, model, imageCount, b);
   validateVideoOptions(
     provider.name,
     vgCfg,
@@ -369,14 +369,13 @@ function prepareVideo(b: Video, msg: string): PreparedVideo {
     b._aspectRatio,
     b._resolution,
     b._audio,
-    b._referenceImages.length,
   );
   // ADR-096: the carried inputs select the submit request; a config with no
   // such variant cannot send it.
   const variant = selectRequestVariant(
     provider.name,
     vgCfg.variants,
-    videoCarries(imageCount, b._lastFrame, b._referenceImages),
+    videoCarries(imageCount, b._lastFrame, videoReferenceCount(b)),
   );
 
   // VID-005: output-uri providers (Bedrock Nova Reel) write the video to the
@@ -485,8 +484,8 @@ function buildVideoWire(
     const veoSeed = videoSeedImage(parts);
     if (veoSeed) instance.image = veoImage(veoSeed);
     // Last frame and asset reference images (BUG-089): same
-    // {bytesBase64Encoded, mimeType} wrapper. Reference images force an
-    // 8-second video, sent as the NUMBER 8.
+    // {bytesBase64Encoded, mimeType} wrapper. With reference images and no
+    // duration, the body asks for 8 seconds, sent as the NUMBER 8.
     if (lastFrame) instance.lastFrame = veoImage(lastFrame);
     body = { instances: [instance] };
     const params: Record<string, unknown> = {};
@@ -498,9 +497,8 @@ function buildVideoWire(
       params.durationSeconds = 8;
     }
     // Video options (HANDOFF-100): parameters.durationSeconds (a JSON number),
-    // aspectRatio and resolution, each only when set. With reference images
-    // validateVideoOptions allows only 8, so a set duration matches the
-    // forced 8.
+    // aspectRatio and resolution, each only when set. A set duration replaces
+    // the 8 that reference images ask for.
     if (durationSeconds > 0) params.durationSeconds = durationSeconds;
     if (aspectRatio) params.aspectRatio = aspectRatio;
     if (resolution) params.resolution = resolution;
@@ -547,6 +545,11 @@ function buildVideoWire(
       if (lastFrame) frames.push(openRouterFrame(lastFrame, "last_frame"));
       body.frame_images = frames;
     }
+    // Reference images (owner, 2026-11-16): input_references, the same
+    // ContentPartImage items the image path sends; bytes as data URLs, then
+    // each HTTPS URL as is (live probes S and U, 2026-11-16).
+    const refs = openRouterReferences(referenceImages, b._referenceImageUrls);
+    if (refs.length > 0) body.input_references = refs;
     setRootVideoOptions(body, durationSeconds, aspectRatio, resolution);
     if (audio !== undefined) body.generate_audio = audio;
   } else if (
@@ -1322,12 +1325,24 @@ function videoSeedImage(parts: Part[]): MediaRef | undefined {
 // veoImage is a Veo image object: raw base64 bytes and the MIME type.
 // openRouterFrame is one OpenRouter frame_images item.
 function openRouterFrame(img: MediaRef, frameType: string): Record<string, unknown> {
-  const mime = img.mimeType || "image/png";
-  return {
-    type: "image_url",
-    image_url: { url: `data:${mime};base64,${bytesToBase64(img.bytes)}` },
-    frame_type: frameType,
-  };
+  return { ...imageURLContentPart(img), frame_type: frameType };
+}
+
+// openRouterReferences is the OpenRouter input_references list: each byte
+// reference as a data URL, then each URL reference, in call order.
+function openRouterReferences(
+  referenceImages: MediaRef[],
+  referenceImageUrls: string[],
+): Array<Record<string, unknown>> {
+  return [
+    ...referenceImages.map(imageURLContentPart),
+    ...referenceImageUrls.map((url) => ({ type: "image_url", image_url: { url } })),
+  ];
+}
+
+// videoReferenceCount is the request's reference images, bytes and URL.
+function videoReferenceCount(b: Video): number {
+  return b._referenceImages.length + b._referenceImageUrls.length;
 }
 
 function veoImage(img: MediaRef): Record<string, string> {
@@ -1337,24 +1352,25 @@ function veoImage(img: MediaRef): Record<string, string> {
   };
 }
 
-// The most asset reference images a Vertex Veo request takes (Vertex Veo page,
-// read 2026-10-15).
-const MAX_VIDEO_REFERENCE_IMAGES = 3;
-
 // validateVideoFrames rejects a last frame or reference images the model or
 // the request cannot carry, before any HTTP call (BUG-089). Same rules, order
-// and messages as go/video.go validateVideoFrames. The two per-model rules
-// block a stated false only on a config whose provider ignores the option
-// (ADR-102 MPT-006 G6); an unlisted model (undefined) skips them (ADR-102
-// MPT-001).
+// and messages as go/video.go validateVideoFrames: a stated-false last frame,
+// stated-false reference images, a URL reference on a config without
+// acceptsReferenceImageUrl, more references (bytes and URL) than the model's
+// maxReferenceImages, and a last frame without a first frame. The two
+// stated-false rules block only on a config whose provider ignores the option
+// (ADR-102 MPT-006 G6); an unlisted model (undefined) skips the per-model
+// rules (ADR-102 MPT-001). Which inputs a provider takes together is decided
+// by its request variants (selectRequestVariant), not here.
 function validateVideoFrames(
+  providerName: string,
   cfg: VideoGenDef,
   model: VideoModelDef | undefined,
   imageCount: number,
-  lastFrame: MediaRef | undefined,
-  referenceImages: MediaRef[],
+  b: Video,
 ): void {
-  const refs = referenceImages.length;
+  const lastFrame = b._lastFrame;
+  const refs = videoReferenceCount(b);
   if (
     lastFrame &&
     model !== undefined &&
@@ -1372,18 +1388,17 @@ function validateVideoFrames(
       `${model.modelId} does not accept reference images`,
     );
   }
-  if (refs > MAX_VIDEO_REFERENCE_IMAGES) {
+  if (b._referenceImageUrls.length > 0 && !cfg.acceptsReferenceImageUrl) {
     throw new ValidationError(
-      "reference_images",
-      `at most ${MAX_VIDEO_REFERENCE_IMAGES} reference images, got ${refs}`,
+      "reference_image_urls",
+      `${providerName} video does not take reference images by URL`,
     );
   }
-  if (refs > 0 && (imageCount > 0 || lastFrame)) {
-    // Vertex documents the inputs as exclusive (live 2026-10-15, the Gemini
-    // API Veo answered 400 "Unsupported video generation request").
+  const max = model?.maxReferenceImages ?? 0;
+  if (model !== undefined && max > 0 && refs > max) {
     throw new ValidationError(
       "reference_images",
-      "cannot be combined with a first or last frame",
+      `${model.modelId} takes at most ${max} reference images, got ${refs}`,
     );
   }
   if (lastFrame && imageCount === 0) {
@@ -1443,7 +1458,7 @@ function validateGeminiOmniInputs(
   vgCfg: VideoGenDef,
   parts: Part[],
   lastFrame: MediaRef | undefined,
-  referenceImages: MediaRef[],
+  referenceImageCount: number,
   durationSeconds: number | bigint,
 ): void {
   if (vgCfg.wireShape !== "VideoGeminiOmni") return;
@@ -1456,7 +1471,7 @@ function validateGeminiOmniInputs(
   if (lastFrame) {
     throw new ValidationError("last_frame", "Gemini Omni video sends text only, not a last frame");
   }
-  if (referenceImages.length > 0) {
+  if (referenceImageCount > 0) {
     throw new ValidationError(
       "reference_images",
       "Gemini Omni video sends text only, not reference images",
@@ -1474,8 +1489,6 @@ function validateGeminiOmniInputs(
 //     is named, in the order duration, aspect_ratio, resolution,
 //     generate_audio.
 //  2. A negative duration.
-//  3. A duration other than 8 with reference images: Veo forces 8 seconds
-//     (ai.google.dev/gemini-api/docs/veo, read 2026-10-19; HANDOFF-100).
 //
 // A model's maximum duration, resolutions and aspect ratios are hints, not
 // blocks (ADR-102 MPT-006 G5): the provider answers an off-list value.
@@ -1486,7 +1499,6 @@ function validateVideoOptions(
   aspectRatio: string,
   resolution: string,
   audio: boolean | undefined,
-  referenceImageCount: number,
 ): void {
   const sendsOptions = videoShapeSendsOptions(vgCfg.wireShape);
   const opts: [string, boolean][] = [
@@ -1504,21 +1516,23 @@ function validateVideoOptions(
   if (durationSeconds < 0) {
     throw new ValidationError("duration", "must be positive");
   }
-  if (durationSeconds > 0 && referenceImageCount > 0 && !sameInteger(durationSeconds, 8)) {
-    throw new ValidationError("duration", `reference images take 8 seconds, got ${durationSeconds}`);
-  }
 }
 
-// videoCarries is the request's carried inputs (ADR-096): reference images, a
-// seed frame with an optional last frame, or text only.
+// videoCarries is every input the request carries (ADR-096, ADR-108
+// VIN-004), in the order reference images, seed frame, last frame; text only
+// when it carries none. Variant selection rejects a combination the config has
+// no request for, so Vertex refuses reference images with a frame. Mirrors
+// go/video.go.
 function videoCarries(
   imageCount: number,
   lastFrame: MediaRef | undefined,
-  referenceImages: MediaRef[],
+  referenceImageCount: number,
 ): CarriedInput[] {
-  if (referenceImages.length > 0) return ["WithReferenceImages"];
-  if (imageCount > 0 && lastFrame) return ["WithSeedFrame", "WithLastFrame"];
-  return partsCarry(imageCount, "WithSeedFrame");
+  const carries: CarriedInput[] = [];
+  if (referenceImageCount > 0) carries.push("WithReferenceImages");
+  if (imageCount > 0) carries.push("WithSeedFrame");
+  if (lastFrame) carries.push("WithLastFrame");
+  return carries.length > 0 ? carries : ["TextOnly"];
 }
 
 // videoSeedImageURL builds the Grok image-to-video seed-frame data URL

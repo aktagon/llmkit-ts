@@ -29,6 +29,9 @@ export interface VideoModelDef {
    * (e.g. Grok's single-seed slot); 0 = no llmkit limit, the provider
    * decides volume (BUG-011). */
   maxInputImages: number;
+  /** The most reference images, bytes and URL together, the model takes
+   * in one request; undefined = no stated limit, no check. */
+  maxReferenceImages?: number;
 }
 
 export interface VideoGenDef {
@@ -50,6 +53,9 @@ export interface VideoGenDef {
   // submitHandleField is a dotted path to the poll handle id.
   submitHandleField: string;
   requiresOutputUri: boolean;
+  // acceptsReferenceImageUrl is true when the provider takes a reference image
+  // by HTTPS URL; otherwise a URL reference is rejected before send.
+  acceptsReferenceImageUrl: boolean;
   // Usage paths are dotted from the root of the finished poll reply; "" = unreported.
   usageInputPath: string;
   usageOutputPath: string;
@@ -74,6 +80,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "invocationArn",
     requiresOutputUri: true,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -106,6 +113,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "/v1beta/interactions/{id}",
     submitHandleField: "id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "usage.total_input_tokens",
     usageOutputPath: "usage.total_output_tokens",
     usageReasoningPath: "usage.total_thought_tokens",
@@ -151,6 +159,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "request_id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -207,6 +216,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "task_id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -232,6 +242,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     videoBaseUrl: "",
     variants: [
       { carries: ["TextOnly"], shape: "", endpoint: "/v1/videos" },
+      { carries: ["WithReferenceImages"], shape: "", endpoint: "/v1/videos" },
       { carries: ["WithSeedFrame"], shape: "", endpoint: "/v1/videos" },
       { carries: ["WithSeedFrame", "WithLastFrame"], shape: "", endpoint: "/v1/videos" },
     ],
@@ -241,6 +252,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: true,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -251,7 +263,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Wan 3.0",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
         maxDurationSeconds: 30,
         outputMime: "video/mp4",
         resolutions: ["1080p", "480p", "720p"],
@@ -263,7 +274,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Seedance 2.0",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["1080p", "480p", "4K", "720p"],
@@ -275,7 +285,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Seedance 2.0 Fast",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["480p", "720p"],
@@ -287,7 +296,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Seedance 2.5",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
+        supportsReferenceImages: true,
         maxDurationSeconds: 30,
         outputMime: "video/mp4",
         resolutions: ["480p", "720p"],
@@ -311,7 +320,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Veo 3.1 Fast",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
         maxDurationSeconds: 8,
         outputMime: "video/mp4",
         resolutions: ["1080p", "4K", "720p"],
@@ -323,7 +331,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Veo 3.1 Lite",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
         maxDurationSeconds: 8,
         outputMime: "video/mp4",
         resolutions: ["1080p", "720p"],
@@ -335,7 +342,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "HeyGen Video 1",
         supportsImageToVideo: true,
         supportsLastFrame: false,
-        supportsReferenceImages: false,
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["2K", "480p", "768p"],
@@ -347,7 +353,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Kling 3.0 Standard",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["720p"],
@@ -359,7 +364,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Hailuo 3",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["2K"],
@@ -371,7 +375,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Grok Imagine Video 1.5 Lite",
         supportsImageToVideo: true,
         supportsLastFrame: false,
-        supportsReferenceImages: false,
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["1080p", "480p", "720p"],
@@ -393,6 +396,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "Resp.video_id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -449,6 +453,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "output.task_id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -481,6 +486,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -516,6 +522,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "name",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -532,6 +539,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         resolutions: ["1080p", "720p"],
         aspectRatios: ["16:9", "9:16"],
         maxInputImages: 1,
+        maxReferenceImages: 3,
       },
       {
         modelId: "veo-3.1-generate-001",
@@ -544,6 +552,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         resolutions: ["1080p", "4k", "720p"],
         aspectRatios: ["16:9", "9:16"],
         maxInputImages: 1,
+        maxReferenceImages: 3,
       },
       {
         modelId: "veo-3.1-generate-preview",
@@ -556,6 +565,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         resolutions: ["1080p", "720p"],
         aspectRatios: ["16:9", "9:16"],
         maxInputImages: 1,
+        maxReferenceImages: 3,
       },
       {
         modelId: "veo-3.1-lite-generate-001",
@@ -584,6 +594,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "task_id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
@@ -640,6 +651,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     deleteEndpoint: "",
     submitHandleField: "id",
     requiresOutputUri: false,
+    acceptsReferenceImageUrl: false,
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
