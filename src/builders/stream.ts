@@ -70,6 +70,10 @@ interface StreamOutcome {
   finishReason: string;
   id: string;
   model: string;
+  // The response a final event carried (StreamDef.finalBodyPath); undefined
+  // when the stream declares no final events. The finish reason is decoded
+  // with it, as a one-shot body is (ADR-099 CRF-007).
+  body?: unknown;
 }
 
 // The ADR-013 locators a stream reads its finish reason, response id and model
@@ -215,11 +219,12 @@ async function runStream(
         output: outcome.usage.output,
       },
     };
-    // The same table as the one-shot body (ADR-099 CRF-008). The stream keeps
-    // no body, so a fused value (CRF-007) cannot be told apart and decodes to
-    // "other".
+    // The same table as the one-shot body (ADR-099 CRF-008). A stream with
+    // final events keeps the final body, so a fused value (CRF-007) such as
+    // Responses incomplete keeps its detail; any other stream keeps no body,
+    // and a fused value decodes to "other".
     if (outcome.finishReason) {
-      setFinishReason(result, cfg.chatWireShape, outcome.finishReason, undefined);
+      setFinishReason(result, cfg.chatWireShape, outcome.finishReason, outcome.body);
     }
     if (outcome.id) result.id = outcome.id;
     if (outcome.model) result.model = outcome.model;
@@ -240,6 +245,23 @@ async function runStream(
   }
 }
 
+// streamErrorEvent returns the APIError an error event reports, or undefined
+// when currentEvent is not one of the stream's error events. The status is 200:
+// the HTTP reply succeeded and the failure arrived in it. Retryable only for a
+// code the stream lists; every other code, an unknown one included, is not.
+function streamErrorEvent(
+  cfg: StreamDef,
+  parsed: unknown,
+  currentEvent: string,
+  data: string,
+): APIError | undefined {
+  const ev = cfg.errorEvents.find((e) => e.event === currentEvent);
+  if (!ev) return undefined;
+  const code = extractPath(parsed, ev.codePath);
+  const message = extractPath(parsed, ev.messagePath) || data;
+  return new APIError(200, message, code !== "" && cfg.retryableErrorCodes.includes(code));
+}
+
 async function consumeSSE(
   body: ReadableStream<Uint8Array>,
   cfg: StreamDef,
@@ -255,6 +277,7 @@ async function consumeSSE(
   let finishReason = "";
   let id = "";
   let model = "";
+  let finalBody: unknown;
   const reader = body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
@@ -272,7 +295,7 @@ async function consumeSSE(
     if (await processBuffer()) stopped = true;
   }
 
-  return { usage, finishReason, id, model };
+  return { usage, finishReason, id, model, body: finalBody };
 
   async function processBuffer(): Promise<boolean> {
     let newlineIdx = buffer.indexOf("\n");
@@ -313,13 +336,26 @@ async function consumeSSE(
       return false;
     }
 
-    // ADR-013: capture stream-time finish-reason BEFORE the event-level done
-    // break, so a finish locator that names the done event still sees its
-    // body. (Anthropic's locator is message_delta:delta.stop_reason.)
-    const reason = readLocator(finishLoc, parsed, currentEvent);
-    if (reason && reason !== "FINISH_REASON_UNSPECIFIED") finishReason = reason;
-    id = readLocator(idLoc, parsed, currentEvent) || id;
-    model = readLocator(modelLoc, parsed, currentEvent) || model;
+    // An error event ends the stream with an API error and no Response
+    // (TODO.md owner answers 1, 2 and 4).
+    if (cfg.usesEventTypes) {
+      const apiErr = streamErrorEvent(cfg, parsed, currentEvent, data);
+      if (apiErr) throw apiErr;
+    }
+
+    if (cfg.finalEvents.length > 0) {
+      // The final event's body holds usage, finish reason, id and model; no
+      // other frame is read for them.
+      if (cfg.finalEvents.includes(currentEvent)) readFinalBody(parsed);
+    } else {
+      // ADR-013: capture stream-time finish-reason BEFORE the event-level done
+      // break, so a finish locator that names the done event still sees its
+      // body. (Anthropic's locator is message_delta:delta.stop_reason.)
+      const reason = readLocator(finishLoc, parsed, currentEvent);
+      if (reason && reason !== "FINISH_REASON_UNSPECIFIED") finishReason = reason;
+      id = readLocator(idLoc, parsed, currentEvent) || id;
+      model = readLocator(modelLoc, parsed, currentEvent) || model;
+    }
 
     if (cfg.usesEventTypes && cfg.doneEvent && currentEvent === cfg.doneEvent)
       return true;
@@ -331,7 +367,7 @@ async function consumeSSE(
       }
       // Anthropic's message_delta carries the cumulative input AND output
       // counts; a dimension the frame does not report stays unset.
-      if (currentEvent === cfg.usageEvent) {
+      if (cfg.usageEvent && currentEvent === cfg.usageEvent) {
         const input = optIntPath(parsed, cfg.usageInputPath);
         if (input !== undefined) usage.input = input;
         const output = optIntPath(parsed, cfg.usageOutputPath);
@@ -351,6 +387,23 @@ async function consumeSSE(
     }
     currentEvent = "";
     return false;
+  }
+
+  // readFinalBody reads usage and the bare stream locators in the response a
+  // final event carries, and keeps the body for finish-reason decoding.
+  function readFinalBody(parsed: object): void {
+    const final = cfg.finalBodyPath
+      ? (parsed as Record<string, unknown>)[cfg.finalBodyPath]
+      : parsed;
+    if (typeof final !== "object" || final === null) return;
+    finalBody = final;
+    const input = optIntPath(final, cfg.usageInputPath);
+    if (input !== undefined) usage.input = input;
+    const output = optIntPath(final, cfg.usageOutputPath);
+    if (output !== undefined) usage.output = output;
+    finishReason = readLocator(["", locators.finishReason], final, "") || finishReason;
+    id = readLocator(["", locators.id], final, "") || id;
+    model = readLocator(["", locators.model], final, "") || model;
   }
 }
 

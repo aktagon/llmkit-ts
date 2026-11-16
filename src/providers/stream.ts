@@ -16,6 +16,22 @@ export interface StreamDef {
   usageInputPath: string;
   usageOutputPath: string;
   usageOptIn: boolean;
+  /** Events that end a successful stream with the whole response at
+   * finalBodyPath; usage and the stream locators are read in that body. */
+  finalEvents: readonly string[];
+  finalBodyPath: string;
+  /** Events that end the stream in failure, and the codes on them that make
+   * the API error retryable. */
+  errorEvents: readonly StreamErrorEventDef[];
+  retryableErrorCodes: readonly string[];
+}
+
+/** An SSE event that ends a stream in failure, with the paths to its error
+ * code and message in the event's data frame. */
+export interface StreamErrorEventDef {
+  event: string;
+  codePath: string;
+  messagePath: string;
 }
 
 const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
@@ -32,6 +48,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   anthropic: {
     endpoint: "",
@@ -46,6 +66,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.input_tokens",
     usageOutputPath: "usage.output_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   azure: {
     endpoint: "",
@@ -60,6 +84,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   cerebras: {
     endpoint: "",
@@ -74,6 +102,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   cohere: {
     endpoint: "",
@@ -88,6 +120,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   deepseek: {
     endpoint: "",
@@ -102,6 +138,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   doubao: {
     endpoint: "",
@@ -116,6 +156,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   ernie: {
     endpoint: "",
@@ -130,6 +174,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   fireworks: {
     endpoint: "",
@@ -144,6 +192,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   google: {
     endpoint: "/v1beta/models/{model}:streamGenerateContent?alt=sse",
@@ -158,6 +210,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usageMetadata.promptTokenCount",
     usageOutputPath: "usageMetadata.candidatesTokenCount",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   grok: {
     endpoint: "",
@@ -172,6 +228,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   groq: {
     endpoint: "",
@@ -186,6 +246,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   jan: {
     endpoint: "",
@@ -200,6 +264,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   llamacpp: {
     endpoint: "",
@@ -214,6 +282,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   lmstudio: {
     endpoint: "",
@@ -228,6 +300,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   minimax: {
     endpoint: "",
@@ -242,6 +318,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   mistral: {
     endpoint: "",
@@ -256,6 +336,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   moonshot: {
     endpoint: "",
@@ -270,6 +354,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   ollama: {
     endpoint: "",
@@ -284,6 +372,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   openai: {
     endpoint: "",
@@ -298,6 +390,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: true,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   openrouter: {
     endpoint: "",
@@ -312,6 +408,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   perplexity: {
     endpoint: "",
@@ -326,6 +426,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   qwen: {
     endpoint: "",
@@ -340,6 +444,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   sambanova: {
     endpoint: "",
@@ -354,6 +462,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   together: {
     endpoint: "",
@@ -368,6 +480,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   vllm: {
     endpoint: "",
@@ -382,6 +498,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   workersai: {
     endpoint: "",
@@ -396,6 +516,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   yi: {
     endpoint: "",
@@ -410,6 +534,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
   zhipu: {
     endpoint: "",
@@ -424,6 +552,10 @@ const STREAMS: Partial<Record<ProviderName, StreamDef>> = {
     usageInputPath: "usage.prompt_tokens",
     usageOutputPath: "usage.completion_tokens",
     usageOptIn: false,
+    finalEvents: [],
+    finalBodyPath: "",
+    errorEvents: [],
+    retryableErrorCodes: [],
   },
 };
 
@@ -441,15 +573,22 @@ const WIRE_SHAPE_STREAMS: Record<string, StreamDef> = {
     usesEventTypes: true,
     contentEvent: "response.output_text.delta",
     doneEvent: "",
-    usageEvent: "response.completed",
-    usageInputPath: "response.usage.input_tokens",
-    usageOutputPath: "response.usage.output_tokens",
+    usageEvent: "",
+    usageInputPath: "usage.input_tokens",
+    usageOutputPath: "usage.output_tokens",
     usageOptIn: false,
+    finalEvents: ["response.completed", "response.incomplete"],
+    finalBodyPath: "response",
+    errorEvents: [
+      { event: "error", codePath: "code", messagePath: "message" },
+      { event: "response.failed", codePath: "response.error.code", messagePath: "response.error.message" },
+    ],
+    retryableErrorCodes: ["rate_limit_exceeded", "server_error"],
   },
 };
 
 const WIRE_SHAPE_STREAM_FINISH_REASON_PATHS: Record<string, string> = {
-  ChatResponsesOpenAI: "response.completed:response.status",
+  ChatResponsesOpenAI: "status",
 };
 
 /** The streaming config a chat wire shape declares for every provider that
@@ -464,7 +603,7 @@ export function wireShapeStreamFinishReasonPath(chatWireShape: string): string {
 }
 
 const WIRE_SHAPE_STREAM_RESPONSE_ID_PATHS: Record<string, string> = {
-  ChatResponsesOpenAI: "response.completed:response.id",
+  ChatResponsesOpenAI: "id",
 };
 
 /** The ADR-013 stream response-id locator read with wireShapeStreamConfig
@@ -474,7 +613,7 @@ export function wireShapeStreamResponseIdPath(chatWireShape: string): string {
 }
 
 const WIRE_SHAPE_STREAM_RESPONSE_MODEL_PATHS: Record<string, string> = {
-  ChatResponsesOpenAI: "response.completed:response.model",
+  ChatResponsesOpenAI: "model",
 };
 
 /** The ADR-013 stream response-model locator read with wireShapeStreamConfig
