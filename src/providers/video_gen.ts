@@ -308,7 +308,6 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         label: "Gemini Omni 1.2 Flash",
         supportsImageToVideo: true,
         supportsLastFrame: true,
-        supportsReferenceImages: false,
         maxDurationSeconds: 15,
         outputMime: "video/mp4",
         resolutions: ["1080p", "360p", "4K", "720p"],
