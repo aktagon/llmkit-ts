@@ -596,15 +596,23 @@ function buildRecraftGenBody(
 function imageURLContentParts(parts: Part[]): Array<Record<string, unknown>> {
   const refs: Array<Record<string, unknown>> = [];
   for (const p of parts) {
-    if (hasPart(p, "image")) {
-      const mime = p.image.mimeType || "image/png";
-      refs.push({
-        type: "image_url",
-        image_url: { url: `data:${mime};base64,${bytesToBase64(p.image.bytes)}` },
-      });
-    }
+    if (hasPart(p, "image")) refs.push(imageURLContentPart(p.image));
   }
   return refs;
+}
+
+/**
+ * imageURLContentPart is one OpenRouter ContentPartImage for img, the bytes
+ * as a base64 data URL. The video path sends the same item (frame_images,
+ * input_references). Exported for video.ts; the package barrel does not
+ * re-export it.
+ */
+export function imageURLContentPart(img: MediaRef): Record<string, unknown> {
+  const mime = img.mimeType || "image/png";
+  return {
+    type: "image_url",
+    image_url: { url: `data:${mime};base64,${bytesToBase64(img.bytes)}` },
+  };
 }
 
 function joinTextParts(parts: Part[]): string {
