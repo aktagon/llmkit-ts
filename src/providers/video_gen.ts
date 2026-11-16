@@ -295,6 +295,18 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
         maxInputImages: 0,
       },
       {
+        modelId: "google/gemini-omni-1.2-flash",
+        label: "Gemini Omni 1.2 Flash",
+        supportsImageToVideo: true,
+        supportsLastFrame: true,
+        supportsReferenceImages: false,
+        maxDurationSeconds: 15,
+        outputMime: "video/mp4",
+        resolutions: ["1080p", "360p", "4K", "720p"],
+        aspectRatios: ["16:9", "9:16"],
+        maxInputImages: 0,
+      },
+      {
         modelId: "google/veo-3.1-fast",
         label: "Veo 3.1 Fast",
         supportsImageToVideo: true,
