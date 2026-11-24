@@ -28,6 +28,7 @@ import { selectRequestVariant } from "../request_variant.ts";
 import { sendHTTP } from "../http.ts";
 import { buildAuthHeaders } from "../request.ts";
 import { optIntPath } from "../paths.ts";
+import { decodeCost } from "../response.ts";
 import { lastInteractionOutputItem } from "../speech.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
@@ -173,7 +174,7 @@ export class VideoHandle {
           ? await postJsonText(pollUrl, vertexPollBody, headers, this.provider.timeoutMs)
           : await fetchText(pollUrl, headers, this.provider.timeoutMs);
       const raw = JSON.parse(respText) as unknown;
-      const result = parseVideoPoll(vgCfg, raw);
+      const result = parseVideoPoll(vgCfg, cfg, raw);
       if (result) {
         // Two-hop providers (vgCfg.fileEndpoint set, e.g. minimax): the
         // terminal poll carried a file reference, not a video URL — resolve it
@@ -680,6 +681,7 @@ function newVideoTraceID(): string {
 // empty path leaves that dimension unreported.
 function parseVideoPoll(
   vgCfg: VideoGenDef,
+  cfg: ProviderSpec,
   raw: unknown,
 ): VideoResponse | null {
   const resp = parseVideoPollShape(vgCfg, raw);
@@ -688,6 +690,7 @@ function parseVideoPoll(
       input: optIntPath(raw, vgCfg.usageInputPath),
       output: optIntPath(raw, vgCfg.usageOutputPath),
       reasoning: optIntPath(raw, vgCfg.usageReasoningPath),
+      cost: decodeCost(raw, vgCfg.usageCostPath, cfg),
     };
   }
   return resp;

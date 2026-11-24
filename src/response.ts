@@ -90,7 +90,7 @@ export function decodeResponse(
       reasoning: optIntPath(raw, cfg.reasoningTokensPath),
       // Scaling preserves absence: an unreported cost stays unreported rather
       // than becoming 0 x scale (AVAIL-007).
-      cost: scaleCost(optFloatPath(raw, cfg.usageCostPath), cfg.usageCostScale),
+      cost: decodeCost(raw, cfg.usageCostPath, cfg),
     },
   };
   if (cfg.finishReasonPath) {
@@ -428,6 +428,18 @@ function extractResponsesText(raw: unknown): string {
   return "";
 }
 
+
+// decodeCost reads the provider-reported cost at path and converts it to USD
+// with the provider's scale. The chat, image and video parsers all read the
+// cost here; each passes the path its own config declares. An empty path, or
+// a reply without the field, leaves the cost unreported.
+export function decodeCost(
+  raw: unknown,
+  path: string,
+  cfg: ProviderSpec,
+): number | undefined {
+  return scaleCost(optFloatPath(raw, path), cfg.usageCostScale);
+}
 
 // scaleCost applies the provider's USD conversion while preserving absence.
 function scaleCost(
