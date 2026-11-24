@@ -18,6 +18,7 @@ import { checkPartKinds, hasPart } from "./part_kinds.ts";
 import { partsCarry, selectRequestVariant } from "./request_variant.ts";
 import { sendHTTP } from "./http.ts";
 import { extractIntPath, optIntPath } from "./paths.ts";
+import { decodeCost } from "./response.ts";
 import { buildAuthHeaders } from "./request.ts";
 import { firePost, firePre } from "./middleware.ts";
 import type { Event, MiddlewareFn } from "./providers/middleware.ts";
@@ -140,7 +141,7 @@ export async function generateImage(
   options: ImageOptions = {},
 ): Promise<ImageResponse> {
   const prepared = prepareImage(provider, request, options);
-  const { imgCfg, model, listed, imageCount } = prepared;
+  const { cfg, imgCfg, model, listed, imageCount } = prepared;
   const baseEvent: Event = {
     op: "image_generation",
     phase: "pre",
@@ -172,28 +173,21 @@ export async function generateImage(
 
     const raw = JSON.parse(respText) as unknown;
     // Response parser selected by config shape, never by provider name
-    // (BUG-024). imgCfg.usage{Input,Output,Reasoning}Path are dotted-from-root,
-    // image-gen-scoped, and empty when the endpoint reports no usage.
+    // (BUG-024). imgCfg.usage{Input,Output,Reasoning,Cost}Path are
+    // dotted-from-root, image-gen-scoped, and empty when the endpoint does not
+    // report that dimension; imageUsage reads them.
     let result: ImageResponse;
     switch (imgCfg.responseShape) {
       case "DataArrayB64Json":
         // OpenAI/xAI/Recraft data[].b64_json shape. SVG bytes (Recraft vector
         // models) are sniffed to image/svg+xml inside the parser.
-        result = parseImageResponseDataArray(
-          raw,
-          imgCfg.usageInputPath,
-          imgCfg.usageOutputPath,
-          imgCfg.usageReasoningPath,
-        );
+        result = parseImageResponseDataArray(raw);
+        result.usage = imageUsage(raw, imgCfg, cfg);
         break;
       case "GoogleParts":
         // candidates[].content.parts inline data.
-        result = parseImageResponse(
-          raw,
-          imgCfg.usageInputPath,
-          imgCfg.usageOutputPath,
-          imgCfg.usageReasoningPath,
-        );
+        result = parseImageResponse(raw);
+        result.usage = imageUsage(raw, imgCfg, cfg);
         break;
       case "VertexPredictions":
         // No runtime parses VertexPredictions (Vertex Imagen removed, BUG-101).
@@ -707,23 +701,24 @@ function buildImageBody(
   return body;
 }
 
-function parseImageResponse(
-  raw: unknown,
-  inputPath: string,
-  outputPath: string,
-  reasoningPath: string,
-): ImageResponse {
+// imageUsage reads the usage of an image reply at the paths the image config
+// declares. An empty path leaves that dimension unreported: xAI declares no
+// token paths and a cost path, usage.cost_in_usd_ticks.
+function imageUsage(raw: unknown, imgCfg: ImageGenDef, cfg: ProviderSpec): Usage {
+  return {
+    input: optIntPath(raw, imgCfg.usageInputPath),
+    output: optIntPath(raw, imgCfg.usageOutputPath),
+    reasoning: optIntPath(raw, imgCfg.usageReasoningPath),
+    cost: decodeCost(raw, imgCfg.usageCostPath, cfg),
+  };
+}
+
+// parseImageResponse walks the Google candidates[].content.parts shape. Usage
+// is the caller's to fill (imageUsage).
+function parseImageResponse(raw: unknown): ImageResponse {
   const { images, text, finishReason, finishMessage } =
     extractGoogleImageParts(raw);
-  const out: ImageResponse = {
-    images,
-    text,
-    usage: {
-      input: optIntPath(raw, inputPath),
-      output: optIntPath(raw, outputPath),
-      reasoning: optIntPath(raw, reasoningPath),
-    },
-  };
+  const out: ImageResponse = { images, text, usage: {} };
   if (finishReason) out.providerFinishReason = finishReason;
   if (finishMessage) out.finishMessage = finishMessage;
   return out;
@@ -737,16 +732,10 @@ function parseImageResponse(
  *     when echoed back (xAI does so; OpenAI does not), otherwise defaults
  *     to image/png.
  *   - data[i].revised_prompt strings concatenate into text.
- *   - inputPath / outputPath are dotted-from-root paths to the token counts
- *     (e.g. "usage.input_tokens"). Pass empty strings for providers that
- *     don't report them (xAI reports usage.cost_in_usd_ticks instead).
+ *
+ * Usage is the caller's to fill (imageUsage).
  */
-function parseImageResponseDataArray(
-  raw: unknown,
-  inputPath: string,
-  outputPath: string,
-  reasoningPath: string,
-): ImageResponse {
+function parseImageResponseDataArray(raw: unknown): ImageResponse {
   const root = raw as {
     data?: Array<{
       b64_json?: string;
@@ -780,11 +769,7 @@ function parseImageResponseDataArray(
   return {
     images,
     text: revised.join("\n"),
-    usage: {
-      input: optIntPath(raw, inputPath),
-      output: optIntPath(raw, outputPath),
-      reasoning: optIntPath(raw, reasoningPath),
-    },
+    usage: {},
   };
 }
 

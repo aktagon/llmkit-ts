@@ -60,6 +60,8 @@ export interface VideoGenDef {
   usageInputPath: string;
   usageOutputPath: string;
   usageReasoningPath: string;
+  /** Provider-reported cost, in the unit usageCostScale converts; empty when unreported. */
+  usageCostPath: string;
   /** Options this provider silently ignores when the model lacks them, from
    * "Image", "LastFrame", "AddReferenceImage". Only for these does a model's stated false reject the request. */
   ignoresUnsupported: string[];
@@ -84,6 +86,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
@@ -117,6 +120,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "usage.total_input_tokens",
     usageOutputPath: "usage.total_output_tokens",
     usageReasoningPath: "usage.total_thought_tokens",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
@@ -163,6 +167,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "usage.cost_in_usd_ticks",
     ignoresUnsupported: [],
     models: [
       {
@@ -220,6 +225,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
@@ -256,6 +262,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "usage.cost",
     ignoresUnsupported: [],
     models: [
       {
@@ -399,6 +406,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
@@ -456,6 +464,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
@@ -489,6 +498,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
@@ -525,6 +535,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
@@ -597,6 +608,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
@@ -654,6 +666,7 @@ const VIDEO_GEN: Partial<Record<ProviderName, VideoGenDef>> = {
     usageInputPath: "",
     usageOutputPath: "",
     usageReasoningPath: "",
+    usageCostPath: "",
     ignoresUnsupported: [],
     models: [
       {
