@@ -179,9 +179,9 @@ export async function generateImage(
     let result: ImageResponse;
     switch (imgCfg.responseShape) {
       case "DataArrayB64Json":
-        // OpenAI/xAI/Recraft data[].b64_json shape. SVG bytes (Recraft vector
-        // models) are sniffed to image/svg+xml inside the parser.
-        result = parseImageResponseDataArray(raw);
+        // OpenAI/xAI/OpenRouter/Recraft data[].b64_json shape. SVG bytes
+        // (Recraft vector models) are typed from their bytes inside the parser.
+        result = parseImageResponseDataArray(raw, imgCfg.mimeTypeField);
         result.usage = imageUsage(raw, imgCfg, cfg);
         break;
       case "GoogleParts":
@@ -725,41 +725,30 @@ function parseImageResponse(raw: unknown): ImageResponse {
 }
 
 /**
- * parseImageResponseDataArray walks the data[] array shape used by both
- * OpenAI's and xAI's image APIs:
+ * parseImageResponseDataArray walks the data[] array shape used by the
+ * OpenAI, xAI, OpenRouter and Recraft image APIs:
  *
- *   - data[i].b64_json → bytes (decoded). MimeType honors data[i].mime_type
- *     when echoed back (xAI does so; OpenAI does not), otherwise defaults
- *     to image/png.
+ *   - data[i].b64_json → bytes (decoded). MimeType is the value at
+ *     data[i][mimeTypeField] when the provider's config names that key and
+ *     the entry holds it (xAI mime_type, OpenRouter media_type). Otherwise
+ *     the type comes from the image's first bytes (imageMimeFromBytes).
  *   - data[i].revised_prompt strings concatenate into text.
  *
  * Usage is the caller's to fill (imageUsage).
  */
-function parseImageResponseDataArray(raw: unknown): ImageResponse {
-  const root = raw as {
-    data?: Array<{
-      b64_json?: string;
-      mime_type?: string;
-      revised_prompt?: string;
-    }>;
-  };
+function parseImageResponseDataArray(
+  raw: unknown,
+  mimeTypeField: string,
+): ImageResponse {
+  const root = raw as { data?: Array<Record<string, unknown>> };
   const images: ImageData[] = [];
   const revised: string[] = [];
   for (const entry of root?.data ?? []) {
     if (typeof entry?.b64_json === "string" && entry.b64_json.length > 0) {
-      let mime =
-        typeof entry.mime_type === "string" && entry.mime_type
-          ? entry.mime_type
-          : "image/png";
       const bytes = base64ToBytes(entry.b64_json);
-      // Vector providers (Recraft recraftv3_vector) return SVG bytes in the
-      // same b64_json slot without echoing a mime_type. Sniff the leading
-      // bytes so SVG is labeled image/svg+xml rather than the image/png
-      // default. Raster bytes (PNG/JPEG/WebP) never start with '<', so the
-      // sniff is a no-op for them.
-      if (mime === "image/png" && looksLikeSVG(bytes)) {
-        mime = "image/svg+xml";
-      }
+      const named = mimeTypeField ? entry[mimeTypeField] : undefined;
+      const mime =
+        typeof named === "string" && named ? named : imageMimeFromBytes(bytes);
       images.push({ mimeType: mime, bytes });
     }
     if (typeof entry?.revised_prompt === "string" && entry.revised_prompt) {
@@ -834,6 +823,30 @@ function looksLikeSVG(data: Uint8Array): boolean {
   }
   s = s.replace(/^[\s﻿]+/, "");
   return s.startsWith("<?xml") || s.startsWith("<svg");
+}
+
+/**
+ * imageMimeFromBytes names the type of an image the provider's reply did not
+ * label, from its first bytes: the PNG, JPEG, GIF and WebP signatures, then
+ * SVG text (Recraft's vector models). Bytes that match none are reported as
+ * application/octet-stream; the parser does not guess image/png (BUG-124).
+ */
+export function imageMimeFromBytes(data: Uint8Array): string {
+  const ascii = (start: number, end: number): string =>
+    String.fromCharCode(...data.subarray(start, end));
+  const startsWith = (sig: number[]): boolean =>
+    data.length >= sig.length && sig.every((b, i) => data[i] === b);
+  if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    return "image/png";
+  }
+  if (startsWith([0xff, 0xd8, 0xff])) return "image/jpeg";
+  const head = ascii(0, 6);
+  if (head === "GIF87a" || head === "GIF89a") return "image/gif";
+  if (data.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") {
+    return "image/webp";
+  }
+  if (looksLikeSVG(data)) return "image/svg+xml";
+  return "application/octet-stream";
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
