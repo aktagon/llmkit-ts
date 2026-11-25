@@ -48,6 +48,8 @@ export interface ImageGenDef {
   usageReasoningPath: string;
   /** Provider-reported cost, in the unit usageCostScale converts; empty when unreported. */
   usageCostPath: string;
+  /** data[] entry key that names the image type; empty when the reply names none. */
+  mimeTypeField: string;
   /** One request per carried input, TextOnly first (ADR-096). */
   variants: RequestVariant[];
   /** Options this provider silently ignores when the model lacks them, from
@@ -64,6 +66,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "usageMetadata.candidatesTokenCount",
     usageReasoningPath: "usageMetadata.thoughtsTokenCount",
     usageCostPath: "",
+    mimeTypeField: "",
     variants: [
       { carries: ["TextOnly"], shape: "InlineParts", endpoint: "" },
       { carries: ["WithReferenceImages"], shape: "InlineParts", endpoint: "" },
@@ -95,6 +98,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "",
     usageReasoningPath: "",
     usageCostPath: "usage.cost_in_usd_ticks",
+    mimeTypeField: "mime_type",
     variants: [
       { carries: ["TextOnly"], shape: "JSONInlineRefs", endpoint: "/v1/images/generations" },
       { carries: ["WithReferenceImages"], shape: "JSONInlineRefs", endpoint: "/v1/images/edits" },
@@ -126,6 +130,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "usage.output_tokens",
     usageReasoningPath: "",
     usageCostPath: "",
+    mimeTypeField: "",
     variants: [
       { carries: ["TextOnly"], shape: "JSONGenerationsOpenAI", endpoint: "/v1/images/generations" },
       { carries: ["WithReferenceImages"], shape: "MultipartForm", endpoint: "/v1/images/edits" },
@@ -189,6 +194,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "usage.completion_tokens",
     usageReasoningPath: "",
     usageCostPath: "usage.cost",
+    mimeTypeField: "media_type",
     variants: [
       { carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images" },
       { carries: ["WithReferenceImages"], shape: "JSONGenerationsInputRefs", endpoint: "/v1/images" },
@@ -316,6 +322,7 @@ const IMAGE_GEN: Partial<Record<ProviderName, ImageGenDef>> = {
     usageOutputPath: "",
     usageReasoningPath: "",
     usageCostPath: "",
+    mimeTypeField: "",
     variants: [
       { carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images/generations" },
     ],
