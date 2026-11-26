@@ -32,7 +32,7 @@ import { decodeCost } from "../response.ts";
 import { lastInteractionOutputItem } from "../speech.ts";
 import { firePost, firePre } from "../middleware.ts";
 import type { Event, MiddlewareFn } from "../providers/middleware.ts";
-import { imageURLContentPart, type Part } from "../image.ts";
+import { imageURLContentPart, typedImage, typedImageParts, type Part } from "../image.ts";
 import { catalogueHint, lookupModel, offList, statedFalseBlocks, withHint } from "../model_lookup.ts";
 import type { MediaRef } from "../structs.ts";
 import type { ProviderName } from "../providers/providers.ts";
@@ -276,6 +276,9 @@ interface PreparedVideo {
   model: VideoModelDef | undefined;
   listed: boolean;
   parts: Part[];
+  // lastFrame and referenceImages are the builder's, typed (typedImage).
+  lastFrame: MediaRef | undefined;
+  referenceImages: MediaRef[];
   imageCount: number;
   variant: RequestVariant;
 }
@@ -390,7 +393,29 @@ function prepareVideo(b: Video, msg: string): PreparedVideo {
     );
   }
 
-  return { b, provider, cfg, vgCfg, model, listed, parts, imageCount, variant };
+  // The last check: every image the request carries has a type from here
+  // on, so no request builder falls back to one (HANDOFF-127). The builder's
+  // own images are not changed.
+  const typedParts = typedImageParts(parts);
+  const lastFrame =
+    b._lastFrame === undefined ? undefined : typedImage(b._lastFrame, "last_frame");
+  const referenceImages = b._referenceImages.map((img, i) =>
+    typedImage(img, `reference_images[${i}]`),
+  );
+
+  return {
+    b,
+    provider,
+    cfg,
+    vgCfg,
+    model,
+    listed,
+    parts: typedParts,
+    lastFrame,
+    referenceImages,
+    imageCount,
+    variant,
+  };
 }
 
 // videoHint names the stated facts of a listed video model the request
@@ -441,10 +466,8 @@ function videoHint(
 function buildVideoWire(
   prepared: PreparedVideo,
 ): { url: string; headers: Record<string, string>; body: string } {
-  const { b, provider, cfg, vgCfg, variant, parts } = prepared;
+  const { b, provider, cfg, vgCfg, variant, parts, lastFrame, referenceImages } = prepared;
   const model = b._model;
-  const lastFrame = b._lastFrame;
-  const referenceImages = b._referenceImages;
   const durationSeconds = b._duration;
   const aspectRatio = b._aspectRatio;
   const resolution = b._resolution;
@@ -1351,7 +1374,7 @@ function videoReferenceCount(b: Video): number {
 function veoImage(img: MediaRef): Record<string, string> {
   return {
     bytesBase64Encoded: bytesToBase64(img.bytes),
-    mimeType: img.mimeType || "image/png",
+    mimeType: img.mimeType,
   };
 }
 
@@ -1545,8 +1568,7 @@ function videoCarries(
 function videoSeedImageURL(parts: Part[]): string {
   const img = videoSeedImage(parts);
   if (!img) return "";
-  const mime = img.mimeType || "image/png";
-  return `data:${mime};base64,${bytesToBase64(img.bytes)}`;
+  return `data:${img.mimeType};base64,${bytesToBase64(img.bytes)}`;
 }
 
 // bytesToBase64 encodes bytes as standard base64, mirroring image.ts (the

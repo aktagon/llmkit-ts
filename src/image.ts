@@ -12,6 +12,7 @@ import {
   type RequestVariant,
   imageGenConfig,
 } from "./providers/image_gen.ts";
+import { IMAGE_FORMATS, type ImageSignaturePart } from "./providers/image_formats.ts";
 import { writeJson } from "./json_text.ts";
 import { APIError, ValidationError } from "./errors.ts";
 import { checkPartKinds, hasPart } from "./part_kinds.ts";
@@ -364,7 +365,24 @@ function prepareImage(
     throw new Error(`image: unsupported request shape ${String(_exhaustive)}`);
   }
 
-  return { provider, request, options, cfg, imgCfg, model, listed, parts, imageCount, variant };
+  // The last check: every image the request carries has a type from here
+  // on, so no request builder falls back to one (HANDOFF-127).
+  const typedParts = typedImageParts(parts);
+  const typedOptions =
+    options.mask === undefined ? options : { ...options, mask: typedImage(options.mask, "mask") };
+
+  return {
+    provider,
+    request,
+    options: typedOptions,
+    cfg,
+    imgCfg,
+    model,
+    listed,
+    parts: typedParts,
+    imageCount,
+    variant,
+  };
 }
 
 // buildImageWire builds the URL, headers and body the terminal sends. The
@@ -486,31 +504,23 @@ function buildOpenAIEditFormData(
   let idx = 0;
   for (const part of parts) {
     if (hasPart(part, "image")) {
-      const mime = part.image.mimeType || "image/png";
-      const ext =
-        mime === "image/jpeg"
-          ? ".jpg"
-          : mime === "image/webp"
-            ? ".webp"
-            : ".png";
+      const mime = part.image.mimeType;
       // Copy bytes into a fresh ArrayBuffer so Blob never sees a SharedArrayBuffer view.
       const buf = new ArrayBuffer(part.image.bytes.byteLength);
       new Uint8Array(buf).set(part.image.bytes);
       form.append(
         "image[]",
         new Blob([buf], { type: mime }),
-        `image-${idx}${ext}`,
+        `image-${idx}${extFromMime(mime)}`,
       );
       idx++;
     }
   }
   if (options.mask) {
-    const mime = options.mask.mimeType || "image/png";
-    const ext =
-      mime === "image/jpeg" ? ".jpg" : mime === "image/webp" ? ".webp" : ".png";
+    const mime = options.mask.mimeType;
     const buf = new ArrayBuffer(options.mask.bytes.byteLength);
     new Uint8Array(buf).set(options.mask.bytes);
-    form.append("mask", new Blob([buf], { type: mime }), `mask${ext}`);
+    form.append("mask", new Blob([buf], { type: mime }), `mask${extFromMime(mime)}`);
   }
   return form;
 }
@@ -542,8 +552,7 @@ function buildXAIBody(
   const refs: Array<{ url: string }> = [];
   for (const p of parts) {
     if (hasPart(p, "image")) {
-      const mime = p.image.mimeType || "image/png";
-      const dataURL = `data:${mime};base64,${bytesToBase64(p.image.bytes)}`;
+      const dataURL = `data:${p.image.mimeType};base64,${bytesToBase64(p.image.bytes)}`;
       refs.push({ url: dataURL });
     }
   }
@@ -602,10 +611,9 @@ function imageURLContentParts(parts: Part[]): Array<Record<string, unknown>> {
  * re-export it.
  */
 export function imageURLContentPart(img: MediaRef): Record<string, unknown> {
-  const mime = img.mimeType || "image/png";
   return {
     type: "image_url",
-    image_url: { url: `data:${mime};base64,${bytesToBase64(img.bytes)}` },
+    image_url: { url: `data:${img.mimeType};base64,${bytesToBase64(img.bytes)}` },
   };
 }
 
@@ -826,27 +834,85 @@ function looksLikeSVG(data: Uint8Array): boolean {
 }
 
 /**
- * imageMimeFromBytes names the type of an image the provider's reply did not
- * label, from its first bytes: the PNG, JPEG, GIF and WebP signatures, then
- * SVG text (Recraft's vector models). Bytes that match none are reported as
- * application/octet-stream; the parser does not guess image/png (BUG-124).
+ * imageTypeFromBytes names an image's media type from its first bytes, by
+ * the generated image format table: a format matches when every part of any
+ * one of its signatures matches. SVG has no signature and is matched as text
+ * after the table. It returns "" when no format matches.
  */
-export function imageMimeFromBytes(data: Uint8Array): string {
-  const ascii = (start: number, end: number): string =>
-    String.fromCharCode(...data.subarray(start, end));
-  const startsWith = (sig: number[]): boolean =>
-    data.length >= sig.length && sig.every((b, i) => data[i] === b);
-  if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
-    return "image/png";
-  }
-  if (startsWith([0xff, 0xd8, 0xff])) return "image/jpeg";
-  const head = ascii(0, 6);
-  if (head === "GIF87a" || head === "GIF89a") return "image/gif";
-  if (data.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") {
-    return "image/webp";
+function imageTypeFromBytes(data: Uint8Array): string {
+  for (const format of IMAGE_FORMATS) {
+    for (const signature of format.signatures) {
+      if (matchesImageSignature(data, signature)) return format.mediaType;
+    }
   }
   if (looksLikeSVG(data)) return "image/svg+xml";
-  return "application/octet-stream";
+  return "";
+}
+
+function matchesImageSignature(
+  data: Uint8Array,
+  signature: readonly ImageSignaturePart[],
+): boolean {
+  return signature.every(
+    (part) =>
+      data.length >= part.offset + part.bytes.length &&
+      part.bytes.every((b, i) => data[part.offset + i] === b),
+  );
+}
+
+/**
+ * imageMimeFromBytes names the type of an image the provider's reply did not
+ * label, from its first bytes. Bytes that match no format are reported as
+ * application/octet-stream; the parser does not guess a type (BUG-124).
+ */
+export function imageMimeFromBytes(data: Uint8Array): string {
+  return imageTypeFromBytes(data) || "application/octet-stream";
+}
+
+/**
+ * extFromMime is the file extension of an image type, by the generated image
+ * format table; ".bin" for a type no format lists. Exported for tests only;
+ * the package barrel does not re-export it.
+ */
+export function extFromMime(mime: string): string {
+  for (const format of IMAGE_FORMATS) {
+    if (format.mediaType === mime || format.aliases.includes(mime)) {
+      return format.extension;
+    }
+  }
+  return ".bin";
+}
+
+/**
+ * UNTYPED_IMAGE_MESSAGE is the validation error for an image that states no
+ * type and whose bytes match no image format. The same text in every SDK.
+ */
+export const UNTYPED_IMAGE_MESSAGE =
+  "the image states no MIME type and its bytes match no known image format; set the image's MIME type";
+
+/**
+ * typedImage returns img with its type set. A stated type always wins; an
+ * image that states none is typed from its bytes. When no format matches,
+ * the request stops here with a validation error naming field. The caller's
+ * image is not changed. Exported for video.ts; the package barrel does not
+ * re-export it.
+ */
+export function typedImage(img: MediaRef, field: string): MediaRef {
+  if (img.mimeType) return img;
+  const mime = imageTypeFromBytes(img.bytes);
+  if (!mime) throw new ValidationError(field, UNTYPED_IMAGE_MESSAGE);
+  return { ...img, mimeType: mime };
+}
+
+/**
+ * typedImageParts returns parts with every image part typed (typedImage).
+ * The caller's array is not changed. Exported for video.ts; the package
+ * barrel does not re-export it.
+ */
+export function typedImageParts(parts: Part[]): Part[] {
+  return parts.map((part, i) =>
+    hasPart(part, "image") ? { ...part, image: typedImage(part.image, `parts[${i}]`) } : part,
+  );
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
