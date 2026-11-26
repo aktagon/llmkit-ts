@@ -906,12 +906,13 @@ export function typedImage(img: MediaRef, field: string): MediaRef {
 
 /**
  * typedImageParts returns parts with every image part typed (typedImage).
- * The caller's array is not changed. Exported for video.ts; the package
- * barrel does not re-export it.
+ * The caller's array is not changed. `field` names the parts list in the
+ * error, e.g. "messages[2].parts". Exported for video.ts and request.ts; the
+ * package barrel does not re-export it.
  */
-export function typedImageParts(parts: Part[]): Part[] {
+export function typedImageParts(parts: Part[], field = "parts"): Part[] {
   return parts.map((part, i) =>
-    hasPart(part, "image") ? { ...part, image: typedImage(part.image, `parts[${i}]`) } : part,
+    hasPart(part, "image") ? { ...part, image: typedImage(part.image, `${field}[${i}]`) } : part,
   );
 }
 

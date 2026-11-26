@@ -93,7 +93,21 @@ export async function submitBatch(
   }
   // The one validation step on every item (RQC-017), before the
   // batch_submit event: a bad item fails here (HANDOFF-105 F11).
-  const items = requests.map((r) => encodeChat(provider, cfg, r));
+  const items = requests.map((r, i) => {
+    try {
+      return encodeChat(provider, cfg, r);
+    } catch (err) {
+      // One request that cannot be sent stops the whole batch. An error
+      // about a request's messages names the request; an option error holds
+      // for every request and keeps its field (owner, 2026-11-26).
+      if (err instanceof ValidationError && err.field.startsWith("messages[")) {
+        // message is "<field>: <text>"; the new error keeps the text.
+        const text = err.message.slice(err.field.length + 2);
+        throw new ValidationError(`requests[${i}].${err.field}`, text);
+      }
+      throw err;
+    }
+  });
 
   // Every item comes from one builder, so the first item's model is the
   // batch's. An empty batch reports the provider's model.
