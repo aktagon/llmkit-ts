@@ -34,7 +34,7 @@ import type {
   WireRequest,
 } from "./structs.ts";
 import { checkPartKinds, hasPart, partKindOf } from "./part_kinds.ts";
-import { bytesToBase64 } from "./image.ts";
+import { bytesToBase64, typedImageParts } from "./image.ts";
 import { sendHTTP } from "./http.ts";
 import { partsText, partsToolCalls, toolCallInput, writeToolCall } from "./response_parts.ts";
 import { JsonText, writeJson } from "./json_text.ts";
@@ -808,7 +808,10 @@ function toInternal(messages: Message[]): Msg[] {
   return messages.map((m, i): Msg => {
     checkTurnParts(m.role, m.parts, `messages[${i}].parts`, requestToolInput);
     checkProviderTurn(m.providerTurn, `messages[${i}].provider_turn`);
-    const projected: PartsMsg = { kind: "parts", role: m.role, parts: m.parts };
+    // The last check of a turn: every image part has a type from here on,
+    // so no chat encoder writes an empty one (BUG-125).
+    const parts = typedImageParts(m.parts, `messages[${i}].parts`);
+    const projected: PartsMsg = { kind: "parts", role: m.role, parts };
     // providerTurn is the same turn in the provider's own serialization. When
     // present it supersedes the parts on the wire while the parts stay what
     // consumers read.
